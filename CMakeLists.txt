@@ -43,3 +43,22 @@ target_link_libraries(GlitchKid
     PRIVATE juce::juce_audio_utils
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
+
+# Unit tests for the processor: cmake -S . -B build -DGLITCHKID_BUILD_TESTS=ON && ctest --test-dir build
+option(GLITCHKID_BUILD_TESTS "Build the GlitchKid unit tests" OFF)
+if(GLITCHKID_BUILD_TESTS)
+    enable_testing()
+    juce_add_console_app(GlitchKidTests PRODUCT_NAME "GlitchKidTests")
+    target_sources(GlitchKidTests PRIVATE
+        Tests/main.cpp
+        Source/PluginProcessor.cpp
+        Source/PluginEditor.cpp)
+    target_compile_definitions(GlitchKidTests PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0)
+    target_link_libraries(GlitchKidTests
+        PRIVATE juce::juce_audio_utils
+        PUBLIC  juce::juce_recommended_config_flags
+                juce::juce_recommended_warning_flags)
+    add_test(NAME GlitchKidProcessor COMMAND GlitchKidTests)
+endif()

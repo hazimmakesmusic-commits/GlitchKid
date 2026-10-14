@@ -35,11 +35,16 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
+    // Peak meters: the audio thread raises these (linear, pre-/post-gain); the UI reads and resets them.
+    float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
+    float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
 
     std::atomic<float>* gainDb = nullptr;
     std::atomic<float>* bypass = nullptr;
+    std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear; also ramps to 1.0 on bypass, so no clicks
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidProcessor)

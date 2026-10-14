@@ -41,30 +41,46 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int)
                                            : juce::Decibels::decibelsToGain (gainDb->load()));
 }
 
+// Raise a peak value; only the audio thread writes, so a plain load/store is enough.
+static void raisePeak (std::atomic<float>& peak, float value)
+{
+    if (value > peak.load (std::memory_order_relaxed))
+        peak.store (value, std::memory_order_relaxed);
+}
+
 // Real-time thread: no allocation, locks or I/O here.
 void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    smoothedGain.setTargetValue (bypass->load() >= 0.5f ? 1.0f
-                                 : juce::Decibels::decibelsToGain (gainDb->load()));
-
     const int numSamples = buffer.getNumSamples();
     const int numChannels = buffer.getNumChannels();
+
+    // Layouts are matched in/out, but never pass unrelated data through extra outputs.
+    for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
+        buffer.clear (ch, 0, numSamples);
+
+    raisePeak (inputPeak, buffer.getMagnitude (0, numSamples));
+
+    smoothedGain.setTargetValue (bypass->load() >= 0.5f ? 1.0f
+                                 : juce::Decibels::decibelsToGain (gainDb->load()));
 
     if (! smoothedGain.isSmoothing())
     {
         buffer.applyGain (smoothedGain.getTargetValue());
-        return;
+    }
+    else
+    {
+        // Same ramp on every channel: step the smoother once per sample, not once per channel.
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float g = smoothedGain.getNextValue();
+            for (int ch = 0; ch < numChannels; ++ch)
+                buffer.getWritePointer (ch)[i] *= g;
+        }
     }
 
-    // Same ramp on every channel: step the smoother once per sample, not once per channel.
-    for (int i = 0; i < numSamples; ++i)
-    {
-        const float g = smoothedGain.getNextValue();
-        for (int ch = 0; ch < numChannels; ++ch)
-            buffer.getWritePointer (ch)[i] *= g;
-    }
+    raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
 }
 
 juce::AudioProcessorEditor* GlitchKidProcessor::createEditor()
