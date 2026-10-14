@@ -70,6 +70,23 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { stutterMixId, 1 }, "Stutter Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    StringArray divisions;
+    for (int i = 0; i < LiquidEcho::numDivisions; ++i)
+        divisions.add (LiquidEcho::divisionName (i));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { echoOnId, 1 }, "Echo On", false));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { echoSyncId, 1 }, "Echo Sync", true));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoTimeId, 1 }, "Echo Time",
+        skewed (1.0f, 2000.0f, 1.0f, 300.0f), 350.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { echoDivId, 1 }, "Echo Division", divisions, 4));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoFbId, 1 }, "Echo Feedback",
+        NormalisableRange<float> (0.0f, LiquidEcho::maxFeedbackPct, 0.1f), 35.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoToneId, 1 }, "Echo Tone",
+        skewed (400.0f, 20000.0f, 1.0f, 3000.0f), 6000.0f, AudioParameterFloatAttributes().withLabel ("Hz")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoWidthId, 1 }, "Echo Width",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoMixId, 1 }, "Echo Mix",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mixId, 1 }, "Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
@@ -99,6 +116,24 @@ GlitchKidProcessor::GlitchKidProcessor()
     stutterOn = apvts.getRawParameterValue (stutterOnId);
     stutterRate = apvts.getRawParameterValue (stutterRateId);
     stutterMix = apvts.getRawParameterValue (stutterMixId);
+    const char* echoIds[] = { echoOnId, echoSyncId, echoTimeId, echoDivId, echoFbId, echoToneId, echoWidthId, echoMixId };
+    for (int i = 0; i < 8; ++i)
+        echoParams[i] = apvts.getRawParameterValue (echoIds[i]);
+}
+
+EchoSettings GlitchKidProcessor::readEchoSettings() const
+{
+    EchoSettings s;
+    s.on = echoParams[0]->load() >= 0.5f;
+    s.sync = echoParams[1]->load() >= 0.5f;
+    s.timeMs = echoParams[2]->load();
+    s.division = (int) std::lround (echoParams[3]->load());
+    s.feedbackPct = echoParams[4]->load();
+    s.toneHz = echoParams[5]->load();
+    s.widthPct = echoParams[6]->load();
+    s.mixPct = echoParams[7]->load();
+    s.bpm = currentBpm;
+    return s;
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
@@ -149,6 +184,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     saturation.prepare (sampleRate, juce::jmax (samplesPerBlock, 512));
     dryDelay.prepare (Saturation::latencySamples);
     stutter.prepare (sampleRate);
+
+    echo.setSettings (readEchoSettings());
+    echo.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
 }
@@ -222,6 +260,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         compressor.reset();
         saturation.reset();
         stutter.reset();
+        echo.reset();
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
         raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
@@ -246,6 +285,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
                            stutterMix->load(), currentBpm });
     stutter.process (buffer);
     shownLoopLength.store (stutter.getLoopLengthSamples(), std::memory_order_relaxed);
+
+    echo.setSettings (readEchoSettings());
+    echo.process (buffer);
 
     smoothedGain.setTargetValue (targetGain (gainDb->load()));
     if (! smoothedGain.isSmoothing())

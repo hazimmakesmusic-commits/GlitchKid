@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 77 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 92 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -36,7 +36,7 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
 
 ## Test files (groups)
 `main.cpp` 18 (processor, EQ) · `CompressorTests.cpp` 12 · `SaturationTests.cpp` 12 · `MixTests.cpp` 8 ·
-`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow).
+`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo).
 
 ## Conventions
 - A test that cannot fail is not a test: new tests are mutation-checked (deliberately break the code; the test must fail).
@@ -45,7 +45,18 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
   showed; reproduce with `-mfma -ffp-contract=fast` on Linux when relevant.
 - No CI exists yet (see `ROADMAP.md`).
 
+## Liquid Echo: what the tests prove, and what they cannot
+Proved (deterministic): silence stays silent; an impulse returns after exactly the set time at 44.1 to 192 kHz and block sizes 1 to 2048;
+tempo-synced lengths for every division, host tempo, missing/NaN/zero/negative tempo falling back to 120 BPM, tempo changes followed;
+repeats decay; maximum feedback (and an out-of-range value) is stable with no DC build-up; Mix 0 is bit-exact dry, Mix 100 is wet only;
+Tone darkens repeats without touching the dry signal; Width offsets the right echo by the documented amount at equal level; mono works;
+results are bit-identical for any block size; time changes and on/off switching are click-free; off leaves no stale echo; NaN/Inf/huge input
+recovers; state round-trips and an old state without echo parameters loads with echo defaults; parameters changed every block stay finite;
+latency stays 6 samples. Each safety feature was mutation-checked.
+Not provable by these tests: how it sounds (musicality, the pitch bend while time moves), FL Studio's handling of tail length, and
+behaviour on the Mac inside FL Studio.
+
 ## Manual FL Studio checklist (owner)
 Load on an insert; every knob changes sound; Bypass is clean and level-matched; Mix 0 % equals bypass; Glitch
-Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; automation; save, close, reopen the project
+Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project
 and settings return; latency shown as 6 samples. Record the result and FL/macOS versions.

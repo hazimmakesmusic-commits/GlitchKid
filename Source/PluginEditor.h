@@ -33,6 +33,7 @@ public:
                const juce::String& suffix, juce::Colour colour);
     void addTo (juce::Component& parent);
     void setBounds (juce::Rectangle<int> r);
+    void setEnabled (bool);
 
 private:
     juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
@@ -66,6 +67,13 @@ private:
     juce::OwnedArray<ParamKnob> stutterMixKnob;
     juce::String shownTempoText;
 
+    // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
+    juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
+    juce::ToggleButton echoOnButton { "ON" }, echoSyncButton { "SYNC" };
+    juce::ComboBox echoDivBox;
+    juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
+    int echoDividerY = 0;
+
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;
     juce::OwnedArray<ParamKnob> mixKnob;
@@ -74,6 +82,8 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment stutterOnAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment stutterRateAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment echoOnAttachment, echoSyncAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
 };

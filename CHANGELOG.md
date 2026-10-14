@@ -3,6 +3,9 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 3.2: **Liquid Echo**, a tempo-aware stereo delay (on/off, sync or free time, 11 note divisions, feedback to 90 %, tone, width, own mix)
+  after Glitch Stutter. 8 new parameters (`echo_*`), default off; no latency added; editor gains a Liquid Echo row (window 1060x640).
+  15 new test groups (92 total). See `docs/ARCHITECTURE.md`.
 - Fixed: a NaN or Inf sample could permanently silence the EQ and saturation (their filter memory kept the bad
   value). Both stages now replace non-finite input with 0 and clear their filter memory if it overflows. New
   tests (`Tests/RobustnessTests.cpp`, 6 groups). See `docs/ARCHITECTURE.md`.

@@ -24,6 +24,7 @@
 - Verified on a real Apple Silicon Mac with FL Studio 2025: builds with the Command Line Tools only, `arm64` binary, loads as `VST3 (Apple - native)`, `ctest` passes, window renders and fits, IN/OUT/GR meters move, FL Studio shows the plugin-reported latency (0.14 ms = 6 samples at 44.1 kHz).
 - Reported working by the project owner (not independently measured): EQ, compressor and saturation sound as expected, Bypass is clean, and FL Studio automation of GlitchKid parameters works.
 - Reported working by the project owner on the Mac in FL Studio (not independently measured): the Stage 2.5 Mix control and the Stage 3.1 Glitch Stutter (on/off, rate, Stutter Mix, host-tempo following, automation and project recall as per the manual test list).
+- Verified on the owner's Apple Silicon Mac after the NaN/Inf hardening and JUCE commit pin (screenshot, 2026-10-14): Release build with tests succeeds and `ctest` reports 100% tests passed (1/1). FL Studio reload after this change not yet reported.
 - Not yet checked: CPU load in FL Studio; other sample rates and buffer sizes inside FL Studio; other DAWs; a formal listening-test protocol across different voices.
 - No claim of professional sound quality is made. The unit tests prove the maths and safety properties, not taste.
 

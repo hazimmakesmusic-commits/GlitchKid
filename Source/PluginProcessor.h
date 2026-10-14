@@ -5,8 +5,9 @@
 #include "DSP/Saturation.h"
 #include "DSP/FixedDelay.h"
 #include "DSP/GlitchStutter.h"
+#include "DSP/LiquidEcho.h"
 
-// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor
@@ -36,6 +37,16 @@ public:
     static constexpr const char* stutterOnId   = "stutter_on";   // Glitch Stutter on/off
     static constexpr const char* stutterRateId = "stutter_rate"; // 0..3 = 1/4, 1/8, 1/16, 1/32 note
     static constexpr const char* stutterMixId  = "stutter_mix";  // percent loop (100) vs live (0)
+
+    // Liquid Echo (tempo-aware delay). Defaults: off, so a fresh instance does not change the sound.
+    static constexpr const char* echoOnId    = "echo_on";
+    static constexpr const char* echoSyncId  = "echo_sync";  // true = note division, false = echo_time
+    static constexpr const char* echoTimeId  = "echo_time";  // ms, used when sync is off
+    static constexpr const char* echoDivId   = "echo_div";   // index into LiquidEcho::divisionName()
+    static constexpr const char* echoFbId    = "echo_fb";    // percent, 0..90
+    static constexpr const char* echoToneId  = "echo_tone";  // Hz, low-pass on the repeats
+    static constexpr const char* echoWidthId = "echo_width"; // percent
+    static constexpr const char* echoMixId   = "echo_mix";   // percent repeats (100) vs dry (0)
 
     GlitchKidProcessor();
 
@@ -97,6 +108,9 @@ private:
     std::atomic<float> shownTempo { GlitchStutter::fallbackBpm };
     std::atomic<bool> tempoFromHost { false };
     std::atomic<int> shownLoopLength { 0 };
+    LiquidEcho echo;
+    std::atomic<float>* echoParams[8] {}; // on, sync, time, division, feedback, tone, width, mix
+    EchoSettings readEchoSettings() const;
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency
     std::atomic<float>* satDrive = nullptr;
     std::atomic<float>* mixPercent = nullptr;

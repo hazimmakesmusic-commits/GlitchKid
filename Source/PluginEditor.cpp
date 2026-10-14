@@ -64,6 +64,12 @@ void ParamKnob::addTo (juce::Component& parent)
     parent.addAndMakeVisible (label);
 }
 
+void ParamKnob::setEnabled (bool shouldBeEnabled)
+{
+    slider.setEnabled (shouldBeEnabled);
+    label.setAlpha (shouldBeEnabled ? 1.0f : 0.4f);
+}
+
 void ParamKnob::setBounds (juce::Rectangle<int> r)
 {
     label.setBounds (r.removeFromTop (14));
@@ -75,7 +81,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       glitchProcessor (p),
       bypassAttachment (p.apvts, GlitchKidProcessor::bypassId, bypassButton),
       stutterOnAttachment (p.apvts, GlitchKidProcessor::stutterOnId, stutterOnButton),
-      stutterRateAttachment (p.apvts, GlitchKidProcessor::stutterRateId, stutterRateBox)
+      stutterRateAttachment (p.apvts, GlitchKidProcessor::stutterRateId, stutterRateBox),
+      echoOnAttachment (p.apvts, GlitchKidProcessor::echoOnId, echoOnButton),
+      echoSyncAttachment (p.apvts, GlitchKidProcessor::echoSyncId, echoSyncButton),
+      echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
@@ -111,6 +120,28 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     stutterMixKnob[0]->addTo (*this);
     for (auto* c : std::initializer_list<juce::Component*> { &stutterTitle, &stutterRateLabel, &tempoLabel,
                                                               &stutterOnButton, &stutterRateBox })
+        addAndMakeVisible (c);
+
+    // Liquid Echo. TIME is used when SYNC is off, DIVISION when it is on (the unused one is dimmed).
+    if (auto* div = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::echoDivId)))
+    {
+        echoDivBox.addItemList (div->choices, 1);
+        echoDivBox.setSelectedItemIndex (div->getIndex(), juce::dontSendNotification);
+    }
+    echoTitle.setJustificationType (juce::Justification::centred);
+    echoTitle.setColour (juce::Label::textColourId, violet);
+    echoDivLabel.setJustificationType (juce::Justification::centred);
+    echoDivLabel.setFont (juce::FontOptions (11.0f));
+    echoOnButton.setColour (juce::ToggleButton::tickColourId, lime);
+    echoSyncButton.setColour (juce::ToggleButton::tickColourId, violet);
+    echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoTimeId, "TIME", " ms", lime));
+    echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoFbId, "FEEDBACK", " %", pink));
+    echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoToneId, "TONE", " Hz", violet));
+    echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoWidthId, "WIDTH", " %", lime));
+    echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoMixId, "ECHO MIX", " %", pink));
+    for (auto* k : echoKnobs)
+        k->addTo (*this);
+    for (auto* c : std::initializer_list<juce::Component*> { &echoTitle, &echoDivLabel, &echoOnButton, &echoSyncButton, &echoDivBox })
         addAndMakeVisible (c);
 
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
@@ -156,7 +187,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         addAndMakeVisible (c);
 
-    setSize (1060, 500);
+    setSize (1060, 640);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -166,6 +197,11 @@ void GlitchKidEditor::timerCallback()
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
+
+    const bool synced = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::echoSyncId)->load() >= 0.5f;
+    echoKnobs[0]->setEnabled (! synced);
+    echoDivBox.setEnabled (synced);
+    echoDivLabel.setAlpha (synced ? 1.0f : 0.4f);
 
     // Always say where the stutter tempo comes from: the host, or the 120 BPM fallback.
     const auto text = glitchProcessor.isStutterTempoFromHost()
@@ -182,13 +218,29 @@ void GlitchKidEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff121214)); // obsidian
     g.setColour (juce::Colour (0xff2a2a30));
-    g.drawLine (270.0f, 90.0f, 270.0f, (float) getHeight() - 20.0f);
-    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) getHeight() - 20.0f);
+    g.drawLine (270.0f, 90.0f, 270.0f, (float) echoDividerY - 8.0f);
+    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) echoDividerY - 8.0f);
+    g.drawLine (16.0f, (float) echoDividerY, (float) getWidth() - 16.0f, (float) echoDividerY);
 }
 
 void GlitchKidEditor::resized()
 {
     auto r = getLocalBounds().reduced (16);
+
+    // Bottom strip: Liquid Echo.
+    auto echoArea = r.removeFromBottom (140);
+    echoDividerY = echoArea.getY() - 4;
+    echoTitle.setBounds (echoArea.removeFromTop (20));
+    const int cellW = echoArea.getWidth() / 7;
+    auto switches = echoArea.removeFromLeft (cellW).reduced (8, 0);
+    echoOnButton.setBounds (switches.removeFromTop (40).withSizeKeepingCentre (70, 28));
+    echoSyncButton.setBounds (switches.removeFromTop (40).withSizeKeepingCentre (70, 28));
+    auto divCell = echoArea.removeFromLeft (cellW).reduced (8, 0);
+    echoDivLabel.setBounds (divCell.removeFromTop (14));
+    echoDivBox.setBounds (divCell.removeFromTop (40).withSizeKeepingCentre (110, 26));
+    for (auto* k : echoKnobs)
+        k->setBounds (echoArea.removeFromLeft (cellW).reduced (8, 0));
+
     title.setBounds (r.removeFromTop (44));
     tagline.setBounds (r.removeFromTop (20));
     r.removeFromTop (12);
