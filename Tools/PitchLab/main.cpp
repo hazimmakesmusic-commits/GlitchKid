@@ -164,7 +164,30 @@ int main (int argc, char** argv)
         s.retuneSpeedMs = argc > 6 ? juce::String (argv[6]).getFloatValue() : 20.0f;
         s.mix = argc > 7 ? juce::String (argv[7]).getFloatValue() : 1.0f;
         c.setSettings (s);
-        c.processBlock (in.data(), out.data(), (int) in.size());
+        // Process in blocks and watch what the corrector decides, so the result can be explained.
+        int blocks = 0, voicedBlocks = 0;
+        double sumCorr = 0, maxCorr = 0, sumHz = 0;
+        float peak = 0.0f;
+        for (float v : in) peak = std::max (peak, std::abs (v));
+        for (size_t i = 0; i < in.size(); i += 256)
+        {
+            c.processBlock (in.data() + i, out.data() + i, (int) std::min<size_t> (256, in.size() - i));
+            ++blocks;
+            if (c.telemetry().voiced)
+            {
+                ++voicedBlocks;
+                sumCorr += std::abs (c.telemetry().correctionCents);
+                maxCorr = std::max (maxCorr, (double) std::abs (c.telemetry().correctionCents));
+                sumHz += c.telemetry().detectedHz;
+            }
+        }
+        std::printf ("input: %.1f s, %.0f Hz, peak level %.2f\n", (double) in.size() / r->sampleRate, r->sampleRate, (double) peak);
+        std::printf ("voice found in %.0f %% of the recording", 100.0 * voicedBlocks / std::max (blocks, 1));
+        if (voicedBlocks > 0)
+            std::printf (" (average pitch %.0f Hz)\ncorrection applied while voiced: average %.0f cents, largest %.0f cents (100 cents = one note)\n",
+                         sumHz / voicedBlocks, sumCorr / voicedBlocks, maxCorr);
+        else
+            std::printf ("\nNOTHING was detected as a voice, so the audio passed through unchanged.\n");
         // Drop the latency so the result lines up with the original recording.
         out.erase (out.begin(), out.begin() + (std::ptrdiff_t) std::min<size_t> (out.size(), (size_t) c.getLatencySamples()));
         out.resize (in.size(), 0.0f);
