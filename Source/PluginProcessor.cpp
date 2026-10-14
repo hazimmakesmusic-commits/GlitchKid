@@ -41,6 +41,26 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
         }
     }
 
+    // Compressor. Ratio defaults to 1:1, so a fresh instance does not change the sound.
+    auto skewed = [] (float lo, float hi, float step, float centre)
+    {
+        NormalisableRange<float> r (lo, hi, step);
+        r.setSkewForCentre (centre);
+        return r;
+    };
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compThresholdId, 1 }, "Comp Threshold",
+        NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -18.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compRatioId, 1 }, "Comp Ratio",
+        skewed (1.0f, 20.0f, 0.1f, 4.0f), 1.0f, AudioParameterFloatAttributes().withLabel (":1")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compAttackId, 1 }, "Comp Attack",
+        skewed (0.1f, 100.0f, 0.1f, 10.0f), 10.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compReleaseId, 1 }, "Comp Release",
+        skewed (10.0f, 1000.0f, 1.0f, 100.0f), 100.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compKneeId, 1 }, "Comp Knee",
+        NormalisableRange<float> (0.0f, 24.0f, 0.1f), 6.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compMakeupId, 1 }, "Comp Makeup",
+        NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+
     return layout;
 }
 
@@ -58,6 +78,15 @@ GlitchKidProcessor::GlitchKidProcessor()
         eqParams[b].gain = apvts.getRawParameterValue (eqIds[b].gain);
         eqParams[b].q    = eqIds[b].q != nullptr ? apvts.getRawParameterValue (eqIds[b].q) : nullptr;
     }
+    const char* ids[] = { compThresholdId, compRatioId, compAttackId, compReleaseId, compKneeId, compMakeupId };
+    for (int i = 0; i < 6; ++i)
+        compParams[i] = apvts.getRawParameterValue (ids[i]);
+}
+
+CompressorSettings GlitchKidProcessor::readCompressorSettings() const
+{
+    return { compParams[0]->load(), compParams[1]->load(), compParams[2]->load(),
+             compParams[3]->load(), compParams[4]->load(), compParams[5]->load() };
 }
 
 bool GlitchKidProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -85,6 +114,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
                          eqParams[b].q != nullptr ? eqParams[b].q->load() : 0.7071f });
     eq.prepare (sampleRate);
+
+    compressor.setSettings (readCompressorSettings());
+    compressor.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
 }
@@ -129,7 +161,8 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     if (bypassed && ! wetMix.isSmoothing())
     {
-        eq.reset();                 // settled bypass: exact dry signal, no EQ cost
+        eq.reset();                 // settled bypass: exact dry signal, no EQ or compressor cost
+        compressor.reset();
         raisePeak (outputPeak, inMag);
         return;
     }
@@ -143,6 +176,10 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
                          eqParams[b].q != nullptr ? eqParams[b].q->load() : 0.7071f });
     eq.process (buffer);
+
+    compressor.setSettings (readCompressorSettings());
+    compressor.process (buffer);
+    raisePeak (gainReductionPeak, compressor.getGainReductionDb());
 
     smoothedGain.setTargetValue (targetGain (gainDb->load()));
     if (! smoothedGain.isSmoothing())

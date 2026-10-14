@@ -32,6 +32,7 @@ juce_add_plugin(GlitchKid
 
 target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp
+    Source/DSP/Compressor.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
@@ -52,7 +53,9 @@ if(GLITCHKID_BUILD_TESTS)
     juce_add_console_app(GlitchKidTests PRODUCT_NAME "GlitchKidTests")
     target_sources(GlitchKidTests PRIVATE
         Tests/main.cpp
+        Tests/CompressorTests.cpp
         Source/DSP/ParametricEq.cpp
+        Source/DSP/Compressor.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC

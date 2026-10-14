@@ -1,8 +1,9 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/ParametricEq.h"
+#include "DSP/Compressor.h"
 
-// Signal path: input -> 4-band EQ -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> 4-band EQ -> compressor -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor
 {
@@ -17,6 +18,14 @@ public:
         { "eq_b1_freq", "eq_b1_gain", "eq_b1_q" },
         { "eq_b2_freq", "eq_b2_gain", "eq_b2_q" },
         { "eq_hi_freq", "eq_hi_gain", nullptr } };
+
+    // Compressor parameter IDs (same rule: never rename).
+    static constexpr const char* compThresholdId = "comp_thresh";
+    static constexpr const char* compRatioId     = "comp_ratio";
+    static constexpr const char* compAttackId    = "comp_attack";
+    static constexpr const char* compReleaseId   = "comp_release";
+    static constexpr const char* compKneeId      = "comp_knee";
+    static constexpr const char* compMakeupId    = "comp_makeup";
 
     GlitchKidProcessor();
 
@@ -48,6 +57,7 @@ public:
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
+    float consumeGainReductionDb() { return gainReductionPeak.exchange (0.0f); } // positive dB
 
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
@@ -58,9 +68,13 @@ private:
     struct EqParams { std::atomic<float>* freq; std::atomic<float>* gain; std::atomic<float>* q; };
     EqParams eqParams[ParametricEq::numBands] {};
 
+    std::atomic<float>* compParams[6] {}; // threshold, ratio, attack, release, knee, makeup
+    CompressorSettings readCompressorSettings() const;
+
     ParametricEq eq;
+    Compressor compressor;
     juce::AudioBuffer<float> dryBuffer; // preallocated in prepareToPlay, used for the bypass crossfade
-    std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
+    std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
     juce::SmoothedValue<float> wetMix { 1.0f };       // 1 = processed, 0 = dry (bypass)
 

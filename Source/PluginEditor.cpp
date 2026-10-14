@@ -27,6 +27,25 @@ void LevelMeter::paint (juce::Graphics& g)
     g.fillRoundedRectangle (r.withTop (r.getBottom() - h), 3.0f);
 }
 
+void GainReductionMeter::pushReduction (float db)
+{
+    const float next = db > shownDb ? db : juce::jmax (db, shownDb - 0.5f); // ~15 dB/s at 30 Hz
+    if (! juce::approximatelyEqual (next, shownDb))
+    {
+        shownDb = next;
+        repaint();
+    }
+}
+
+void GainReductionMeter::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    g.setColour (juce::Colour (0xff1e1e22));
+    g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (pink);
+    g.fillRoundedRectangle (r.withHeight (r.getHeight() * juce::jlimit (0.0f, 1.0f, shownDb / maxDb)), 3.0f);
+}
+
 ParamKnob::ParamKnob (juce::AudioProcessorValueTreeState& apvts, const char* paramId, const juce::String& name,
                       const juce::String& suffix, juce::Colour colour)
     : attachment (apvts, paramId, slider)
@@ -64,7 +83,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     tagline.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     tagline.setJustificationType (juce::Justification::centred);
 
-    for (auto* l : { &inLabel, &outLabel, &gainLabel })
+    for (auto* l : { &inLabel, &outLabel })
     {
         l->setJustificationType (juce::Justification::centred);
         l->setFont (juce::FontOptions (11.0f));
@@ -72,7 +91,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
     bypassButton.setColour (juce::ToggleButton::tickColourId, violet);
 
-    gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "GAIN", " dB", pink));
+    gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
     gainKnob[0]->addTo (*this);
 
     const char* names[] = { "LOW SHELF", "BELL 1", "BELL 2", "HIGH SHELF" };
@@ -92,11 +111,26 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             k->addTo (*this);
     }
 
+    // Compressor: threshold, ratio, makeup on the first row; attack, release, knee on the second.
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compThresholdId, "THRESHOLD", " dB", lime));
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compRatioId, "RATIO", ":1", pink));
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compMakeupId, "MAKEUP", " dB", violet));
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compAttackId, "ATTACK", " ms", lime));
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compReleaseId, "RELEASE", " ms", pink));
+    compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compKneeId, "KNEE", " dB", violet));
+    for (auto* k : compKnobs)
+        k->addTo (*this);
+
+    compTitle.setJustificationType (juce::Justification::centred);
+    compTitle.setColour (juce::Label::textColourId, violet);
+    grLabel.setJustificationType (juce::Justification::centred);
+    grLabel.setFont (juce::FontOptions (11.0f));
+
     for (auto* c : std::initializer_list<juce::Component*> { &title, &tagline, &bypassButton, &inMeter, &outMeter,
-                                                              &inLabel, &outLabel, &gainLabel })
+                                                              &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         addAndMakeVisible (c);
 
-    setSize (720, 440);
+    setSize (1060, 460);
     startTimerHz (30);
 }
 
@@ -104,6 +138,7 @@ void GlitchKidEditor::timerCallback()
 {
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
+    grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
 }
 
 void GlitchKidEditor::paint (juce::Graphics& g)
@@ -111,6 +146,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colour (0xff121214)); // obsidian
     g.setColour (juce::Colour (0xff2a2a30));
     g.drawLine (270.0f, 90.0f, 270.0f, (float) getHeight() - 20.0f);
+    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) getHeight() - 20.0f);
 }
 
 void GlitchKidEditor::resized()
@@ -129,16 +165,32 @@ void GlitchKidEditor::resized()
     outLabel.setBounds (outCol.removeFromBottom (16));
     inMeter.setBounds (inCol.reduced (6, 0));
     outMeter.setBounds (outCol.reduced (6, 0));
-    gainLabel.setBounds (left.removeFromTop (16));
     gainKnob[0]->setBounds (left.withSizeKeepingCentre (left.getWidth(), 110));
 
-    // Right: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
-    const int colW = r.getWidth() / ParametricEq::numBands;
+    // Middle: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
+    auto eqArea = r.removeFromLeft (400);
+    const int colW = eqArea.getWidth() / ParametricEq::numBands;
     for (int b = 0; b < ParametricEq::numBands; ++b)
     {
-        auto col = r.removeFromLeft (colW);
+        auto col = eqArea.removeFromLeft (colW);
         bandNames[b].setBounds (col.removeFromTop (20));
         for (auto* k : eqKnobs[b])
-            k->setBounds (col.removeFromTop (100).reduced (8, 0));
+            k->setBounds (col.removeFromTop (108).reduced (8, 0));
+    }
+
+    // Right: compressor knobs (2 rows x 3) and the gain-reduction meter.
+    r.removeFromLeft (10);
+    compDividerX = r.getX();
+    r.removeFromLeft (10);
+    compTitle.setBounds (r.removeFromTop (20));
+    auto grCol = r.removeFromRight (28);
+    grLabel.setBounds (grCol.removeFromBottom (16));
+    grMeter.setBounds (grCol.reduced (6, 0));
+    const int knobW = r.getWidth() / 3;
+    for (int row = 0; row < 2; ++row)
+    {
+        auto line = r.removeFromTop (108);
+        for (int col = 0; col < 3; ++col)
+            compKnobs[row * 3 + col]->setBounds (line.removeFromLeft (knobW).reduced (8, 0));
     }
 }

@@ -13,6 +13,18 @@ private:
     float shownDb = minDb;
 };
 
+// Gain-reduction meter: grows downward from the top, 0 to 24 dB, falls at a fixed rate.
+class GainReductionMeter : public juce::Component
+{
+public:
+    void pushReduction (float db);
+    void paint (juce::Graphics&) override;
+
+private:
+    static constexpr float maxDb = 24.0f;
+    float shownDb = 0.0f;
+};
+
 // A rotary knob with a name label, bound to one parameter.
 class ParamKnob
 {
@@ -40,13 +52,17 @@ private:
 
     GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
+    GainReductionMeter grMeter;
+    juce::Label compTitle { {}, "COMPRESSOR" }, grLabel { {}, "GR" };
+    int compDividerX = 0;
     juce::Label title { {}, "GLITCHKID" };
     juce::Label tagline { {}, "A playground for your sound." };
-    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, gainLabel { {}, "OUTPUT GAIN" };
+    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
     juce::Label bandNames[ParametricEq::numBands];
     juce::ToggleButton bypassButton { "Bypass" };
 
     juce::OwnedArray<ParamKnob> gainKnob;
+    juce::OwnedArray<ParamKnob> compKnobs;
     juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
