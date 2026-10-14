@@ -3,6 +3,10 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.1: **pitch-correction feasibility prototype** (experimental, NOT in the plugin): YIN detector, key/scale quantiser, TD-PSOLA-style shifter and a
+  mono corrector in `Source/Experimental/PitchCorrection/`, an optional `PitchLab` command-line harness (`-DGLITCHKID_BUILD_PITCHLAB=ON`) and 14 new test
+  groups (137 total). No new dependency, no production file changed. Measured on synthetic voices only: 0 octave errors, median error under 2.5 cents,
+  31 ms latency, about 2 % of one core. Quality on real voices is unlistened. See `docs/PITCH_CORRECTION_FEASIBILITY.md`.
 - Stage 3.4: **MOODS 2.0**: five Alter Egos (CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE; they replace the first five Moods) and a Mood
   Engine: **CHAOS** (intensity of the selected Alter Ego, safe limits per parameter), **BLEND** (the existing main Mix, now in the Mood Engine strip) and
   **SURPRISE ME** (seeded, bounded variation of a short allowlist). They set the EQ, compressor, saturation, Liquid Echo and Dimension through the normal

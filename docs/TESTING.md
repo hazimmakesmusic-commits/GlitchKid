@@ -96,6 +96,9 @@ without hard limits, Surprise that randomises the drive, an Alter Ego that sets 
 Not provable by these tests: whether the Alter Egos sound good on a real voice (they are measured starting points, not tuned by ear), how loud your
 voice gets (makeup is matched to speech-like noise), and behaviour inside FL Studio on the Mac.
 
+## Pitch-correction prototype (Stage 4.1)
+14 groups in `Tests/PitchCorrectionTests.cpp`; synthetic signals only. Details, measurements and what they cannot prove: `docs/PITCH_CORRECTION_FEASIBILITY.md`. Mutation-checked.
+
 ## Manual FL Studio checklist (owner)
 Load on an insert; every knob changes sound; Bypass is clean and level-matched; Mix 0 % equals bypass; Glitch
 Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; ALTER EGOS: click each of CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE on a vocal (the lit button moves, the knobs move, the sound changes, no clicks), drag CHAOS from 0 to 100 % (the character intensifies, no pops, level steady), drag BLEND (0 % = original, 100 % = processed), press SURPRISE ME several times (small, usable variations; the label shows the variation number), edit one knob (label turns CUSTOM), re-click the Alter Ego (restores), save/reopen; Dimension: ON, WIDTH, DETUNE, DEPTH, MIX on a mono vocal, plus a mono-sum check (pan both channels to centre on a mono mixer insert or use a mono-sum meter); Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project

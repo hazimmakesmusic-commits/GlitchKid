@@ -19,7 +19,7 @@ NaN/Inf-safe EQ and saturation, unit tests.
 - Alter Egos tuned by ear on real vocals; MORPH between two Alter Egos (needs per-parameter interpolation rules, a rule for switches and the echo division, a second stored selection); user presets (save/recall your own; needs a state version first); optionally an Alter Ego that also sets Glitch Stutter.
 - Liquid Echo extras if wanted: ping-pong, ducking, modulation, tail reporting to the host.
 - Stutter locked to the host beat grid (PPQ phase).
-- Pitch correction: only after a separate feasibility study; no custom pitch-correction algorithm is planned.
+- Pitch correction: Stage 4.1 prototype exists (experimental, not in the plugin, `docs/PITCH_CORRECTION_FEASIBILITY.md`). Next: owner listening test on a dry vocal; then decide productise / improve quality / address the 31 ms latency.
 - Release: signing/notarisation (Apple Developer Program, about US$99/year), installer, licensing decision.
 
 ## Needs the owner's decision
