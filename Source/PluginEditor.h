@@ -13,6 +13,21 @@ private:
     float shownDb = minDb;
 };
 
+// A rotary knob with a name label, bound to one parameter.
+class ParamKnob
+{
+public:
+    ParamKnob (juce::AudioProcessorValueTreeState&, const char* paramId, const juce::String& name,
+               const juce::String& suffix, juce::Colour colour);
+    void addTo (juce::Component& parent);
+    void setBounds (juce::Rectangle<int> r);
+
+private:
+    juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
+    juce::Label label;
+    juce::AudioProcessorValueTreeState::SliderAttachment attachment;
+};
+
 class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -25,14 +40,14 @@ private:
 
     GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
-    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
     juce::Label title { {}, "GLITCHKID" };
     juce::Label tagline { {}, "A playground for your sound." };
-    juce::Slider gainSlider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
-    juce::Label gainLabel { {}, "GAIN" };
+    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, gainLabel { {}, "OUTPUT GAIN" };
+    juce::Label bandNames[ParametricEq::numBands];
     juce::ToggleButton bypassButton { "Bypass" };
 
-    juce::AudioProcessorValueTreeState::SliderAttachment gainAttachment;
+    juce::OwnedArray<ParamKnob> gainKnob;
+    juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)

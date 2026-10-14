@@ -2,7 +2,14 @@
 
 *A playground for your sound.* — a local-first VST3 vocal-processing plugin (macOS, FL Studio first).
 
-**Status: Stage 2.1.** Clean stereo/mono pass-through with a **Gain** parameter (-60 to +12 dB, 0.1 dB steps, ramped over 20 ms) and a **Bypass** parameter, plus a small window with input/output peak meters (-60 to +6 dBFS; red above 0 dBFS). There are no effects yet. Both parameters are exposed to the host for automation (FL Studio automation is not yet confirmed) and saved/restored with the project. Processing is 32-bit float with no limiter, so +12 dB gain on a loud signal can exceed 0 dBFS; the OUT meter turns red when it does.
+**Status: Stage 2.2.** Signal path: input -> 4-band parametric EQ -> output gain -> output, with peak meters on input and output.
+
+- **EQ:** low shelf (20-500 Hz), bell 1 (100-5000 Hz, Q 0.3-10), bell 2 (500-16000 Hz, Q 0.3-10), high shelf (1-18 kHz); each band +/-15 dB in 0.1 dB steps. RBJ cookbook biquads in double precision; a band within 0.05 dB of 0 dB is skipped, so a flat EQ is bit-exact. Shelf slopes are fixed (Q 0.7071). Settings are smoothed over ~20 ms.
+- **Gain:** -60 to +12 dB in 0.1 dB steps, ramped over 20 ms (applied after the EQ).
+- **Bypass:** 20 ms crossfade to the untouched input (EQ and gain both bypassed); when settled it is an exact copy and costs no CPU.
+- **Meters:** IN/OUT peak, -60 to +6 dBFS, red above 0 dBFS. Processing is 32-bit float with no limiter, so EQ boost plus gain can exceed 0 dBFS; watch the OUT meter.
+- All parameters are exposed to the host for automation (FL Studio automation not yet confirmed) and saved/restored with the project. Parameter IDs: `gain`, `bypass`, `eq_lo_freq/gain`, `eq_b1_freq/gain/q`, `eq_b2_freq/gain/q`, `eq_hi_freq/gain`.
+- Not built yet: compressor, saturation, dry/wet blend, presets, pitch correction. Latency: 0 samples. CPU not yet measured.
 
 ## Build on macOS (Apple Silicon)
 Needs Xcode Command Line Tools, CMake >= 3.22 and Git (internet is needed once, to download JUCE).
@@ -31,7 +38,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGLITCHKID_BUILD_TESTS=ON
 cmake --build build --config Release -j 8
 ctest --test-dir build --output-on-failure
 ```
-Expect `100% tests passed`. They check bit-exact pass-through at 44.1/48/96 kHz and several block sizes, exact gain levels, bypass, ramped changes, mono, silence, meters and state save/restore (including garbage state). They do not test sound quality or the editor.
+Expect `100% tests passed`. They check bit-exact pass-through at 44.1/48/96 kHz and several block sizes, exact gain levels, bypass, ramped changes, mono, silence, meters, state save/restore (including garbage state), and the EQ's measured frequency response (bell, low and high shelf, narrow vs wide Q, stability under extreme and randomly moving settings). They do not test how it sounds or the editor window.
 
 Optional extra check with the free [pluginval](https://github.com/Tracktion/pluginval): `pluginval --strictness-level 5 ~/Library/Audio/Plug-Ins/VST3/GlitchKid.vst3`
 
