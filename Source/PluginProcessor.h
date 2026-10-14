@@ -7,6 +7,7 @@
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
+#include "Moods.h"
 
 // Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
@@ -82,6 +83,12 @@ public:
     void setStateInformation (const void*, int) override;
 
     juce::AudioProcessorValueTreeState apvts;
+
+    // MOODS (message thread only): applyMood() sets the Mood's parameters through the normal parameter system.
+    // getActiveMood() is the Mood whose values all match the current controls, or -1 ("custom").
+    // Returns the number of parameters set.
+    int applyMood (int moodIndex);
+    int getActiveMood() const;
 
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }

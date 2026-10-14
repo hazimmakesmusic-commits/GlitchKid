@@ -123,6 +123,30 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &stutterOnButton, &stutterRateBox })
         content.addAndMakeVisible (c);
 
+    // MOODS buttons: each applies a built-in Mood; the controls below stay fully editable.
+    moodTitle.setJustificationType (juce::Justification::centredLeft);
+    moodTitle.setColour (juce::Label::textColourId, violet);
+    moodTitle.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    moodInfo.setJustificationType (juce::Justification::centredLeft);
+    moodInfo.setFont (juce::FontOptions (11.0f));
+    moodInfo.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    moodInfo.setMinimumHorizontalScale (1.0f);
+    content.addAndMakeVisible (moodTitle);
+    content.addAndMakeVisible (moodInfo);
+    for (int i = 0; i < Moods::count; ++i)
+    {
+        auto& b = moodButtons[i];
+        b.setButtonText (Moods::get (i).name);
+        b.setClickingTogglesState (false);
+        b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e1e22));
+        b.setColour (juce::TextButton::buttonOnColourId, lime);
+        b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        b.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff121214));
+        b.setTooltip (Moods::get (i).description);
+        b.onClick = [this, i] { glitchProcessor.applyMood (i); refreshMoods(); };
+        content.addAndMakeVisible (b);
+    }
+
     // Liquid Echo. TIME is used when SYNC is off, DIVISION when it is on (the unused one is dimmed).
     if (auto* div = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::echoDivId)))
     {
@@ -207,13 +231,29 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizable (true, true);
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
-    setSize (designW * 85 / 100, designH * 85 / 100);
+    refreshMoods();
+    setSize (designW * 80 / 100, designH * 80 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
 
+void GlitchKidEditor::refreshMoods()
+{
+    const int active = glitchProcessor.getActiveMood();
+    if (active == shownMood)
+        return;
+    shownMood = active;
+    for (int i = 0; i < Moods::count; ++i)
+        moodButtons[i].setToggleState (i == active, juce::dontSendNotification);
+    moodInfo.setText (active >= 0 ? Moods::get (active).description
+                                  : juce::String ("CUSTOM. A Mood sets the EQ, compressor, saturation, echo and Dimension; "
+                                                  "Output Gain, Mix and Stutter are never touched. Every control stays editable."),
+                      juce::dontSendNotification);
+}
+
 void GlitchKidEditor::timerCallback()
 {
+    refreshMoods();
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
@@ -282,7 +322,19 @@ void GlitchKidEditor::layoutContent()
 
     title.setBounds (r.removeFromTop (44));
     tagline.setBounds (r.removeFromTop (20));
-    r.removeFromTop (12);
+    r.removeFromTop (8);
+
+    // MOODS strip: title, five buttons, then a one-line description.
+    auto moodRow = r.removeFromTop (44);
+    moodTitle.setBounds (moodRow.removeFromLeft (70));
+    for (auto& b : moodButtons)
+    {
+        b.setBounds (moodRow.removeFromLeft (100).withSizeKeepingCentre (100, 30));
+        moodRow.removeFromLeft (8);
+    }
+    moodRow.removeFromLeft (12);
+    moodInfo.setBounds (moodRow);
+    r.removeFromTop (8);
 
     // Left: meters either side of the output-gain knob, Bypass underneath.
     auto left = r.removeFromLeft (240);

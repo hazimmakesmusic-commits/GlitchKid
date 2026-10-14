@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 107 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 117 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -36,7 +36,7 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
 
 ## Test files (groups)
 `main.cpp` 18 (processor, EQ) · `CompressorTests.cpp` 12 · `SaturationTests.cpp` 12 · `MixTests.cpp` 8 ·
-`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension).
+`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `MoodTests.cpp` 10 (MOODS).
 
 ## Conventions
 - A test that cannot fail is not a test: new tests are mutation-checked (deliberately break the code; the test must fail).
@@ -73,7 +73,22 @@ CPU (Linux container, not Apple Silicon, 48 kHz stereo, block 512, share of one 
 Not provable by these tests: how it sounds (whether the thickening is pleasant, the right amount of movement), and behaviour on the
 Mac inside FL Studio.
 
+## MOODS: what the tests prove, and what they cannot
+Proved (deterministic): five Moods with stable IDs, names and descriptions; every Mood references only real parameters with legal values (floats
+in range, choice indices valid, no duplicates), keeps echo feedback at or below 60 %, and defines exactly the same 30 parameters; applying a Mood sets
+those values and changes no other parameter (Output Gain, Bypass, Mix and Stutter checked with non-default values); re-applying is
+deterministic; a Mood gives identical settings whatever Mood or edits came before it (all 25 combinations); the host sees a begin/changed/end
+gesture, controls stay editable and an edit makes the state "custom"; the settings survive saving and restoring the plug-in state and a default
+state restores defaults; missing parameters are skipped without crashing; every Mood gives finite, bounded audio in mono and stereo at 44.1/48/96 kHz;
+level on speech-like noise (dream -0.15, demon +0.11, alien -0.02, rage +0.10, ghost 0.00 dB); switching between any two Moods during playback is finite
+and has no step beyond 8x the natural step of a 30 Hz tone (worst measured 5.5x, which comes from the echo's documented 80 ms pitch glide).
+Mutation-checked (each caught): a Mood that touches Output Gain, an out-of-range value, feedback set too high, a Mood that forgets a parameter, raw values
+passed as normalised ones, a missing change gesture, a far-too-loose "active Mood" match, and removing the saturation drive smoothing (caught by the switch test).
+The switch test would not catch removal of the compressor makeup or EQ smoothing at this probe; those have their own earlier tests.
+Not provable by these tests: whether the Moods sound good on a real voice, how loud your voice gets (the makeup values are matched to speech-like noise), and
+behaviour inside FL Studio on the Mac.
+
 ## Manual FL Studio checklist (owner)
 Load on an insert; every knob changes sound; Bypass is clean and level-matched; Mix 0 % equals bypass; Glitch
-Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; Dimension: ON, WIDTH, DETUNE, DEPTH, MIX on a mono vocal, plus a mono-sum check (pan both channels to centre on a mono mixer insert or use a mono-sum meter); Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project
+Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; MOODS: click each of DREAM, DEMON, ALIEN, RAGE, GHOST on a vocal (the lit button moves, the knobs move, the sound changes, no clicks), edit one knob (label turns CUSTOM), re-click (restores), save/reopen; Dimension: ON, WIDTH, DETUNE, DEPTH, MIX on a mono vocal, plus a mono-sum check (pan both channels to centre on a mono mixer insert or use a mono-sum meter); Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project
 and settings return; latency shown as 6 samples. Record the result and FL/macOS versions.

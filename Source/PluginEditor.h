@@ -49,7 +49,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 780; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 830; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -77,6 +77,12 @@ private:
     juce::ComboBox echoDivBox;
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
     int echoDividerY = 0;
+
+    // MOODS: one-tap vocal starting points (see Moods.h). The lit button is the Mood whose values all match the controls.
+    juce::Label moodTitle { {}, "MOODS" }, moodInfo;
+    juce::TextButton moodButtons[Moods::count];
+    int shownMood = -2;
+    void refreshMoods();
 
     // Dimension row: ON, width, detune, depth, mix.
     juce::Label dimTitle { {}, "DIMENSION" };

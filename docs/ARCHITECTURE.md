@@ -1,6 +1,6 @@
 # Architecture
 
-What exists today (Stage 3.3: Dimension, after Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 3.4: MOODS, on top of Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
@@ -15,13 +15,14 @@ input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dime
 | File | Role |
 |---|---|
 | `Source/PluginProcessor.*` | 36 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
-| `Source/PluginEditor.*` | Window designed at 1060x780 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 85%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
+| `Source/PluginEditor.*` | Window designed at 1060x830 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 80%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
 | `Source/DSP/Saturation.*` | `tanh(kx)/tanh(k)` waveshaper, 4x oversampled (JUCE polyphase IIR half-band) |
 | `Source/DSP/GlitchStutter.*` | Beat repeat of the slice before switch-on; per-sample state machine |
 | `Source/DSP/LiquidEcho.*` | Tempo-aware stereo delay with feedback, tone, width and its own mix |
 | `Source/DSP/Dimension.*` | Stereo thickening/widening: two modulated chorus voices split into mid and side |
+| `Source/Moods.*` | MOODS: the five built-in Mood tables (data only) and the function that applies one |
 | `Source/DSP/FixedDelay.h` | Constant delay used for the dry/bypass path and the idle saturation stage |
 | `Source/DSP/Finite.h` | `zeroNonFinite`: replaces NaN/Inf with 0 |
 | `Tests/` | Unit tests (see `TESTING.md`) |
@@ -136,6 +137,33 @@ chosen cents. The voice sum is the mid part M and the voice difference the side 
 - **Limits:** one fixed LFO rate pair (no rate control: it would add a control without improving the effect); Depth and Mix
   overlap (both scale the wet), Mix exists to match the other effects; the effect is built for vocals and is not tempo-synced.
 
+## MOODS
+Five built-in one-tap vocal starting points: **DREAM**, **DEMON**, **ALIEN**, **RAGE**, **GHOST** (`Source/Moods.cpp`).
+A Mood is data only: a table of (parameter id, value). `GlitchKidProcessor::applyMood(i)` (message thread) sets each value
+through the normal JUCE parameter calls (`beginChangeGesture`, `setValueNotifyingHost`, `endChangeGesture`), so the controls move,
+FL Studio records it like automation, and all the DSP's existing smoothing applies. There is no separate engine, nothing runs on the
+audio thread for MOODS, and nothing new is saved in the plug-in state (old sessions load unchanged).
+- **What a Mood owns:** every parameter of the EQ (4 bands), compressor, saturation drive, Liquid Echo and Dimension (30 parameters, the
+  same set in every Mood). So a Mood gives the same settings whatever was set before: nothing leaks from the previous Mood.
+- **What a Mood never touches:** Output Gain, Bypass, the main Mix and Glitch Stutter (`gain`, `bypass`, `mix`, `stutter_*`).
+  Stutter repeats captured audio and should only switch on when the user wants it.
+- **Selected Mood:** not stored. `getActiveMood()` compares the current parameter values to each table; a button is lit while all of
+  its values match and the label turns to CUSTOM as soon as any control is edited. Re-clicking restores it exactly.
+- **Level:** Moods do not change Output Gain. Saturation and compression do change loudness, so each Mood's compressor makeup is
+  tuned so that speech-like noise stays within 0.2 dB of its input level (measured; see `TESTING.md`). Real voices differ: watch OUT.
+- **Effects used:** all Moods use EQ, compressor, saturation, Liquid Echo and Dimension; RAGE switches echo and Dimension off on
+  purpose for clarity. No Mood uses Glitch Stutter. All effects exist, so no Mood is limited by a missing effect.
+
+| Mood | Character | Saturation | Compressor | Echo (synced) | Dimension |
+|---|---|---|---|---|---|
+| DREAM | smooth, spacious | 3 dB | 2:1 | 1/4 dotted, fb 38 %, mix 22 % | on, width 70, detune 7 |
+| DEMON | dark, heavy | 9 dB | 4:1 | 1/8, fb 25 %, dark, mix 12 % | on, width 30, detune 4 |
+| ALIEN | strange, futuristic | 5 dB | 2.5:1 | 1/16 triplet, fb 55 %, width 100, mix 28 % | on, width 100, detune 14, depth 80 |
+| RAGE | forward, punchy | 10 dB | 6:1 fast | off | off |
+| GHOST | airy, distant | 0 dB | 1.8:1 | 1/4, fb 50 %, dark, mix 32 % | on, width 35, detune 5 |
+
+These are starting points chosen from measurement of the DSP and from sound-design intent; they have not been tuned by ear on real vocals.
+
 ## What does not exist
-Presets, MOODS, pitch correction, other plug-in formats, resizable UI, host-grid phase-lock
-for the stutter.
+User presets (saving and browsing your own), pitch correction, other plug-in formats, host-grid phase-lock
+for the stutter. Moods have not been tuned by ear on real vocals.

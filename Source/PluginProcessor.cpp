@@ -160,6 +160,44 @@ EchoSettings GlitchKidProcessor::readEchoSettings() const
     return s;
 }
 
+int GlitchKidProcessor::applyMood (int moodIndex)
+{
+    if (moodIndex < 0 || moodIndex >= Moods::count)
+        return 0;
+
+    return Moods::apply (Moods::get (moodIndex), [this] (const char* id, float value)
+    {
+        auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id));
+        if (p == nullptr)
+            return false;
+        p->beginChangeGesture(); // lets the host record this as a normal automatable change
+        p->setValueNotifyingHost (p->convertTo0to1 (value));
+        p->endChangeGesture();
+        return true;
+    });
+}
+
+int GlitchKidProcessor::getActiveMood() const
+{
+    for (int m = 0; m < Moods::count; ++m)
+    {
+        const auto& mood = Moods::get (m);
+        bool all = true;
+        for (int i = 0; i < mood.numValues && all; ++i)
+        {
+            auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (mood.values[i].id));
+            if (p == nullptr)
+                continue; // a missing parameter cannot make a Mood "not match"
+            const float step = p->getNormalisableRange().interval;
+            const float tolerance = step > 0.0f ? 0.5f * step + 1.0e-4f : 1.0e-3f;
+            all = std::abs (p->convertFrom0to1 (p->getValue()) - mood.values[i].value) <= tolerance;
+        }
+        if (all)
+            return m;
+    }
+    return -1;
+}
+
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
 {
     return { compParams[0]->load(), compParams[1]->load(), compParams[2]->load(),
