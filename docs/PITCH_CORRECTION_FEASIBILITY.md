@@ -60,5 +60,8 @@ Sound quality on a real voice (breathy, sibilant, fast runs, vibrato at the edge
 4. Listen for: warbling or "robot" on held notes, doubled or hollow tone, clicks at note changes, breaths/"s" sounds being mangled, wrong notes (octave jumps).
 Note: this is a command-line check of the prototype; there is no plugin UI and nothing to load in FL yet.
 
+## Owner listening result (Mac, one recording)
+One solo dry vocal, 190.8 s at 44.1 kHz, peak 0.87, chromatic, strength 100 %, retune 0 ms and 20 ms: voice found in 55 % of the recording (average 263 Hz), average correction 23 cents, largest 57 cents. Owner's verdict: **sounds natural**; the correction was too small to hear against the original (the singer was already close), so a deliberately wrong scale (F# minor pentatonic) was used as a control and the owner confirmed the pitch change was audible ("it works"). One singer, one take, no backing: this is evidence, not proof of general quality (fast runs, breathy/low/high voices and live-monitoring latency are untested).
+
 ## Readiness
 **Ready for listening tests, not for production integration.** Decision gate after listening: (a) acceptable -> productise (parameters, UI, latency reporting, stereo handling, tail/transition polish); (b) grainy -> add pitch-mark alignment, re-test; (c) latency judged too high for live monitoring -> offer it as a "print/track" effect or lower the lowest tracked pitch.
