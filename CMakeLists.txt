@@ -33,6 +33,7 @@ juce_add_plugin(GlitchKid
 target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp
     Source/DSP/Compressor.cpp
+    Source/DSP/Saturation.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
@@ -43,6 +44,7 @@ target_compile_definitions(GlitchKid PUBLIC
 
 target_link_libraries(GlitchKid
     PRIVATE juce::juce_audio_utils
+            juce::juce_dsp
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 
@@ -54,8 +56,10 @@ if(GLITCHKID_BUILD_TESTS)
     target_sources(GlitchKidTests PRIVATE
         Tests/main.cpp
         Tests/CompressorTests.cpp
+        Tests/SaturationTests.cpp
         Source/DSP/ParametricEq.cpp
         Source/DSP/Compressor.cpp
+        Source/DSP/Saturation.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC
@@ -63,6 +67,7 @@ if(GLITCHKID_BUILD_TESTS)
         JUCE_USE_CURL=0)
     target_link_libraries(GlitchKidTests
         PRIVATE juce::juce_audio_utils
+                juce::juce_dsp
         PUBLIC  juce::juce_recommended_config_flags
                 juce::juce_recommended_warning_flags)
     add_test(NAME GlitchKidProcessor COMMAND GlitchKidTests)

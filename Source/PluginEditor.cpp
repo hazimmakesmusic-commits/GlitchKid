@@ -93,6 +93,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
     gainKnob[0]->addTo (*this);
+    driveKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "SATURATION DRIVE", " dB", lime));
+    driveKnob[0]->addTo (*this);
 
     const char* names[] = { "LOW SHELF", "BELL 1", "BELL 2", "HIGH SHELF" };
     for (int b = 0; b < ParametricEq::numBands; ++b)
@@ -165,7 +167,9 @@ void GlitchKidEditor::resized()
     outLabel.setBounds (outCol.removeFromBottom (16));
     inMeter.setBounds (inCol.reduced (6, 0));
     outMeter.setBounds (outCol.reduced (6, 0));
-    gainKnob[0]->setBounds (left.withSizeKeepingCentre (left.getWidth(), 110));
+    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 230);
+    driveKnob[0]->setBounds (knobs.removeFromTop (115).withTrimmedBottom (10));
+    gainKnob[0]->setBounds (knobs.withTrimmedTop (5));
 
     // Middle: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
     auto eqArea = r.removeFromLeft (400);

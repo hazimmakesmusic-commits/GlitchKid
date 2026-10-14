@@ -61,6 +61,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { compMakeupId, 1 }, "Comp Makeup",
         NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { satDriveId, 1 }, "Saturation Drive",
+        NormalisableRange<float> (0.0f, 18.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+
     return layout;
 }
 
@@ -70,6 +73,7 @@ GlitchKidProcessor::GlitchKidProcessor()
                           .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "GlitchKidState", createLayout())
 {
+    setLatencySamples (Saturation::latencySamples);
     gainDb = apvts.getRawParameterValue (gainId);
     bypass = apvts.getRawParameterValue (bypassId);
     for (int b = 0; b < ParametricEq::numBands; ++b)
@@ -81,6 +85,7 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* ids[] = { compThresholdId, compRatioId, compAttackId, compReleaseId, compKneeId, compMakeupId };
     for (int i = 0; i < 6; ++i)
         compParams[i] = apvts.getRawParameterValue (ids[i]);
+    satDrive = apvts.getRawParameterValue (satDriveId);
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
@@ -117,6 +122,10 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     compressor.setSettings (readCompressorSettings());
     compressor.prepare (sampleRate);
+
+    saturation.setDriveDb (satDrive->load());
+    saturation.prepare (sampleRate, juce::jmax (samplesPerBlock, 512));
+    dryDelay.prepare (Saturation::latencySamples);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
 }
@@ -156,21 +165,29 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     const float inMag = buffer.getMagnitude (0, numSamples);
     raisePeak (inputPeak, inMag);
 
+    // Dry copy, delayed by the saturation latency. Kept current on every block so that bypass and the
+    // bypass crossfade stay time-aligned with the processed path.
+    const int dryChannels = juce::jmin (numChannels, 2);
+    for (int ch = 0; ch < dryChannels; ++ch)
+        dryBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+    juce::AudioBuffer<float> dry (dryBuffer.getArrayOfWritePointers(), dryChannels, 0, numSamples);
+    dryDelay.process (dry);
+
     const bool bypassed = bypass->load() >= 0.5f;
     wetMix.setTargetValue (bypassed ? 0.0f : 1.0f);
 
     if (bypassed && ! wetMix.isSmoothing())
     {
-        eq.reset();                 // settled bypass: exact dry signal, no EQ or compressor cost
+        eq.reset();                 // settled bypass: exact (delayed) dry signal, no EQ/compressor/saturation cost
         compressor.reset();
-        raisePeak (outputPeak, inMag);
+        saturation.reset();
+        for (int ch = 0; ch < dryChannels; ++ch)
+            buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
+        raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
         return;
     }
 
     const bool crossfading = wetMix.isSmoothing();
-    if (crossfading)
-        for (int ch = 0; ch < juce::jmin (numChannels, dryBuffer.getNumChannels()); ++ch)
-            dryBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
@@ -180,6 +197,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     compressor.setSettings (readCompressorSettings());
     compressor.process (buffer);
     raisePeak (gainReductionPeak, compressor.getGainReductionDb());
+
+    saturation.setDriveDb (satDrive->load());
+    saturation.process (buffer);
 
     smoothedGain.setTargetValue (targetGain (gainDb->load()));
     if (! smoothedGain.isSmoothing())
@@ -201,10 +221,10 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         for (int i = 0; i < numSamples; ++i)
         {
             const float m = wetMix.getNextValue();
-            for (int ch = 0; ch < juce::jmin (numChannels, dryBuffer.getNumChannels()); ++ch)
+            for (int ch = 0; ch < dryChannels; ++ch)
             {
                 float* out = buffer.getWritePointer (ch);
-                out[i] = dryBuffer.getSample (ch, i) + (out[i] - dryBuffer.getSample (ch, i)) * m;
+                out[i] = dry.getSample (ch, i) + (out[i] - dry.getSample (ch, i)) * m;
             }
         }
 

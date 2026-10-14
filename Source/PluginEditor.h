@@ -62,6 +62,7 @@ private:
     juce::ToggleButton bypassButton { "Bypass" };
 
     juce::OwnedArray<ParamKnob> gainKnob;
+    juce::OwnedArray<ParamKnob> driveKnob;
     juce::OwnedArray<ParamKnob> compKnobs;
     juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;

@@ -18,7 +18,7 @@ struct GlitchKidTests : public juce::UnitTest
                 GlitchKidProcessor p;
                 p.prepareToPlay (sr, bs);
                 Buf in, out;
-                run (p, 2, bs, 4, in, out);
+                run (p, 2, bs, bs < 64 ? 64 : 4, in, out);
                 expectEquals (maxAbsDiff (in, out), 0.0f);
             }
 
@@ -52,9 +52,11 @@ struct GlitchKidTests : public juce::UnitTest
             for (int ch = 0; ch < 2; ++ch)
                 for (int i = 0; i < 4096; ++i)
                     in.setSample (ch, i, 0.25f); // DC makes any step in gain visible
+            juce::MidiBuffer midi;
+            out.makeCopyOf (in);
+            p.processBlock (out, midi); // warm-up block: fills the latency delay at unity gain
             setParam (p, "gain", 12.0f);
             out.makeCopyOf (in);
-            juce::MidiBuffer midi;
             p.processBlock (out, midi);
             float maxStep = 0.0f;
             for (int i = 1; i < 4096; ++i)
@@ -105,7 +107,7 @@ struct GlitchKidTests : public juce::UnitTest
             run (p, 2, 512, 8, in, out);
             p.consumeInputPeak(); p.consumeOutputPeak();   // drop history
             run (p, 2, 512, 1, in, out);                   // one settled block
-            expectWithinAbsoluteError (p.consumeInputPeak(),  in.getMagnitude (0, 512), 1.0e-6f);
+            expectWithinAbsoluteError (p.consumeInputPeak(),  makeNoise (2, 512, 1).getMagnitude (0, 512), 1.0e-6f);
             expectWithinAbsoluteError (p.consumeOutputPeak(), out.getMagnitude (0, 512), 1.0e-6f);
             expectEquals (p.consumeInputPeak(), 0.0f);
         }
@@ -298,7 +300,7 @@ struct ParametricEqTests : public juce::UnitTest
                 out.makeCopyOf (in);
                 p.processBlock (out, midi);
             }
-            expectEquals (maxAbsDiff (in, out), 0.0f);
+            expect (rotatedExactly (in, out, pluginLatency)); // the same block repeated: exact dry, delayed
 
             juce::MemoryBlock state;
             p.getStateInformation (state);
