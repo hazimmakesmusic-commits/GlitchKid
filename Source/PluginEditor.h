@@ -23,7 +23,7 @@ public:
 private:
     void timerCallback() override;
 
-    GlitchKidProcessor& processor;
+    GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
     juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
     juce::Label title { {}, "GLITCHKID" };

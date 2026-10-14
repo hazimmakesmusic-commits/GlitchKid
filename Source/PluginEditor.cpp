@@ -24,7 +24,7 @@ void LevelMeter::paint (juce::Graphics& g)
 
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     : AudioProcessorEditor (&p),
-      processor (p),
+      glitchProcessor (p),
       gainAttachment (p.apvts, GlitchKidProcessor::gainId, gainSlider),
       bypassAttachment (p.apvts, GlitchKidProcessor::bypassId, bypassButton)
 {
@@ -57,8 +57,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
 void GlitchKidEditor::timerCallback()
 {
-    inMeter.pushPeak (processor.consumeInputPeak());
-    outMeter.pushPeak (processor.consumeOutputPeak());
+    inMeter.pushPeak (glitchProcessor.consumeInputPeak());
+    outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
 }
 
 void GlitchKidEditor::paint (juce::Graphics& g)

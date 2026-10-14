@@ -34,11 +34,17 @@ bool GlitchKidProcessor::isBusesLayoutSupported (const BusesLayout& layouts) con
            && out == layouts.getMainInputChannelSet();
 }
 
+// Target linear gain. The 0.1 dB parameter grid can leave float residue (e.g. 9e-7 dB) at "0 dB" on
+// some CPUs; anything within half a step of 0 dB is exactly unity so the default is bit-exact pass-through.
+static float targetGain (bool bypassed, float db)
+{
+    return (bypassed || std::abs (db) < 0.05f) ? 1.0f : juce::Decibels::decibelsToGain (db);
+}
+
 void GlitchKidProcessor::prepareToPlay (double sampleRate, int)
 {
     smoothedGain.reset (sampleRate, 0.02); // 20 ms ramp
-    smoothedGain.setCurrentAndTargetValue (bypass->load() >= 0.5f ? 1.0f
-                                           : juce::Decibels::decibelsToGain (gainDb->load()));
+    smoothedGain.setCurrentAndTargetValue (targetGain (bypass->load() >= 0.5f, gainDb->load()));
 }
 
 // Raise a peak value; only the audio thread writes, so a plain load/store is enough.
@@ -62,8 +68,7 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
 
     raisePeak (inputPeak, buffer.getMagnitude (0, numSamples));
 
-    smoothedGain.setTargetValue (bypass->load() >= 0.5f ? 1.0f
-                                 : juce::Decibels::decibelsToGain (gainDb->load()));
+    smoothedGain.setTargetValue (targetGain (bypass->load() >= 0.5f, gainDb->load()));
 
     if (! smoothedGain.isSmoothing())
     {
