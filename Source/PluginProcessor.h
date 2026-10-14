@@ -6,7 +6,7 @@
 #include "DSP/FixedDelay.h"
 
 // Signal path: input -> 4-band EQ -> compressor -> saturation -> smoothed gain -> output, with a 20 ms crossfade to the dry
-// input when Bypass is on. The saturation oversampler adds a constant 6 samples of latency; the dry
+// input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor
 {
@@ -31,6 +31,7 @@ public:
     static constexpr const char* compMakeupId    = "comp_makeup";
 
     static constexpr const char* satDriveId = "sat_drive"; // dB, 0 = off
+    static constexpr const char* mixId      = "mix";       // percent processed (100) vs dry (0)
 
     GlitchKidProcessor();
 
@@ -81,6 +82,7 @@ private:
     Saturation saturation;
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency
     std::atomic<float>* satDrive = nullptr;
+    std::atomic<float>* mixPercent = nullptr;
     juce::AudioBuffer<float> dryBuffer; // preallocated in prepareToPlay, used for the bypass crossfade
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear

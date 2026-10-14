@@ -64,6 +64,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { satDriveId, 1 }, "Saturation Drive",
         NormalisableRange<float> (0.0f, 18.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mixId, 1 }, "Mix",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     return layout;
 }
 
@@ -86,6 +89,7 @@ GlitchKidProcessor::GlitchKidProcessor()
     for (int i = 0; i < 6; ++i)
         compParams[i] = apvts.getRawParameterValue (ids[i]);
     satDrive = apvts.getRawParameterValue (satDriveId);
+    mixPercent = apvts.getRawParameterValue (mixId);
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
@@ -108,12 +112,21 @@ static float targetGain (float db)
     return std::abs (db) < 0.05f ? 1.0f : juce::Decibels::decibelsToGain (db);
 }
 
+// Share of the processed signal (1 = fully processed, 0 = dry). The 0.1 % parameter grid can leave float
+// residue at the ends, so anything within half a step of 0 or 100 % is exactly 0 or 1.
+static float wetAmount (bool bypassed, float percent)
+{
+    if (bypassed || percent < 0.05f)
+        return 0.0f;
+    return percent >= 99.95f ? 1.0f : percent * 0.01f;
+}
+
 void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     smoothedGain.reset (sampleRate, 0.02); // 20 ms ramps
     smoothedGain.setCurrentAndTargetValue (targetGain (gainDb->load()));
     wetMix.reset (sampleRate, 0.02);
-    wetMix.setCurrentAndTargetValue (bypass->load() >= 0.5f ? 0.0f : 1.0f);
+    wetMix.setCurrentAndTargetValue (wetAmount (bypass->load() >= 0.5f, mixPercent->load()));
 
     for (int b = 0; b < ParametricEq::numBands; ++b) // prepare() starts the smoothers at these values
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
@@ -174,11 +187,12 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     dryDelay.process (dry);
 
     const bool bypassed = bypass->load() >= 0.5f;
-    wetMix.setTargetValue (bypassed ? 0.0f : 1.0f);
+    const float wetTarget = wetAmount (bypassed, mixPercent->load());
+    wetMix.setTargetValue (wetTarget);
 
-    if (bypassed && ! wetMix.isSmoothing())
+    if (wetTarget <= 0.0f && ! wetMix.isSmoothing())
     {
-        eq.reset();                 // settled bypass: exact (delayed) dry signal, no EQ/compressor/saturation cost
+        eq.reset();                 // settled bypass or 0 % mix: exact (delayed) dry signal, no processing cost
         compressor.reset();
         saturation.reset();
         for (int ch = 0; ch < dryChannels; ++ch)
@@ -187,7 +201,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         return;
     }
 
-    const bool crossfading = wetMix.isSmoothing();
+    const bool crossfading = wetMix.isSmoothing() || wetTarget < 1.0f; // blending dry and processed
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),

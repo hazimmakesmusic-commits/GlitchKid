@@ -63,6 +63,7 @@ private:
 
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;
+    juce::OwnedArray<ParamKnob> mixKnob;
     juce::OwnedArray<ParamKnob> compKnobs;
     juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;

@@ -57,6 +57,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/main.cpp
         Tests/CompressorTests.cpp
         Tests/SaturationTests.cpp
+        Tests/MixTests.cpp
         Source/DSP/ParametricEq.cpp
         Source/DSP/Compressor.cpp
         Source/DSP/Saturation.cpp

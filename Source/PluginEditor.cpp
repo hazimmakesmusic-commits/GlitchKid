@@ -95,6 +95,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     gainKnob[0]->addTo (*this);
     driveKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "SATURATION DRIVE", " dB", lime));
     driveKnob[0]->addTo (*this);
+    mixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::mixId, "MIX (DRY / PROCESSED)", " %", violet));
+    mixKnob[0]->addTo (*this);
 
     const char* names[] = { "LOW SHELF", "BELL 1", "BELL 2", "HIGH SHELF" };
     for (int b = 0; b < ParametricEq::numBands; ++b)
@@ -132,7 +134,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         addAndMakeVisible (c);
 
-    setSize (1060, 460);
+    setSize (1060, 480);
     startTimerHz (30);
 }
 
@@ -167,9 +169,10 @@ void GlitchKidEditor::resized()
     outLabel.setBounds (outCol.removeFromBottom (16));
     inMeter.setBounds (inCol.reduced (6, 0));
     outMeter.setBounds (outCol.reduced (6, 0));
-    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 230);
-    driveKnob[0]->setBounds (knobs.removeFromTop (115).withTrimmedBottom (10));
-    gainKnob[0]->setBounds (knobs.withTrimmedTop (5));
+    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 336);
+    driveKnob[0]->setBounds (knobs.removeFromTop (112).withTrimmedBottom (6));
+    gainKnob[0]->setBounds (knobs.removeFromTop (112).withTrimmedBottom (6));
+    mixKnob[0]->setBounds (knobs.withTrimmedBottom (6));
 
     // Middle: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
     auto eqArea = r.removeFromLeft (400);

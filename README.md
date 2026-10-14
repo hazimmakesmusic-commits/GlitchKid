@@ -2,21 +2,23 @@
 
 *A playground for your sound.* — a local-first VST3 vocal-processing plugin (macOS, FL Studio first).
 
-**Status: Stage 2.4.** Signal path: input -> 4-band parametric EQ -> compressor -> saturation -> output gain -> output, with peak meters on input and output and a gain-reduction meter.
+**Status: Stage 2.5 (all Stage 2 DSP modules in).** Signal path: input -> 4-band parametric EQ -> compressor -> saturation -> output gain -> Mix (blend with the latency-aligned dry input) -> output, with peak meters on input and output and a gain-reduction meter.
 
 - **EQ:** low shelf (20-500 Hz), bell 1 (100-5000 Hz, Q 0.3-10), bell 2 (500-16000 Hz, Q 0.3-10), high shelf (1-18 kHz); each band +/-15 dB in 0.1 dB steps. RBJ cookbook biquads in double precision; a band within 0.05 dB of 0 dB is skipped, so a flat EQ is bit-exact. Shelf slopes are fixed (Q 0.7071). Settings are smoothed over ~20 ms.
 - **Compressor:** feed-forward, stereo-linked peak detector, soft knee, separate attack/release smoothing of the gain reduction (after Giannoulis, Massberg & Reiss, JAES 2012). Threshold -60..0 dB (default -18), ratio 1..20:1 (default 1.0 = off, so a fresh instance does not change the sound), knee 0..24 dB, attack 0.1..100 ms and release 10..1000 ms (both are one-pole time constants: about 63% of a level step for attack, falling to about 37% for release), makeup 0..24 dB. No lookahead, so no latency, but a very fast transient can overshoot for about one attack time. Idle (ratio 1, no makeup, release finished) it is skipped and bit-exact. The GR meter shows gain reduction, 0..24 dB.
 - **Saturation:** a tanh soft-saturation waveshaper with one control, **Drive** 0..18 dB (default 0 = off). It adds odd harmonics only. The shaper runs 4x oversampled (JUCE's polyphase IIR half-band oversampler) so the harmonics it creates above the audible range are filtered out instead of folding back as inharmonic aliasing: measured with a 7 kHz tone at 18 dB drive, folded-back energy is about -107 dB, versus -13.5 dB for a plain tanh. Quiet material gets louder as you add drive (about +17 dB of small-signal gain at 18 dB), while a full-scale input stays near full scale (the oversampling filters can overshoot it by up to about 2 dB on hard-driven, square-ish waves), so trim with Output Gain and watch the OUT meter.
 - **Latency: 6 samples (0.125 ms at 48 kHz), constant**, reported to the host, so the host compensates automatically. It comes from the saturation oversampler. The bypass path and an idle saturation stage are delayed by exactly the same amount, so Bypass stays time-aligned and the default signal is a bit-exact copy of the input, 6 samples later.
 - **Gain:** -60 to +12 dB in 0.1 dB steps, ramped over 20 ms (applied after the EQ).
+- **Mix:** 0..100 % (default 100), a dry/processed blend (linear amplitude crossfade, smoothed over 20 ms). The dry side is the same latency-aligned copy that Bypass uses, so the blend does not comb-filter. 0 % is an exact copy and costs almost no CPU. Mix makes parallel compression and parallel saturation possible. Limit: the saturation oversampler has linear phase only up to about 10 kHz (phase error about 19 deg at 14 kHz, 81 deg at 18 kHz), so with Mix below 100 % and saturation engaged the extreme top octave can be slightly coloured.
 - **Bypass:** 20 ms crossfade to the untouched (latency-aligned) input; EQ, compressor, saturation and gain are all bypassed. When settled it is an exact copy and costs almost no CPU.
 - **Meters:** IN/OUT peak, -60 to +6 dBFS, red above 0 dBFS. Processing is 32-bit float with no limiter, so EQ boost plus gain can exceed 0 dBFS; watch the OUT meter.
-- All parameters are exposed to the host for automation (FL Studio automation not yet confirmed) and saved/restored with the project. Parameter IDs: `gain`, `bypass`, `eq_lo_freq/gain`, `eq_b1_freq/gain/q`, `eq_b2_freq/gain/q`, `eq_hi_freq/gain`, `comp_thresh`, `comp_ratio`, `comp_attack`, `comp_release`, `comp_knee`, `comp_makeup`, `sat_drive`.
-- Not built yet: dry/wet blend, presets, pitch correction. 
+- All parameters are exposed to the host for automation (FL Studio automation not yet confirmed) and saved/restored with the project. Parameter IDs: `gain`, `bypass`, `eq_lo_freq/gain`, `eq_b1_freq/gain/q`, `eq_b2_freq/gain/q`, `eq_hi_freq/gain`, `comp_thresh`, `comp_ratio`, `comp_attack`, `comp_release`, `comp_knee`, `comp_makeup`, `sat_drive`, `mix`.
+- Not built yet: presets, pitch correction. 
 
 ## Verification status (what has actually been checked)
-- Verified on a real Apple Silicon Mac with FL Studio 2025: builds with the Command Line Tools only, `arm64` binary, loads as `VST3 (Apple - native)`, reports no latency, `ctest` passes (Stage 2.3), window renders and fits, IN/OUT/GR meters move, EQ and compressor respond and Bypass works.
-- Not yet confirmed: FL Studio automation of GlitchKid parameters; listening tests of the compressor at moderate settings; CPU load; behaviour at other sample rates and buffer sizes inside FL Studio; other DAWs.
+- Verified on a real Apple Silicon Mac with FL Studio 2025: builds with the Command Line Tools only, `arm64` binary, loads as `VST3 (Apple - native)`, `ctest` passes, window renders and fits, IN/OUT/GR meters move, FL Studio shows the plugin-reported latency (0.14 ms = 6 samples at 44.1 kHz).
+- Reported working by the project owner (not independently measured): EQ, compressor and saturation sound as expected, Bypass is clean, and FL Studio automation of GlitchKid parameters works.
+- Not yet checked: Mix (Stage 2.5) on a Mac; CPU load in FL Studio; other sample rates and buffer sizes inside FL Studio; other DAWs; a formal listening-test protocol across different voices.
 - No claim of professional sound quality is made. The unit tests prove the maths and safety properties, not taste.
 
 ## Build on macOS (Apple Silicon)
@@ -57,4 +59,4 @@ Optional extra check with the free [pluginval](https://github.com/Tracktion/plug
 `CMakeLists.txt` build · `Source/` plugin code · `docs/` plans · `LICENSES.md` dependency/licence notes
 
 ## CPU (indicative)
-Measured in a Linux container (not Apple Silicon), 48 kHz stereo, block size 512, as a share of one core: all stages idle 0.1%; EQ + compressor 0.3%; saturation at 12 dB drive 1.2%; everything on 1.35%. Real numbers on your Mac and inside FL Studio have not been measured.
+Measured in a Linux container (not Apple Silicon), 48 kHz stereo, block size 512, as a share of one core (before Mix was added): all stages idle 0.1%; EQ + compressor 0.3%; saturation at 12 dB drive 1.2%; everything on 1.35%. Real numbers on your Mac and inside FL Studio have not been measured.
