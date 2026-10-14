@@ -118,10 +118,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     tempoLabel.setFont (juce::FontOptions (10.0f));
     tempoLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     stutterMixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::stutterMixId, "STUTTER MIX", " %", pink));
-    stutterMixKnob[0]->addTo (*this);
+    stutterMixKnob[0]->addTo (content);
     for (auto* c : std::initializer_list<juce::Component*> { &stutterTitle, &stutterRateLabel, &tempoLabel,
                                                               &stutterOnButton, &stutterRateBox })
-        addAndMakeVisible (c);
+        content.addAndMakeVisible (c);
 
     // Liquid Echo. TIME is used when SYNC is off, DIVISION when it is on (the unused one is dimmed).
     if (auto* div = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::echoDivId)))
@@ -141,9 +141,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoWidthId, "WIDTH", " %", lime));
     echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoMixId, "ECHO MIX", " %", pink));
     for (auto* k : echoKnobs)
-        k->addTo (*this);
+        k->addTo (content);
     for (auto* c : std::initializer_list<juce::Component*> { &echoTitle, &echoDivLabel, &echoOnButton, &echoSyncButton, &echoDivBox })
-        addAndMakeVisible (c);
+        content.addAndMakeVisible (c);
 
     // Dimension: stereo thickening. WIDTH 0 = centred thickening, 100 = stereo spread; DETUNE = pitch swing in cents.
     dimTitle.setJustificationType (juce::Justification::centred);
@@ -154,16 +154,16 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimDepthId, "DEPTH", " %", violet));
     dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimMixId, "DIMENSION MIX", " %", pink));
     for (auto* k : dimKnobs)
-        k->addTo (*this);
-    addAndMakeVisible (dimTitle);
-    addAndMakeVisible (dimOnButton);
+        k->addTo (content);
+    content.addAndMakeVisible (dimTitle);
+    content.addAndMakeVisible (dimOnButton);
 
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
-    gainKnob[0]->addTo (*this);
+    gainKnob[0]->addTo (content);
     driveKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "SATURATION DRIVE", " dB", lime));
-    driveKnob[0]->addTo (*this);
+    driveKnob[0]->addTo (content);
     mixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::mixId, "MIX (DRY / PROCESSED)", " %", violet));
-    mixKnob[0]->addTo (*this);
+    mixKnob[0]->addTo (content);
 
     const char* names[] = { "LOW SHELF", "BELL 1", "BELL 2", "HIGH SHELF" };
     for (int b = 0; b < ParametricEq::numBands; ++b)
@@ -171,7 +171,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         bandNames[b].setText (names[b], juce::dontSendNotification);
         bandNames[b].setJustificationType (juce::Justification::centred);
         bandNames[b].setColour (juce::Label::textColourId, violet);
-        addAndMakeVisible (bandNames[b]);
+        content.addAndMakeVisible (bandNames[b]);
 
         const auto& ids = GlitchKidProcessor::eqIds[b];
         eqKnobs[b].add (new ParamKnob (p.apvts, ids.freq, "FREQ", " Hz", lime));
@@ -179,7 +179,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         if (ids.q != nullptr)
             eqKnobs[b].add (new ParamKnob (p.apvts, ids.q, "Q", "", violet));
         for (auto* k : eqKnobs[b])
-            k->addTo (*this);
+            k->addTo (content);
     }
 
     // Compressor: threshold, ratio, makeup on the first row; attack, release, knee on the second.
@@ -190,7 +190,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compReleaseId, "RELEASE", " ms", pink));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compKneeId, "KNEE", " dB", violet));
     for (auto* k : compKnobs)
-        k->addTo (*this);
+        k->addTo (content);
 
     compTitle.setJustificationType (juce::Justification::centred);
     compTitle.setColour (juce::Label::textColourId, violet);
@@ -199,9 +199,15 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
     for (auto* c : std::initializer_list<juce::Component*> { &title, &tagline, &bypassButton, &inMeter, &outMeter,
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
-        addAndMakeVisible (c);
+        content.addAndMakeVisible (c);
 
-    setSize (1060, 780);
+    // Everything lives in `content`, which is laid out at the design size and scaled to fit the window.
+    layoutContent();
+    addAndMakeVisible (content);
+    setResizable (true, true);
+    setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
+    getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
+    setSize (designW * 85 / 100, designH * 85 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -231,16 +237,25 @@ void GlitchKidEditor::timerCallback()
 void GlitchKidEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff121214)); // obsidian
+    g.addTransform (juce::AffineTransform::scale (scaleFactor));
     g.setColour (juce::Colour (0xff2a2a30));
     g.drawLine (270.0f, 90.0f, 270.0f, (float) echoDividerY - 8.0f);
     g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) echoDividerY - 8.0f);
-    g.drawLine (16.0f, (float) echoDividerY, (float) getWidth() - 16.0f, (float) echoDividerY);
-    g.drawLine (16.0f, (float) dimDividerY, (float) getWidth() - 16.0f, (float) dimDividerY);
+    g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
+    g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
 }
 
 void GlitchKidEditor::resized()
 {
-    auto r = getLocalBounds().reduced (16);
+    scaleFactor = juce::jmin ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH);
+    content.setTransform (juce::AffineTransform::scale (scaleFactor));
+    content.setBounds (0, 0, designW, designH);
+    repaint();
+}
+
+void GlitchKidEditor::layoutContent()
+{
+    auto r = juce::Rectangle<int> (0, 0, designW, designH).reduced (16);
 
     // Bottom strips: Dimension (lowest), then Liquid Echo above it.
     auto dimArea = r.removeFromBottom (140);

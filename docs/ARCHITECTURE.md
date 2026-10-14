@@ -15,7 +15,7 @@ input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dime
 | File | Role |
 |---|---|
 | `Source/PluginProcessor.*` | 36 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
-| `Source/PluginEditor.*` | Window 1060x780 (not resizable): knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
+| `Source/PluginEditor.*` | Window designed at 1060x780 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 85%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
 | `Source/DSP/Saturation.*` | `tanh(kx)/tanh(k)` waveshaper, 4x oversampled (JUCE polyphase IIR half-band) |

@@ -49,6 +49,10 @@ public:
     void resized() override;
 
 private:
+    static constexpr int designW = 1060, designH = 780; // layout size; the window scales it to fit
+    juce::Component content; // declared first so it outlives the controls inside it
+    float scaleFactor = 1.0f;
+    void layoutContent();
     void timerCallback() override;
 
     GlitchKidProcessor& glitchProcessor;
