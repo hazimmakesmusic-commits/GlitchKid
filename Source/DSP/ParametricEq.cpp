@@ -1,10 +1,12 @@
 #include "ParametricEq.h"
+#include "Finite.h"
 
 namespace
 {
 constexpr int chunkSize = 32;           // coefficient refresh interval while a setting is moving
 constexpr double smoothSeconds = 0.02;
 constexpr float flatThresholdDb = 0.05f; // half of the 0.1 dB parameter step
+constexpr double corruptState = 1.0e30;  // filter memory this large (~600 dB) cannot come from real audio
 }
 
 void ParametricEq::prepare (double sr)
@@ -92,6 +94,11 @@ void ParametricEq::process (juce::AudioBuffer<float>& buffer)
     const int numChannels = juce::jmin (buffer.getNumChannels(), maxChannels);
     const int numSamples = buffer.getNumSamples();
 
+    // A NaN/Inf in a recursive filter would stay in its memory forever, so never let one in.
+    for (int ch = 0; ch < numChannels; ++ch)
+        dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
+    bool anyActive = false;
+
     for (int start = 0; start < numSamples; start += chunkSize)
     {
         const int n = juce::jmin (chunkSize, numSamples - start);
@@ -134,9 +141,16 @@ void ParametricEq::process (juce::AudioBuffer<float>& buffer)
                     z2 = b.b2 * in - b.a2 * out;
                     x[i] = (float) out;
                 }
+                if (! (std::abs (z1) < corruptState && std::abs (z2) < corruptState)) // also true for NaN/Inf
+                    z1 = z2 = 0.0; // drop the filter memory, not the plugin
                 b.z1[ch] = z1;
                 b.z2[ch] = z2;
             }
+            anyActive = true;
         }
     }
+
+    if (anyActive) // a huge finite input can still overflow the float output; keep it finite
+        for (int ch = 0; ch < numChannels; ++ch)
+            dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
 }

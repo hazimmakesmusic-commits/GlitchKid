@@ -12,10 +12,10 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
-# JUCE is downloaded at configure time (not stored in this repo), pinned to an exact release tag.
+# JUCE is downloaded at configure time (not stored in this repo), pinned to the exact commit of release 9.0.4.
 FetchContent_Declare(JUCE
     GIT_REPOSITORY https://github.com/juce-framework/JUCE.git
-    GIT_TAG        9.0.4
+    GIT_TAG        3fb5cbc0340758596dac39f7c8de47d562b4896e  # = tag 9.0.4
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(JUCE)
 
@@ -60,6 +60,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/SaturationTests.cpp
         Tests/MixTests.cpp
         Tests/StutterTests.cpp
+        Tests/RobustnessTests.cpp
         Source/DSP/ParametricEq.cpp
         Source/DSP/Compressor.cpp
         Source/DSP/Saturation.cpp

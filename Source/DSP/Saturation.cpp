@@ -1,4 +1,5 @@
 #include "Saturation.h"
+#include "Finite.h"
 
 namespace
 {
@@ -50,6 +51,10 @@ void Saturation::processChunk (juce::AudioBuffer<float>& buffer)
 {
     const int numChannels = juce::jmin (buffer.getNumChannels(), 2);
     const int n = buffer.getNumSamples();
+
+    // The oversampler is a recursive filter: one NaN/Inf would stay in its memory forever.
+    for (int ch = 0; ch < numChannels; ++ch)
+        dspguard::zeroNonFinite (buffer.getWritePointer (ch), n);
 
     // The exact delayed copy is always kept up to date: it is the output when idle and the
     // "dry" side of the fade when drive is switched on or off.
@@ -103,4 +108,11 @@ void Saturation::processChunk (juce::AudioBuffer<float>& buffer)
             *out = e + (*out - e) * w;
         }
     }
+
+    // Overflow from a huge finite input: reset the oversampler's memory and keep the output finite.
+    bool bad = false;
+    for (int ch = 0; ch < numChannels; ++ch)
+        bad |= dspguard::zeroNonFinite (buffer.getWritePointer (ch), n);
+    if (bad)
+        oversampler.reset();
 }
