@@ -73,7 +73,9 @@ void ParamKnob::setBounds (juce::Rectangle<int> r)
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     : AudioProcessorEditor (&p),
       glitchProcessor (p),
-      bypassAttachment (p.apvts, GlitchKidProcessor::bypassId, bypassButton)
+      bypassAttachment (p.apvts, GlitchKidProcessor::bypassId, bypassButton),
+      stutterOnAttachment (p.apvts, GlitchKidProcessor::stutterOnId, stutterOnButton),
+      stutterRateAttachment (p.apvts, GlitchKidProcessor::stutterRateId, stutterRateBox)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
@@ -90,6 +92,26 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     }
 
     bypassButton.setColour (juce::ToggleButton::tickColourId, violet);
+    stutterOnButton.setColour (juce::ToggleButton::tickColourId, pink);
+
+    // Glitch Stutter: ON switch, rate choice (items come from the parameter's choices), Mix knob, tempo source.
+    if (auto* rate = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::stutterRateId)))
+    {
+        stutterRateBox.addItemList (rate->choices, 1);
+        stutterRateBox.setSelectedItemIndex (rate->getIndex(), juce::dontSendNotification);
+    }
+    stutterTitle.setJustificationType (juce::Justification::centred);
+    stutterTitle.setColour (juce::Label::textColourId, violet);
+    stutterRateLabel.setJustificationType (juce::Justification::centred);
+    stutterRateLabel.setFont (juce::FontOptions (11.0f));
+    tempoLabel.setJustificationType (juce::Justification::centred);
+    tempoLabel.setFont (juce::FontOptions (10.0f));
+    tempoLabel.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    stutterMixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::stutterMixId, "STUTTER MIX", " %", pink));
+    stutterMixKnob[0]->addTo (*this);
+    for (auto* c : std::initializer_list<juce::Component*> { &stutterTitle, &stutterRateLabel, &tempoLabel,
+                                                              &stutterOnButton, &stutterRateBox })
+        addAndMakeVisible (c);
 
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
     gainKnob[0]->addTo (*this);
@@ -134,7 +156,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         addAndMakeVisible (c);
 
-    setSize (1060, 480);
+    setSize (1060, 500);
+    timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
 
@@ -143,6 +166,16 @@ void GlitchKidEditor::timerCallback()
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
+
+    // Always say where the stutter tempo comes from: the host, or the 120 BPM fallback.
+    const auto text = glitchProcessor.isStutterTempoFromHost()
+                          ? "HOST TEMPO " + juce::String (glitchProcessor.getStutterTempoBpm(), 1) + " BPM"
+                          : juce::String ("NO HOST TEMPO: 120 BPM");
+    if (text != shownTempoText)
+    {
+        shownTempoText = text;
+        tempoLabel.setText (text, juce::dontSendNotification);
+    }
 }
 
 void GlitchKidEditor::paint (juce::Graphics& g)
@@ -200,4 +233,16 @@ void GlitchKidEditor::resized()
         for (int col = 0; col < 3; ++col)
             compKnobs[row * 3 + col]->setBounds (line.removeFromLeft (knobW).reduced (8, 0));
     }
+
+    // Glitch Stutter row: ON + tempo source | RATE | MIX
+    r.removeFromTop (6);
+    stutterTitle.setBounds (r.removeFromTop (20));
+    auto stutterRow = r.removeFromTop (108);
+    auto onCell = stutterRow.removeFromLeft (knobW).reduced (8, 0);
+    stutterOnButton.setBounds (onCell.removeFromTop (36).withSizeKeepingCentre (70, 28));
+    tempoLabel.setBounds (onCell.removeFromTop (44));
+    auto rateCell = stutterRow.removeFromLeft (knobW).reduced (8, 0);
+    stutterRateLabel.setBounds (rateCell.removeFromTop (14));
+    stutterRateBox.setBounds (rateCell.removeFromTop (40).withSizeKeepingCentre (76, 26));
+    stutterMixKnob[0]->setBounds (stutterRow.reduced (8, 0));
 }

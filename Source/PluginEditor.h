@@ -60,6 +60,11 @@ private:
     juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
     juce::Label bandNames[ParametricEq::numBands];
     juce::ToggleButton bypassButton { "Bypass" };
+    juce::Label stutterTitle { {}, "GLITCH STUTTER" }, stutterRateLabel { {}, "RATE" }, tempoLabel;
+    juce::ToggleButton stutterOnButton { "ON" };
+    juce::ComboBox stutterRateBox;
+    juce::OwnedArray<ParamKnob> stutterMixKnob;
+    juce::String shownTempoText;
 
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;
@@ -67,6 +72,8 @@ private:
     juce::OwnedArray<ParamKnob> compKnobs;
     juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment stutterOnAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment stutterRateAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
 };

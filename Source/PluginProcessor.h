@@ -4,8 +4,9 @@
 #include "DSP/Compressor.h"
 #include "DSP/Saturation.h"
 #include "DSP/FixedDelay.h"
+#include "DSP/GlitchStutter.h"
 
-// Signal path: input -> 4-band EQ -> compressor -> saturation -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor
@@ -32,6 +33,9 @@ public:
 
     static constexpr const char* satDriveId = "sat_drive"; // dB, 0 = off
     static constexpr const char* mixId      = "mix";       // percent processed (100) vs dry (0)
+    static constexpr const char* stutterOnId   = "stutter_on";   // Glitch Stutter on/off
+    static constexpr const char* stutterRateId = "stutter_rate"; // 0..3 = 1/4, 1/8, 1/16, 1/32 note
+    static constexpr const char* stutterMixId  = "stutter_mix";  // percent loop (100) vs live (0)
 
     GlitchKidProcessor();
 
@@ -65,6 +69,11 @@ public:
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
     float consumeGainReductionDb() { return gainReductionPeak.exchange (0.0f); } // positive dB
 
+    // For the UI (and tests): tempo used by Glitch Stutter, and whether it came from the host.
+    float getStutterTempoBpm() const { return shownTempo.load(); }
+    bool isStutterTempoFromHost() const { return tempoFromHost.load(); }
+    int getStutterLoopLength() const { return shownLoopLength.load(); } // 0 when not repeating
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void processChunk (juce::AudioBuffer<float>&);
@@ -80,6 +89,14 @@ private:
     ParametricEq eq;
     Compressor compressor;
     Saturation saturation;
+    GlitchStutter stutter;
+    std::atomic<float>* stutterOn = nullptr;
+    std::atomic<float>* stutterRate = nullptr;
+    std::atomic<float>* stutterMix = nullptr;
+    float currentBpm = GlitchStutter::fallbackBpm; // resolved once per block from the host play head
+    std::atomic<float> shownTempo { GlitchStutter::fallbackBpm };
+    std::atomic<bool> tempoFromHost { false };
+    std::atomic<int> shownLoopLength { 0 };
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency
     std::atomic<float>* satDrive = nullptr;
     std::atomic<float>* mixPercent = nullptr;

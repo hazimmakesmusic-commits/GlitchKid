@@ -34,6 +34,7 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp
     Source/DSP/Compressor.cpp
     Source/DSP/Saturation.cpp
+    Source/DSP/GlitchStutter.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
 
@@ -58,9 +59,11 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/CompressorTests.cpp
         Tests/SaturationTests.cpp
         Tests/MixTests.cpp
+        Tests/StutterTests.cpp
         Source/DSP/ParametricEq.cpp
         Source/DSP/Compressor.cpp
         Source/DSP/Saturation.cpp
+        Source/DSP/GlitchStutter.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC

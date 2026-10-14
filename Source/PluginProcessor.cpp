@@ -64,6 +64,12 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { satDriveId, 1 }, "Saturation Drive",
         NormalisableRange<float> (0.0f, 18.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { stutterOnId, 1 }, "Stutter On", false));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { stutterRateId, 1 }, "Stutter Rate",
+        StringArray { "1/4", "1/8", "1/16", "1/32" }, 1));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { stutterMixId, 1 }, "Stutter Mix",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mixId, 1 }, "Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
@@ -90,6 +96,9 @@ GlitchKidProcessor::GlitchKidProcessor()
         compParams[i] = apvts.getRawParameterValue (ids[i]);
     satDrive = apvts.getRawParameterValue (satDriveId);
     mixPercent = apvts.getRawParameterValue (mixId);
+    stutterOn = apvts.getRawParameterValue (stutterOnId);
+    stutterRate = apvts.getRawParameterValue (stutterRateId);
+    stutterMix = apvts.getRawParameterValue (stutterMixId);
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
@@ -139,6 +148,7 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     saturation.setDriveDb (satDrive->load());
     saturation.prepare (sampleRate, juce::jmax (samplesPerBlock, 512));
     dryDelay.prepare (Saturation::latencySamples);
+    stutter.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
 }
@@ -155,6 +165,22 @@ static void raisePeak (std::atomic<float>& peak, float value)
 void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
+
+    // Host tempo for Glitch Stutter. The host may supply no play head, no tempo, or nonsense; every such
+    // case falls back to 120 BPM (see GlitchStutter::resolveTempo).
+    bool hostHasTempo = false;
+    double hostBpm = 0.0;
+    if (auto* host = getPlayHead())
+        if (auto position = host->getPosition())
+            if (auto bpm = position->getBpm())
+            {
+                hostHasTempo = true;
+                hostBpm = *bpm;
+            }
+    bool usedHost = false;
+    currentBpm = GlitchStutter::resolveTempo (hostHasTempo, hostBpm, usedHost);
+    shownTempo.store (currentBpm, std::memory_order_relaxed);
+    tempoFromHost.store (usedHost, std::memory_order_relaxed);
 
     const int cap = dryBuffer.getNumSamples();
     const int total = buffer.getNumSamples();
@@ -195,6 +221,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         eq.reset();                 // settled bypass or 0 % mix: exact (delayed) dry signal, no processing cost
         compressor.reset();
         saturation.reset();
+        stutter.reset();
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
         raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
@@ -214,6 +241,11 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     saturation.setDriveDb (satDrive->load());
     saturation.process (buffer);
+
+    stutter.setSettings ({ stutterOn->load() >= 0.5f, (int) std::lround (stutterRate->load()),
+                           stutterMix->load(), currentBpm });
+    stutter.process (buffer);
+    shownLoopLength.store (stutter.getLoopLengthSamples(), std::memory_order_relaxed);
 
     smoothedGain.setTargetValue (targetGain (gainDb->load()));
     if (! smoothedGain.isSmoothing())
