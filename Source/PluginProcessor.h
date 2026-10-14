@@ -6,8 +6,9 @@
 #include "DSP/FixedDelay.h"
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
+#include "DSP/Dimension.h"
 
-// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor
@@ -47,6 +48,13 @@ public:
     static constexpr const char* echoToneId  = "echo_tone";  // Hz, low-pass on the repeats
     static constexpr const char* echoWidthId = "echo_width"; // percent
     static constexpr const char* echoMixId   = "echo_mix";   // percent repeats (100) vs dry (0)
+
+    // Dimension (stereo thickening). Default off, so a fresh instance does not change the sound.
+    static constexpr const char* dimOnId     = "dim_on";
+    static constexpr const char* dimWidthId  = "dim_width";  // percent, 0 = centred thickening, 100 = stereo spread
+    static constexpr const char* dimDetuneId = "dim_detune"; // cents (peak pitch swing of the modulation)
+    static constexpr const char* dimDepthId  = "dim_depth";  // percent, level of the thickening voices
+    static constexpr const char* dimMixId    = "dim_mix";    // percent, dry (0) to dry + full effect (100)
 
     GlitchKidProcessor();
 
@@ -109,6 +117,9 @@ private:
     std::atomic<bool> tempoFromHost { false };
     std::atomic<int> shownLoopLength { 0 };
     LiquidEcho echo;
+    Dimension dimension;
+    std::atomic<float>* dimParams[5] {}; // on, width, detune, depth, mix
+    DimensionSettings readDimensionSettings() const;
     std::atomic<float>* echoParams[8] {}; // on, sync, time, division, feedback, tone, width, mix
     EchoSettings readEchoSettings() const;
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency

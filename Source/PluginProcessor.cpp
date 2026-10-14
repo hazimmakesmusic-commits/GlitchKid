@@ -87,6 +87,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoMixId, 1 }, "Echo Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { dimOnId, 1 }, "Dimension On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimWidthId, 1 }, "Dimension Width",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimDetuneId, 1 }, "Dimension Detune",
+        NormalisableRange<float> (0.0f, 20.0f, 0.1f), 6.0f, AudioParameterFloatAttributes().withLabel ("cents")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimDepthId, 1 }, "Dimension Depth",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimMixId, 1 }, "Dimension Mix",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mixId, 1 }, "Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
@@ -119,6 +129,20 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* echoIds[] = { echoOnId, echoSyncId, echoTimeId, echoDivId, echoFbId, echoToneId, echoWidthId, echoMixId };
     for (int i = 0; i < 8; ++i)
         echoParams[i] = apvts.getRawParameterValue (echoIds[i]);
+    const char* dimIds[] = { dimOnId, dimWidthId, dimDetuneId, dimDepthId, dimMixId };
+    for (int i = 0; i < 5; ++i)
+        dimParams[i] = apvts.getRawParameterValue (dimIds[i]);
+}
+
+DimensionSettings GlitchKidProcessor::readDimensionSettings() const
+{
+    DimensionSettings s;
+    s.on = dimParams[0]->load() >= 0.5f;
+    s.widthPct = dimParams[1]->load();
+    s.detuneCents = dimParams[2]->load();
+    s.depthPct = dimParams[3]->load();
+    s.mixPct = dimParams[4]->load();
+    return s;
 }
 
 EchoSettings GlitchKidProcessor::readEchoSettings() const
@@ -187,6 +211,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     echo.setSettings (readEchoSettings());
     echo.prepare (sampleRate);
+
+    dimension.setSettings (readDimensionSettings());
+    dimension.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
 }
@@ -261,6 +288,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         saturation.reset();
         stutter.reset();
         echo.reset();
+        dimension.reset();
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
         raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
@@ -288,6 +316,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     echo.setSettings (readEchoSettings());
     echo.process (buffer);
+
+    dimension.setSettings (readDimensionSettings());
+    dimension.process (buffer);
 
     smoothedGain.setTargetValue (targetGain (gainDb->load()));
     if (! smoothedGain.isSmoothing())

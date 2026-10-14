@@ -84,7 +84,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       stutterRateAttachment (p.apvts, GlitchKidProcessor::stutterRateId, stutterRateBox),
       echoOnAttachment (p.apvts, GlitchKidProcessor::echoOnId, echoOnButton),
       echoSyncAttachment (p.apvts, GlitchKidProcessor::echoSyncId, echoSyncButton),
-      echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox)
+      echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox),
+      dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
@@ -144,6 +145,19 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &echoTitle, &echoDivLabel, &echoOnButton, &echoSyncButton, &echoDivBox })
         addAndMakeVisible (c);
 
+    // Dimension: stereo thickening. WIDTH 0 = centred thickening, 100 = stereo spread; DETUNE = pitch swing in cents.
+    dimTitle.setJustificationType (juce::Justification::centred);
+    dimTitle.setColour (juce::Label::textColourId, violet);
+    dimOnButton.setColour (juce::ToggleButton::tickColourId, lime);
+    dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimWidthId, "WIDTH", " %", lime));
+    dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimDetuneId, "DETUNE", " cents", pink));
+    dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimDepthId, "DEPTH", " %", violet));
+    dimKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dimMixId, "DIMENSION MIX", " %", pink));
+    for (auto* k : dimKnobs)
+        k->addTo (*this);
+    addAndMakeVisible (dimTitle);
+    addAndMakeVisible (dimOnButton);
+
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", pink));
     gainKnob[0]->addTo (*this);
     driveKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "SATURATION DRIVE", " dB", lime));
@@ -187,7 +201,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         addAndMakeVisible (c);
 
-    setSize (1060, 640);
+    setSize (1060, 780);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -221,13 +235,23 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.drawLine (270.0f, 90.0f, 270.0f, (float) echoDividerY - 8.0f);
     g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) echoDividerY - 8.0f);
     g.drawLine (16.0f, (float) echoDividerY, (float) getWidth() - 16.0f, (float) echoDividerY);
+    g.drawLine (16.0f, (float) dimDividerY, (float) getWidth() - 16.0f, (float) dimDividerY);
 }
 
 void GlitchKidEditor::resized()
 {
     auto r = getLocalBounds().reduced (16);
 
-    // Bottom strip: Liquid Echo.
+    // Bottom strips: Dimension (lowest), then Liquid Echo above it.
+    auto dimArea = r.removeFromBottom (140);
+    dimDividerY = dimArea.getY() - 4;
+    dimTitle.setBounds (dimArea.removeFromTop (20));
+    const int dimCell = dimArea.getWidth() / 7;
+    dimOnButton.setBounds (dimArea.removeFromLeft (dimCell).reduced (8, 0).removeFromTop (40).withSizeKeepingCentre (70, 28));
+    dimArea.removeFromLeft (dimCell); // keeps the knobs aligned with the Liquid Echo row above
+    for (auto* k : dimKnobs)
+        k->setBounds (dimArea.removeFromLeft (dimCell).reduced (8, 0));
+
     auto echoArea = r.removeFromBottom (140);
     echoDividerY = echoArea.getY() - 4;
     echoTitle.setBounds (echoArea.removeFromTop (20));

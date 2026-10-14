@@ -74,6 +74,12 @@ private:
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
     int echoDividerY = 0;
 
+    // Dimension row: ON, width, detune, depth, mix.
+    juce::Label dimTitle { {}, "DIMENSION" };
+    juce::ToggleButton dimOnButton { "ON" };
+    juce::OwnedArray<ParamKnob> dimKnobs;
+    int dimDividerY = 0;
+
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;
     juce::OwnedArray<ParamKnob> mixKnob;
@@ -84,6 +90,7 @@ private:
     juce::AudioProcessorValueTreeState::ComboBoxAttachment stutterRateAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment echoOnAttachment, echoSyncAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
 };

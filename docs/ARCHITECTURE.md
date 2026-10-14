@@ -1,26 +1,27 @@
 # Architecture
 
-What exists today (Stage 3.2: Liquid Echo, plus hardening). Nothing planned is described as built.
+What exists today (Stage 3.3: Dimension, after Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
 32-bit float; no network, no hosted service. Plug-in codes: manufacturer `GlKd`, plug-in `Gkid` (never change).
 
 ```
-input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> output gain -> Mix -> output
+input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
    \______________ dry copy, delayed by 6 samples (FixedDelay) ______________/
 ```
 
 ## Files
 | File | Role |
 |---|---|
-| `Source/PluginProcessor.*` | 31 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
-| `Source/PluginEditor.*` | Window 1060x640 (not resizable): knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
+| `Source/PluginProcessor.*` | 36 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
+| `Source/PluginEditor.*` | Window 1060x780 (not resizable): knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
 | `Source/DSP/Saturation.*` | `tanh(kx)/tanh(k)` waveshaper, 4x oversampled (JUCE polyphase IIR half-band) |
 | `Source/DSP/GlitchStutter.*` | Beat repeat of the slice before switch-on; per-sample state machine |
 | `Source/DSP/LiquidEcho.*` | Tempo-aware stereo delay with feedback, tone, width and its own mix |
+| `Source/DSP/Dimension.*` | Stereo thickening/widening: two modulated chorus voices split into mid and side |
 | `Source/DSP/FixedDelay.h` | Constant delay used for the dry/bypass path and the idle saturation stage |
 | `Source/DSP/Finite.h` | `zeroNonFinite`: replaces NaN/Inf with 0 |
 | `Tests/` | Unit tests (see `TESTING.md`) |
@@ -30,7 +31,7 @@ input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> outp
 2. Copy the input to the dry buffer and delay it by `Saturation::latencySamples` (6).
 3. If Bypass is on, or Mix is 0 %, and the crossfade has settled: output the exact delayed dry copy, reset the
    stages, return (almost no CPU).
-4. Otherwise run EQ, compressor, saturation, stutter, Liquid Echo, smoothed gain; then crossfade with the dry copy if Mix < 100 %
+4. Otherwise run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain; then crossfade with the dry copy if Mix < 100 %
    or a Bypass/Mix change is still ramping.
 5. Update peak meters.
 Host blocks larger than the dry buffer are split into chunks.
@@ -48,7 +49,7 @@ Host blocks larger than the dry buffer are split into chunks.
   `gain, bypass, eq_lo_freq, eq_lo_gain, eq_b1_freq, eq_b1_gain, eq_b1_q, eq_b2_freq, eq_b2_gain, eq_b2_q,
   eq_hi_freq, eq_hi_gain, comp_thresh, comp_ratio, comp_attack, comp_release, comp_knee, comp_makeup, sat_drive,
   stutter_on, stutter_rate, stutter_mix, mix, echo_on, echo_sync, echo_time, echo_div, echo_fb, echo_tone,
-  echo_width, echo_mix`.
+  echo_width, echo_mix, dim_on, dim_width, dim_detune, dim_depth, dim_mix`.
 - **State:** XML via `copyState`/`replaceState`; unknown or garbage state is ignored; parameters missing from an
   older save keep their defaults. The saved state has no version attribute yet.
 
@@ -103,6 +104,38 @@ How it works: each channel has a circular delay line allocated in `prepare()` fo
 - **Not done:** ping-pong, ducking, modulation, tempo-locked phase (the delay is a delay, not a beat-grid-locked pattern), and
   `getTailLengthSeconds()` still returns 0, so a host that stops the transport may cut the tail.
 
+## Dimension
+Stereo thickening and widening after Liquid Echo. New parameters (version hint 1, default OFF so a fresh instance is unchanged):
+
+| ID | Range | Default |
+|---|---|---|
+| `dim_on` | on/off | off |
+| `dim_width` | 0 to 100 % (0 = centred thickening, 100 = stereo spread) | 60 % |
+| `dim_detune` | 0 to 20 cents (peak pitch swing of the modulation) | 6 cents |
+| `dim_depth` | 0 to 100 % (level of the thickening voices) | 50 % |
+| `dim_mix` | 0 to 100 % (0 = dry, 100 = dry + full effect) | 100 % |
+
+Technique (a Roland-"Dimension"-style dual chorus voice design): the input is summed to mono and high-passed at about 200 Hz
+(one pole), then read by two chorus voices (base delays 9 ms and 13 ms) whose delays are modulated by two slow sine LFOs
+(0.37 Hz and 0.53 Hz, so the movement never repeats exactly). Detune sets the LFO excursion so the peak pitch swing equals the
+chosen cents. The voice sum is the mid part M and the voice difference the side part S; Width cross-fades them with equal power
+(cos/sin), so Width does not change the wet level. Output: `L = dry + g (M cos t + S sin t)`, `R = dry + g (M cos t - S sin t)`,
+`g = 0.6 x Depth x Mix`. Because the wet is left/right symmetric it cannot pan the vocal; a hard-left input stays left.
+- **Mono compatibility (measured, see `TESTING.md`):** at Width 100 % only S is added and S cancels exactly in a mono sum, so the
+  mono sum equals the dry signal. At Width 0 % the wet is plain chorus, which colours a mono sum: with Depth 100 and Detune 0 the
+  worst single frequency is -6.8 dB / +4.0 dB; at the defaults (Width 60, Depth 50) it is -1.5 / +1.4 dB. Width therefore trades
+  stereo width against mono colouring only through the M/S balance; nothing is ever lost in mono at full Width.
+- **Level:** at Depth 100 the output is about +0.55 dB above the dry level for noise, and Width changes it by less than 0.1 dB.
+- **Why not simply widen with mid/side:** a pure M/S widener does nothing to a mono vocal. The voices decorrelate L and R (a mono
+  vocal's L/R correlation falls from 1.00 to about 0.75 at Width 100, Depth 100) and add movement.
+- **Detune** is a creative thickening effect (a slow modulated delay), not pitch correction.
+- **Mono layout:** there is no side channel, so only the M part is added and Width has no effect.
+- **Safety:** NaN/Inf input is replaced by 0; if the high-pass memory overflows only it is cleared (the delay line only receives
+  finite values). Off (settled) clears the delay line once and skips the stage (bit-exact); on/off and mix ramp over 20 ms; Detune
+  and Width are smoothed; the LFO phase never resets on block boundaries. Zero latency, no allocation after `prepare()`.
+- **Limits:** one fixed LFO rate pair (no rate control: it would add a control without improving the effect); Depth and Mix
+  overlap (both scale the wet), Mix exists to match the other effects; the effect is built for vocals and is not tempo-synced.
+
 ## What does not exist
-Presets, Dimension, MOODS, pitch correction, other plug-in formats, resizable UI, host-grid phase-lock
+Presets, MOODS, pitch correction, other plug-in formats, resizable UI, host-grid phase-lock
 for the stutter.

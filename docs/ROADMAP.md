@@ -3,7 +3,7 @@
 Only the first section exists today. Everything else is a plan, not a feature, and the order can change.
 
 ## Built (see `../CHANGELOG.md`)
-Gain/bypass, 4-band EQ, compressor, saturation (4x oversampled), Glitch Stutter, Liquid Echo (tempo-aware delay), Mix, meters, state save/restore,
+Gain/bypass, 4-band EQ, compressor, saturation (4x oversampled), Glitch Stutter, Liquid Echo (tempo-aware delay), Dimension (stereo thickening), Mix, meters, state save/restore,
 NaN/Inf-safe EQ and saturation, unit tests.
 
 ## Next (hardening, from the project audit; not yet started unless noted)
@@ -16,7 +16,7 @@ NaN/Inf-safe EQ and saturation, unit tests.
 
 ## Later (not started, no code exists)
 - Presets (needs a state version first).
-- More signature effects from the product vision: Dimension, MOODS.
+- More signature effects from the product vision: MOODS (a preset selector; needs a state version first).
 - Liquid Echo extras if wanted: ping-pong, ducking, modulation, tail reporting to the host.
 - Stutter locked to the host beat grid (PPQ phase).
 - Pitch correction: only after a separate feasibility study; no custom pitch-correction algorithm is planned.
