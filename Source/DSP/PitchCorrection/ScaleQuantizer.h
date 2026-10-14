@@ -1,6 +1,7 @@
 #pragma once
 
-// EXPERIMENTAL (Stage 4.1). Picks the note a sung pitch should be pulled to, for a chosen key and scale.
+// Pitch-correction module (Stage 4.1 prototype, productised in Stage 4.2).
+// Picks the note a sung pitch should be pulled to, for a chosen key and scale.
 // Pure functions on MIDI note numbers (A4 = 69); no state, safe on any thread.
 namespace glitchkid::pitch
 {

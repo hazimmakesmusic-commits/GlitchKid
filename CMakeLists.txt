@@ -37,6 +37,10 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/GlitchStutter.cpp
     Source/DSP/LiquidEcho.cpp
     Source/DSP/Dimension.cpp
+    Source/DSP/PitchCorrection/YinPitchDetector.cpp
+    Source/DSP/PitchCorrection/ScaleQuantizer.cpp
+    Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
+    Source/DSP/PitchCorrection/PitchCorrector.cpp
     Source/AlterEgos.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp)
@@ -68,10 +72,11 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/DimensionTests.cpp
         Tests/AlterEgoTests.cpp
         Tests/PitchCorrectionTests.cpp
-        Source/Experimental/PitchCorrection/YinPitchDetector.cpp
-        Source/Experimental/PitchCorrection/ScaleQuantizer.cpp
-        Source/Experimental/PitchCorrection/PsolaPitchShifter.cpp
-        Source/Experimental/PitchCorrection/PitchCorrectorPrototype.cpp
+        Tests/PitchTuneTests.cpp
+        Source/DSP/PitchCorrection/YinPitchDetector.cpp
+        Source/DSP/PitchCorrection/ScaleQuantizer.cpp
+        Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
+        Source/DSP/PitchCorrection/PitchCorrector.cpp
         Source/DSP/ParametricEq.cpp
         Source/DSP/Compressor.cpp
         Source/DSP/Saturation.cpp
@@ -92,17 +97,17 @@ if(GLITCHKID_BUILD_TESTS)
     add_test(NAME GlitchKidProcessor COMMAND GlitchKidTests)
 endif()
 
-# EXPERIMENTAL (Stage 4.1): command-line harness for the pitch-correction prototype. Not part of the plugin.
+# Command-line harness for the pitch-correction module (tune a WAV file, print measurements). Not part of the plugin.
 #   cmake -S . -B build-lab -DGLITCHKID_BUILD_PITCHLAB=ON && cmake --build build-lab --target PitchLab
-option(GLITCHKID_BUILD_PITCHLAB "Build the experimental PitchLab harness" OFF)
+option(GLITCHKID_BUILD_PITCHLAB "Build the PitchLab harness" OFF)
 if(GLITCHKID_BUILD_PITCHLAB)
     juce_add_console_app(PitchLab PRODUCT_NAME "PitchLab")
     target_sources(PitchLab PRIVATE
         Tools/PitchLab/main.cpp
-        Source/Experimental/PitchCorrection/YinPitchDetector.cpp
-        Source/Experimental/PitchCorrection/ScaleQuantizer.cpp
-        Source/Experimental/PitchCorrection/PsolaPitchShifter.cpp
-        Source/Experimental/PitchCorrection/PitchCorrectorPrototype.cpp)
+        Source/DSP/PitchCorrection/YinPitchDetector.cpp
+        Source/DSP/PitchCorrection/ScaleQuantizer.cpp
+        Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
+        Source/DSP/PitchCorrection/PitchCorrector.cpp)
     target_compile_definitions(PitchLab PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(PitchLab
         PRIVATE juce::juce_audio_formats

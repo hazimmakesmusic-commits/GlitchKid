@@ -18,7 +18,8 @@
 - **Bypass:** 20 ms crossfade to the untouched (latency-aligned) input; EQ, compressor, saturation and gain are all bypassed. When settled it is an exact copy and costs almost no CPU.
 - **Meters:** IN/OUT peak, -60 to +6 dBFS, red above 0 dBFS. Processing is 32-bit float with no limiter, so EQ boost plus gain can exceed 0 dBFS; watch the OUT meter.
 - All parameters are exposed to the host for automation (FL Studio automation not yet confirmed) and saved/restored with the project. Parameter IDs: `gain`, `bypass`, `eq_lo_freq/gain`, `eq_b1_freq/gain/q`, `eq_b2_freq/gain/q`, `eq_hi_freq/gain`, `comp_thresh`, `comp_ratio`, `comp_attack`, `comp_release`, `comp_knee`, `comp_makeup`, `sat_drive`, `mix`, `stutter_on`, `stutter_rate`, `stutter_mix`.
-- Not built yet: presets, pitch correction. 
+- Pitch Tune (vocal pitch correction for one voice: key, scale, strength, speed; adds about 31 ms of latency only while it is on) is built, tested on synthetic voices and one real recording; not yet checked in FL Studio.
+- Not built yet: presets. 
 
 ## Verification status (what has actually been checked)
 - Verified on a real Apple Silicon Mac with FL Studio 2025: builds with the Command Line Tools only, `arm64` binary, loads as `VST3 (Apple - native)`, `ctest` passes, window renders and fits, IN/OUT/GR meters move, FL Studio shows the plugin-reported latency (0.14 ms = 6 samples at 44.1 kHz).

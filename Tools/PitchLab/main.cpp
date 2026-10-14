@@ -1,4 +1,4 @@
-// PitchLab - EXPERIMENTAL command-line harness for the Stage 4.1 pitch-correction prototype.
+// PitchLab - command-line harness for the pitch-correction module (Stage 4.1).
 // Not part of the plugin. Build with -DGLITCHKID_BUILD_PITCHLAB=ON.
 //
 //   PitchLab --report                           accuracy / latency / CPU / memory on synthetic voices
@@ -9,7 +9,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <chrono>
 #include <cstdio>
-#include "../../Source/Experimental/PitchCorrection/PitchCorrectorPrototype.h"
+#include "../../Source/DSP/PitchCorrection/PitchCorrector.h"
 
 using namespace glitchkid::pitch;
 
@@ -59,12 +59,12 @@ void writeWav (const juce::File& f, const std::vector<float>& x, double sr)
 
 int report()
 {
-    std::printf ("GlitchKid pitch-correction prototype: synthetic-voice report (no real vocals tested)\n\n");
+    std::printf ("GlitchKid pitch-correction module: synthetic-voice report (no real vocals tested)\n\n");
     for (double sr : { 44100.0, 48000.0, 96000.0 })
     {
-        PitchCorrectorPrototype c;
+        PitchCorrector c;
         c.prepare (sr);
-        PitchCorrectorPrototype::Settings s;
+        PitchCorrector::Settings s;
         s.strength = 1.0f; s.retuneSpeedMs = 20.0f;
         c.setSettings (s);
         std::printf ("sample rate %.0f Hz: latency %d samples = %.2f ms, state %.1f KiB\n", sr, c.getLatencySamples(),
@@ -107,9 +107,9 @@ int report()
                      "  mean distance from nearest semitone: input %.1f cents\n", meanDev (in));
         for (float speed : { 0.0f, 25.0f, 100.0f })
         {
-            PitchCorrectorPrototype c;
+            PitchCorrector c;
             c.prepare (sr);
-            PitchCorrectorPrototype::Settings s;
+            PitchCorrector::Settings s;
             s.retuneSpeedMs = speed;
             c.setSettings (s);
             std::vector<float> out (in.size());
@@ -130,9 +130,9 @@ int main (int argc, char** argv)
     {
         const double sr = 48000.0;
         const auto in = voice (sr, (int) (4 * sr), sungLine);
-        PitchCorrectorPrototype c;
+        PitchCorrector c;
         c.prepare (sr);
-        PitchCorrectorPrototype::Settings s;
+        PitchCorrector::Settings s;
         s.scale = ScaleQuantizer::Scale::chromatic; s.strength = 1.0f; s.retuneSpeedMs = 25.0f;
         c.setSettings (s);
         std::vector<float> out (in.size());
@@ -155,9 +155,9 @@ int main (int argc, char** argv)
         r->read (&b, 0, b.getNumSamples(), 0, true, true);
         std::vector<float> in (b.getReadPointer (0), b.getReadPointer (0) + b.getNumSamples()), out (in.size());
 
-        PitchCorrectorPrototype c;
+        PitchCorrector c;
         c.prepare (r->sampleRate);
-        PitchCorrectorPrototype::Settings s;
+        PitchCorrector::Settings s;
         s.key = argc > 3 ? juce::String (argv[3]).getIntValue() : 0;
         s.scale = (ScaleQuantizer::Scale) juce::jlimit (0, ScaleQuantizer::numScales - 1, argc > 4 ? juce::String (argv[4]).getIntValue() : 0);
         s.strength = argc > 5 ? juce::String (argv[5]).getFloatValue() : 1.0f;

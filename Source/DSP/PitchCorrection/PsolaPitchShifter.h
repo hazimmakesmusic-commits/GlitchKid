@@ -3,7 +3,8 @@
 #include <cstdint>
 #include <vector>
 
-// EXPERIMENTAL (Stage 4.1). Streaming pitch shifter for ONE voice, using time-domain pitch-synchronous
+// Pitch-correction module (Stage 4.1 prototype, productised in Stage 4.2).
+// Streaming pitch shifter for ONE voice, using time-domain pitch-synchronous
 // overlap-add (TD-PSOLA style): the input is cut into Hann-windowed grains two periods long, taken one
 // period apart, and the grains are laid back down at a different spacing. Spacing = period / ratio, so
 // the pitch changes by `ratio` while the duration is kept by repeating or skipping whole periods.
@@ -20,6 +21,9 @@ class PsolaPitchShifter
 public:
     static constexpr float minRatio = 0.5f, maxRatio = 2.0f;
 
+    // Constant delay for a given sample rate and lowest pitch: 2.5 longest periods plus interpolation margin.
+    static int latencyFor (double sampleRate, float lowestF0Hz);
+
     void prepare (double sampleRate, float lowestF0Hz);
     void reset();
 
@@ -29,6 +33,16 @@ public:
     void setRatio (float ratio);
 
     float process (float x);
+
+    // Idle mode: only record the input (no output). After feed() calls, the next process() starts
+    // immediately with the delayed input already available, with no gap. Call flush() once when going idle.
+    void feed (float x);
+    void flush();
+
+    // Start the next grain exactly one latency behind the input (zero timing offset). Used at the start of a voiced
+    // stretch: the shifter moves in whole periods, so without this a change of period could leave up to half a period
+    // of timing offset for the rest of the note.
+    void reanchor() { first = true; }
 
     int getLatencySamples() const { return latency; }
     float getDefaultPeriod() const { return defaultPeriod; }

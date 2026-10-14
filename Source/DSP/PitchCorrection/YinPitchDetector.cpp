@@ -54,6 +54,8 @@ bool YinPitchDetector::push (float x)
     accCount = 0;
     writePos = (writePos + 1) % (int) ring.size();
     filled = std::min (filled + 1, (int) ring.size());
+    if (! analysisEnabled)
+        return false;
 
     if (++sinceHop < hop)
         return false;

@@ -2,7 +2,7 @@
 #include <cstddef>
 #include <vector>
 
-// EXPERIMENTAL (Stage 4.1): not part of the plugin. Compiled only into the test target and PitchLab.
+// Pitch-correction module (Stage 4.1 prototype, productised in Stage 4.2).
 //
 // YIN fundamental-frequency detector (de Cheveigne & Kawahara, 2002), written from the published
 // algorithm: difference function -> cumulative mean normalised difference -> absolute threshold ->
@@ -30,6 +30,10 @@ public:
     // Feed one sample (non-finite or absurdly large values count as silence). Returns true when a
     // fresh estimate is available in result() (once per hop, about every 5 ms).
     bool push (float x);
+
+    // While off, push() still keeps the history up to date but runs no analysis (cheap). Used while the
+    // correction is switched off so it can start straight away when switched on.
+    void setAnalysisEnabled (bool on) { analysisEnabled = on; }
     const Result& result() const { return last; }
 
     // Length of the analysis window at the full sample rate: an estimate describes roughly the
@@ -48,6 +52,7 @@ private:
     int windowSamples = 0;
     double decRate = 16000.0;
     float threshold = 0.15f;
+    bool analysisEnabled = true;
     std::vector<float> ring, lin, cmndf;
     Result last;
 };

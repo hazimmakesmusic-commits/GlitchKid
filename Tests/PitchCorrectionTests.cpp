@@ -2,9 +2,10 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
-#include "../Source/Experimental/PitchCorrection/PitchCorrectorPrototype.h"
+#include "../Source/DSP/PitchCorrection/PitchCorrector.h"
 
-// Stage 4.1: tests for the experimental pitch-correction prototype. Synthetic signals only.
+// Stage 4.1: tests for the pitch-correction module on its own (Stage 4.2 tests of the plug-in stage are in PitchTuneTests.cpp).
+// Synthetic signals only.
 using namespace glitchkid::pitch;
 
 namespace
@@ -110,14 +111,14 @@ DetectStats detect (const Vec& x, double sr, double trueHz, int skipSamples, flo
     return st;
 }
 
-PitchCorrectorPrototype::Settings settings (int key, ScaleQuantizer::Scale sc, float strength, float speedMs)
+PitchCorrector::Settings settings (int key, ScaleQuantizer::Scale sc, float strength, float speedMs)
 {
-    PitchCorrectorPrototype::Settings s;
+    PitchCorrector::Settings s;
     s.key = key; s.scale = sc; s.strength = strength; s.retuneSpeedMs = speedMs;
     return s;
 }
 
-Vec runCorrector (PitchCorrectorPrototype& c, const Vec& in, int block)
+Vec runCorrector (PitchCorrector& c, const Vec& in, int block)
 {
     Vec out (in.size());
     for (size_t start = 0; start < in.size(); start += (size_t) block)
@@ -132,7 +133,7 @@ Vec runCorrector (PitchCorrectorPrototype& c, const Vec& in, int block)
 class PitchCorrectionTests : public juce::UnitTest
 {
 public:
-    PitchCorrectionTests() : juce::UnitTest ("PitchCorrection (experimental)", "GlitchKid") {}
+    PitchCorrectionTests() : juce::UnitTest ("PitchCorrection (module)", "GlitchKid") {}
 
     void runTest() override
     {
@@ -327,9 +328,9 @@ public:
             const auto in = voice (sr, (int) (1.2 * sr), sung);
             const int from = (int) (0.8 * sr), len = (int) (0.35 * sr);
 
-            auto freqOut = [&] (const PitchCorrectorPrototype::Settings& st)
+            auto freqOut = [&] (const PitchCorrector::Settings& st)
             {
-                PitchCorrectorPrototype c;
+                PitchCorrector c;
                 c.prepare (sr);
                 c.setSettings (st);
                 const auto out = runCorrector (c, in, 128);
@@ -345,7 +346,7 @@ public:
             expectLessThan (std::abs (freqOut (mixHalf) - 35.0), 8.0);
 
             // Slow retune: after 100 ms the correction is only part of the way there.
-            PitchCorrectorPrototype slow, fast;
+            PitchCorrector slow, fast;
             slow.prepare (sr); fast.prepare (sr);
             slow.setSettings (settings (0, Sc::chromatic, 1.0f, 300.0f));
             fast.setSettings (settings (0, Sc::chromatic, 1.0f, 10.0f));
@@ -360,7 +361,7 @@ public:
             expectLessThan (std::abs (fast.telemetry().correctionCents + 35.0f), 4.0f);
 
             // Bypass is the delayed input, bit for bit.
-            PitchCorrectorPrototype b;
+            PitchCorrector b;
             b.prepare (sr);
             auto sb = settings (0, Sc::chromatic, 1.0f, 0.0f);
             sb.bypass = true;
@@ -379,7 +380,7 @@ public:
             const auto in = voice (sr, (int) (0.9 * sr), [sr] (int i) { return 180.0 + 90.0 * (i > (int) (0.4 * sr)); });
             auto make = [&]
             {
-                auto c = std::make_unique<PitchCorrectorPrototype>();
+                auto c = std::make_unique<PitchCorrector>();
                 c->prepare (sr);
                 c->setSettings (settings (2, Sc::major, 0.8f, 25.0f));
                 return c;
@@ -399,7 +400,7 @@ public:
         {
             const double sr = 48000.0;
             const auto in = voice (sr, (int) (1.0 * sr), [sr] (int i) { return i < (int) (0.5 * sr) ? 207.0 : 262.0; }); // flat Ab3 -> flat C4
-            PitchCorrectorPrototype c;
+            PitchCorrector c;
             c.prepare (sr);
             c.setSettings (settings (0, Sc::chromatic, 1.0f, 15.0f));
             const auto out = runCorrector (c, in, 256);
@@ -417,7 +418,7 @@ public:
         {
             for (double sr : { 44100.0, 48000.0 })
             {
-                PitchCorrectorPrototype c;
+                PitchCorrector c;
                 c.prepare (sr);
                 c.setSettings (settings (0, Sc::major, 1.0f, 0.0f));
                 juce::Random rng (3);
@@ -444,7 +445,7 @@ public:
             for (int i = 14000; i < 14100; ++i) { dirty[(size_t) i] = (i % 3 == 0) ? qNaN : (i % 3 == 1 ? posInf : -posInf); clean[(size_t) i] = 0.0f; }
             dirty[20000] = 1.0e30f; clean[20000] = 0.0f;
             dirty[20001] = -1.0e38f; clean[20001] = 0.0f;
-            auto mk = [&] { PitchCorrectorPrototype c; c.prepare (sr); c.setSettings (settings (0, Sc::chromatic, 1.0f, 20.0f)); return c; };
+            auto mk = [&] { PitchCorrector c; c.prepare (sr); c.setSettings (settings (0, Sc::chromatic, 1.0f, 20.0f)); return c; };
             auto a = mk(), b = mk();
             const auto oa = runCorrector (a, clean, 200), ob = runCorrector (b, dirty, 200);
             expect (oa == ob, "identical to zero substitution");
@@ -453,7 +454,7 @@ public:
 
         beginTest ("Corrector: odd settings are sanitised");
         {
-            PitchCorrectorPrototype c;
+            PitchCorrector c;
             c.prepare (48000.0);
             auto s = settings (-5, Sc::major, qNaN, posInf);
             s.mix = qNaN; s.refA4Hz = -1.0f; s.holdMs = qNaN; s.minConfidence = posInf;

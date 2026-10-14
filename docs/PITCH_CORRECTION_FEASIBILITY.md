@@ -1,6 +1,6 @@
-# Pitch correction: feasibility prototype (Stage 4.1)
+# Pitch correction: feasibility study (Stage 4.1)
 
-**Status: experimental. Not in the plugin.** The production signal path, parameters, GUI and MOODS are unchanged. The prototype is compiled only into the test target (`GlitchKidTests`) and the optional `PitchLab` command-line harness.
+**Status: the feasibility question is answered (see below) and the module is now part of the plug-in as Pitch Tune (Stage 4.2, see `ARCHITECTURE.md`).** This document keeps the Stage 4.1 findings and measurements; the code moved from `Source/Experimental/PitchCorrection/` to `Source/DSP/PitchCorrection/` and `PitchCorrectorPrototype` became `PitchCorrector` (now mono or stereo). `PitchLab` still builds from the same module.
 
 ## Question
 Can GlitchKid deliver musical, low-latency vocal tuning for ₹0 upfront, with no paid or hosted dependency?
@@ -8,13 +8,13 @@ Can GlitchKid deliver musical, low-latency vocal tuning for ₹0 upfront, with n
 ## Answer so far
 **Technically feasible, quality not yet judged.** A mono YIN detector + scale quantiser + TD-PSOLA-style shifter, all written in-house, tunes synthetic voices accurately at about 2 % of one CPU core. Whether it sounds *good* on a real voice is **unknown**: nothing here has been listened to. Latency (about 31 ms) is the main product risk, see below.
 
-## What was built (`Source/Experimental/PitchCorrection/`)
+## What was built (`Source/DSP/PitchCorrection/`, first in `Source/Experimental/`)
 | File | Role |
 |---|---|
 | `YinPitchDetector` | YIN F0 estimator. Input averaged down to ~24 kHz, 5 ms hop, window ~2 x the longest period. Outputs frequency, confidence (1 - normalised difference), voiced flag, period. Silence gate at about -70 dBFS RMS. |
 | `ScaleQuantizer` | Nearest note in a key (C..B) and scale (chromatic, major, natural/harmonic minor, major/minor pentatonic); target hysteresis of 0.15 semitone so a singer between two notes does not flip the target. |
 | `PsolaPitchShifter` | Streaming pitch-synchronous overlap-add: Hann grains two periods wide, one detected period apart, laid down at period / ratio spacing; windows are normalised by their sum; fractional positions use cubic interpolation. Ratio limited to 0.5..2. Constant latency whatever the pitch. |
-| `PitchCorrectorPrototype` | Ties them together: voiced check (YIN voiced and confidence >= 0.85), 3-point median of the period, hold of 60 ms when the voice drops out, strength (0..1 of the distance to the target), retune speed (one-pole glide of the correction, 0 = instant), dry/wet mix, bit-exact bypass. One sample at a time, so the result cannot depend on the host block size. |
+| `PitchCorrector` | Ties them together: voiced check (YIN voiced and confidence >= 0.85), 3-point median of the period, hold of 60 ms when the voice drops out, strength (0..1 of the distance to the target), retune speed (one-pole glide of the correction, 0 = instant), dry/wet mix, bit-exact bypass. One sample at a time, so the result cannot depend on the host block size. |
 | `Tools/PitchLab/main.cpp` | `--report` (measurements), `--demo dir` (writes an out-of-tune synthetic line and its corrected version), or `in.wav out.wav [key scale strength retuneMs mix]` to tune a dry recording. |
 
 Real-time safety: all buffers are allocated in `prepare()`; `process()` does no allocation, locking, logging or file I/O (no `std::vector` growth, no `new`). Non-finite samples and anything with magnitude >= 1e6 are treated as 0 before they reach any state (same policy as the production stages); a test proves the result is bit-identical to feeding zeros.

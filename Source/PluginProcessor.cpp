@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "DSP/Finite.h"
 
 juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLayout()
 {
@@ -87,6 +88,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { echoMixId, 1 }, "Echo Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { tuneOnId, 1 }, "Tune On", false));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { tuneKeyId, 1 }, "Tune Key",
+        StringArray { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }, 0));
+    StringArray scales;
+    for (int i = 0; i < glitchkid::pitch::ScaleQuantizer::numScales; ++i)
+        scales.add (glitchkid::pitch::ScaleQuantizer::name ((glitchkid::pitch::ScaleQuantizer::Scale) i));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { tuneScaleId, 1 }, "Tune Scale", scales, 0));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { tuneStrengthId, 1 }, "Tune Strength",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { tuneSpeedId, 1 }, "Tune Speed",
+        skewed (0.0f, 400.0f, 1.0f, 40.0f), 20.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { dimOnId, 1 }, "Dimension On", false));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimWidthId, 1 }, "Dimension Width",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f, AudioParameterFloatAttributes().withLabel ("%")));
@@ -132,6 +145,38 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* dimIds[] = { dimOnId, dimWidthId, dimDetuneId, dimDepthId, dimMixId };
     for (int i = 0; i < 5; ++i)
         dimParams[i] = apvts.getRawParameterValue (dimIds[i]);
+    const char* tuneIds[] = { tuneOnId, tuneKeyId, tuneScaleId, tuneStrengthId, tuneSpeedId };
+    for (int i = 0; i < 5; ++i)
+        tuneParams[i] = apvts.getRawParameterValue (tuneIds[i]);
+
+    if (juce::MessageManager::existsAndIsCurrentThread())
+        startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
+}
+
+GlitchKidProcessor::~GlitchKidProcessor()
+{
+    stopTimer();
+}
+
+glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings() const
+{
+    glitchkid::pitch::PitchCorrector::Settings s;
+    s.key = (int) std::lround (tuneParams[1]->load());
+    s.scale = (glitchkid::pitch::ScaleQuantizer::Scale) juce::jlimit (0, glitchkid::pitch::ScaleQuantizer::numScales - 1,
+                                                                      (int) std::lround (tuneParams[2]->load()));
+    s.strength = tuneParams[3]->load() * 0.01f;
+    s.retuneSpeedMs = tuneParams[4]->load();
+    return s;
+}
+
+int GlitchKidProcessor::getWantedLatencySamples() const
+{
+    return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0);
+}
+
+void GlitchKidProcessor::updateReportedLatency()
+{
+    setLatencySamples (getWantedLatencySamples());
 }
 
 DimensionSettings GlitchKidProcessor::readDimensionSettings() const
@@ -291,6 +336,14 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryDelay.prepare (Saturation::latencySamples);
     stutter.prepare (sampleRate);
 
+    pitchLatency = glitchkid::pitch::PitchCorrector::latencyFor (sampleRate);
+    pitch.prepare (sampleRate);
+    pitch.setSettings (readTuneSettings());
+    pitchDryDelay.prepare (pitchLatency);
+    tuneBlend.reset (sampleRate, 0.02);
+    tuneBlend.setCurrentAndTargetValue (tuneParams[0]->load() >= 0.5f ? 1.0f : 0.0f);
+    updateReportedLatency();
+
     echo.setSettings (readEchoSettings());
     echo.prepare (sampleRate);
 
@@ -298,6 +351,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dimension.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
+    dryBuffer2.setSize (2, dryBuffer.getNumSamples());
+    undelayedBuffer.setSize (2, dryBuffer.getNumSamples());
+    blendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
 }
 
 // Raise a peak value; only the audio thread writes, so a plain load/store is enough.
@@ -359,6 +415,30 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     juce::AudioBuffer<float> dry (dryBuffer.getArrayOfWritePointers(), dryChannels, 0, numSamples);
     dryDelay.process (dry);
 
+    // Pitch Tune: while it is on, the dry path is delayed by its latency too (crossfaded with the same 20 ms ramp that
+    // blends the tuned signal in), so Mix and Bypass stay time-aligned with what the host was told.
+    const bool tuneOn = tuneParams[0]->load() >= 0.5f;
+    tuneBlend.setTargetValue (tuneOn ? 1.0f : 0.0f);
+    const bool tuneActive = tuneOn || tuneBlend.isSmoothing();
+    for (int ch = 0; ch < dryChannels; ++ch)
+        dryBuffer2.copyFrom (ch, 0, dry, ch, 0, numSamples);
+    juce::AudioBuffer<float> dryLate (dryBuffer2.getArrayOfWritePointers(), dryChannels, 0, numSamples);
+    pitchDryDelay.process (dryLate); // always fed, so it is valid the moment Tune is switched on
+    if (tuneActive)
+    {
+        for (int i = 0; i < numSamples; ++i)
+            blendBuffer[(size_t) i] = tuneBlend.getNextValue();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = blendBuffer[(size_t) i];
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float a = dry.getSample (ch, i), late = dryLate.getSample (ch, i);
+                dry.setSample (ch, i, b >= 1.0f ? late : a + (late - a) * b);
+            }
+        }
+    }
+
     const bool bypassed = bypass->load() >= 0.5f;
     const float wetTarget = wetAmount (bypassed, mixPercent->load());
     wetMix.setTargetValue (wetTarget);
@@ -371,6 +451,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         stutter.reset();
         echo.reset();
         dimension.reset();
+        pitch.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // keep listening, so un-bypassing has no gap
+        shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
+        shownTargetMidi.store (-1.0f, std::memory_order_relaxed);
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
         raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
@@ -378,6 +461,38 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     }
 
     const bool crossfading = wetMix.isSmoothing() || wetTarget < 1.0f; // blending dry and processed
+
+    if (tuneActive)
+    {
+        // Pitch Tune comes first. Non-finite input is zeroed before the straight-through copy is taken, so a NaN can
+        // never reach the blend (0 x NaN is NaN).
+        for (int ch = 0; ch < numChannels; ++ch)
+            dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
+        for (int ch = 0; ch < dryChannels; ++ch)
+            undelayedBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+        pitch.setSettings (readTuneSettings());
+        pitch.process (buffer.getArrayOfWritePointers(), numChannels, numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = blendBuffer[(size_t) i];
+            if (b >= 1.0f)
+                continue;
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float u = undelayedBuffer.getSample (ch, i), t = buffer.getSample (ch, i);
+                buffer.setSample (ch, i, u + (t - u) * b);
+            }
+        }
+        const auto& tel = pitch.telemetry();
+        shownDetectedMidi.store (tel.voiced ? tel.detectedMidi : -1.0f, std::memory_order_relaxed);
+        shownTargetMidi.store (tel.voiced ? tel.targetMidi : -1.0f, std::memory_order_relaxed);
+    }
+    else
+    {
+        pitch.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // idle: record only, no processing
+        shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
+        shownTargetMidi.store (-1.0f, std::memory_order_relaxed);
+    }
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),

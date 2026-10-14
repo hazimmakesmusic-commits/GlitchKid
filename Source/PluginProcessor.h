@@ -7,12 +7,14 @@
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
+#include "DSP/PitchCorrection/PitchCorrector.h"
 #include "AlterEgos.h"
 
-// Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> pitch tune (optional) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
-// path is delayed by the same amount so bypass stays time-aligned. Peak meters tap the input and output.
-class GlitchKidProcessor : public juce::AudioProcessor
+// path is delayed by the same amount so bypass stays time-aligned. Pitch Tune (off by default) adds its own constant delay (PitchCorrector::latencyFor, about 31 ms)
+// only while it is switched on: the dry path and the reported latency follow it, with a 20 ms crossfade when it is switched. Peak meters tap the input and output.
+class GlitchKidProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
     // Parameter IDs are stored in saved sessions and presets: never rename or reuse them.
@@ -57,7 +59,15 @@ public:
     static constexpr const char* dimDepthId  = "dim_depth";  // percent, level of the thickening voices
     static constexpr const char* dimMixId    = "dim_mix";    // percent, dry (0) to dry + full effect (100)
 
+    // Pitch Tune (vocal pitch correction). Default off, so a fresh instance does not change the sound or add latency.
+    static constexpr const char* tuneOnId       = "tune_on";
+    static constexpr const char* tuneKeyId      = "tune_key";      // 0 = C ... 11 = B
+    static constexpr const char* tuneScaleId    = "tune_scale";    // index into glitchkid::pitch::ScaleQuantizer::Scale
+    static constexpr const char* tuneStrengthId = "tune_strength"; // percent of the distance to the target note that is corrected
+    static constexpr const char* tuneSpeedId    = "tune_speed";    // ms, how fast the correction glides; 0 = instant
+
     GlitchKidProcessor();
+    ~GlitchKidProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override {}
@@ -104,8 +114,18 @@ public:
     bool isStutterTempoFromHost() const { return tempoFromHost.load(); }
     int getStutterLoopLength() const { return shownLoopLength.load(); } // 0 when not repeating
 
+    // Pitch Tune read-outs for the UI: MIDI note numbers (fractional), -1 when no voice is being corrected.
+    float getTuneDetectedMidi() const { return shownDetectedMidi.load(); }
+    float getTuneTargetMidi() const { return shownTargetMidi.load(); }
+
+    // The latency this instance should report right now (6 samples, plus the Pitch Tune delay while it is on). A timer
+    // on the message thread calls updateReportedLatency(); tests call it directly.
+    int getWantedLatencySamples() const;
+    void updateReportedLatency();
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
+    void timerCallback() override { updateReportedLatency(); }
     void processChunk (juce::AudioBuffer<float>&);
 
     std::atomic<float>* gainDb = nullptr;
@@ -133,6 +153,15 @@ private:
     DimensionSettings readDimensionSettings() const;
     std::atomic<float>* echoParams[8] {}; // on, sync, time, division, feedback, tone, width, mix
     EchoSettings readEchoSettings() const;
+    glitchkid::pitch::PitchCorrector pitch;
+    glitchkid::pitch::PitchCorrector::Settings readTuneSettings() const;
+    std::atomic<float>* tuneParams[5] {}; // on, key, scale, strength, speed
+    FixedDelay pitchDryDelay;             // extra dry-path delay for Pitch Tune (used while it is on)
+    juce::AudioBuffer<float> dryBuffer2, undelayedBuffer; // preallocated in prepareToPlay
+    std::vector<float> blendBuffer;       // per-sample Pitch Tune blend for the current chunk
+    juce::SmoothedValue<float> tuneBlend { 0.0f }; // 1 = Pitch Tune path (delayed), 0 = straight through
+    int pitchLatency = 0;
+    std::atomic<float> shownDetectedMidi { -1.0f }, shownTargetMidi { -1.0f };
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency
     std::atomic<float>* satDrive = nullptr;
     std::atomic<float>* mixPercent = nullptr;

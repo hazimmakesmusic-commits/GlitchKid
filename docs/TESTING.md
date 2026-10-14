@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 123 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 151 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -36,7 +36,7 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
 
 ## Test files (groups)
 `main.cpp` 18 (processor, EQ) · `CompressorTests.cpp` 12 · `SaturationTests.cpp` 12 · `MixTests.cpp` 8 ·
-`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise).
+`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise) · `PitchCorrectionTests.cpp` 14 (the pitch-correction module on its own) · `PitchTuneTests.cpp` 14 (Pitch Tune inside the plug-in).
 
 ## Conventions
 - A test that cannot fail is not a test: new tests are mutation-checked (deliberately break the code; the test must fail).
@@ -96,10 +96,21 @@ without hard limits, Surprise that randomises the drive, an Alter Ego that sets 
 Not provable by these tests: whether the Alter Egos sound good on a real voice (they are measured starting points, not tuned by ear), how loud your
 voice gets (makeup is matched to speech-like noise), and behaviour inside FL Studio on the Mac.
 
-## Pitch-correction prototype (Stage 4.1)
-14 groups in `Tests/PitchCorrectionTests.cpp`; synthetic signals only. Details, measurements and what they cannot prove: `docs/PITCH_CORRECTION_FEASIBILITY.md`. Mutation-checked.
+## Pitch Tune (Stages 4.1 and 4.2): what the tests prove, and what they cannot
+`PitchCorrectionTests.cpp` (module, synthetic voices; numbers in `docs/PITCH_CORRECTION_FEASIBILITY.md`) and `PitchTuneTests.cpp` (in the plug-in):
+the five parameters exist with off/neutral defaults and the 36 earlier ones are intact; with Tune off the output is the input delayed by exactly 6 samples
+(bit-exact, 8 rate/block combinations); with Tune on the reported latency is 6 plus the Pitch Tune delay (44.1, 48, 96 kHz) and returns to 6 when off;
+a +35 cent note is pulled onto the note within 10 cents in stereo and mono, at 44.1/48 kHz and block sizes 64 to 4096 (including blocks larger than the
+internal chunk); strength 0 keeps pitch (3 cents), level (10 %) and timing (8 samples) of the input; Mix 0 and Bypass give the dry input delayed by the TOTAL
+latency, bit-exact; switching on and off during playback is finite, bounded, has no silent gap on engage, and "off" is bit-exact again; a dry-only switch has
+no click; NaN/Inf/huge input equals zeros bit-exactly, always-on and while the switch crossfade is running; identical channels give identical outputs; the
+read-out shows the sung and target note; key/scale choices are honoured; Alter Egos never touch the Tune controls; state round-trips and an older state loads with Tune off.
+Mutation-checked (each caught): dry path not delayed, latency not reported, idle not recording history, NaN not zeroed before the blend, blend never engaging,
+no re-anchor at voice onset, plus the module-level mutations listed in the feasibility doc.
+Not provable by these tests: how it sounds on real voices beyond the owner's single listening test, polyphonic or mixed material, host behaviour when the
+reported latency changes (FL Studio, Mac), and live-monitoring feel at 31 ms.
 
 ## Manual FL Studio checklist (owner)
 Load on an insert; every knob changes sound; Bypass is clean and level-matched; Mix 0 % equals bypass; Glitch
-Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; ALTER EGOS: click each of CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE on a vocal (the lit button moves, the knobs move, the sound changes, no clicks), drag CHAOS from 0 to 100 % (the character intensifies, no pops, level steady), drag BLEND (0 % = original, 100 % = processed), press SURPRISE ME several times (small, usable variations; the label shows the variation number), edit one knob (label turns CUSTOM), re-click the Alter Ego (restores), save/reopen; Dimension: ON, WIDTH, DETUNE, DEPTH, MIX on a mono vocal, plus a mono-sum check (pan both channels to centre on a mono mixer insert or use a mono-sum meter); Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project
+Stutter on/off, each rate, Stutter Mix, host tempo shown and followed; ALTER EGOS: click each of CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE on a vocal (the lit button moves, the knobs move, the sound changes, no clicks), drag CHAOS from 0 to 100 % (the character intensifies, no pops, level steady), drag BLEND (0 % = original, 100 % = processed), press SURPRISE ME several times (small, usable variations; the label shows the variation number), edit one knob (label turns CUSTOM), re-click the Alter Ego (restores), save/reopen; Pitch Tune: ON with a dry vocal (the read-out shows the sung note and the target, the voice moves to the nearest note of KEY/SCALE; STRENGTH 0 leaves it alone; SPEED 0 is the hard-tune sound; no click or gap when switching ON/OFF during playback; the latency shown by FL changes from 6 to about 1500 samples while ON and tracks stay aligned; Mix 0 % and Bypass stay aligned with it; breaths and "s" sounds are not mangled; a mono track works), and that OFF sounds identical to before; Dimension: ON, WIDTH, DETUNE, DEPTH, MIX on a mono vocal, plus a mono-sum check (pan both channels to centre on a mono mixer insert or use a mono-sum meter); Liquid Echo: ON, SYNC with several divisions at the project tempo, free TIME, FEEDBACK, TONE, WIDTH, ECHO MIX, automation of each, project recall; automation; save, close, reopen the project
 and settings return; latency shown as 6 samples. Record the result and FL/macOS versions.

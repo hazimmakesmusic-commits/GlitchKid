@@ -49,7 +49,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 848; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 980; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -70,6 +70,14 @@ private:
     juce::ComboBox stutterRateBox;
     juce::OwnedArray<ParamKnob> stutterMixKnob;
     juce::String shownTempoText;
+
+    // Pitch Tune row: ON, key, scale, strength, speed, and a read-out of the sung note and the note it is pulled to.
+    juce::Label tuneTitle { {}, "PITCH TUNE" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
+    juce::ToggleButton tuneOnButton { "ON" };
+    juce::ComboBox tuneKeyBox, tuneScaleBox;
+    juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed
+    juce::String shownTuneText;
+    int tuneDividerY = 0;
 
     // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
     juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
@@ -105,6 +113,8 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment echoOnAttachment, echoSyncAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment tuneOnAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment tuneKeyAttachment, tuneScaleAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)

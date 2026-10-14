@@ -1,21 +1,22 @@
 # Architecture
 
-What exists today (Stage 3.4: MOODS 2.0, Alter Egos + Mood Engine, on top of Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 4.2: Pitch Tune, on top of MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
 32-bit float; no network, no hosted service. Plug-in codes: manufacturer `GlKd`, plug-in `Gkid` (never change).
 
 ```
-input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
-   \______________ dry copy, delayed by 6 samples (FixedDelay) ______________/
+input -> [Pitch Tune, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
+   \______ dry copy, delayed by 6 samples (+ the Pitch Tune delay while Tune is on) ______/
 ```
 
 ## Files
 | File | Role |
 |---|---|
-| `Source/PluginProcessor.*` | 36 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
-| `Source/PluginEditor.*` | Window designed at 1060x848 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 78%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
+| `Source/PluginProcessor.*` | 41 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune latency reporting |
+| `Source/PluginEditor.*` | Window designed at 1060x980 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 74%: knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/DSP/PitchCorrection/*` | Pitch Tune: `YinPitchDetector` (F0), `ScaleQuantizer` (key/scale), `PsolaPitchShifter` (TD-PSOLA-style, one per channel), `PitchCorrector` (ties them together, mono/stereo) |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
 | `Source/DSP/Saturation.*` | `tanh(kx)/tanh(k)` waveshaper, 4x oversampled (JUCE polyphase IIR half-band) |
@@ -29,19 +30,24 @@ input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dime
 
 ## Per-block flow (`PluginProcessor::processChunk`)
 1. Resolve host tempo once per block (play head BPM, clamped 40..300, fallback 120).
-2. Copy the input to the dry buffer and delay it by `Saturation::latencySamples` (6).
+2. Copy the input to the dry buffer and delay it by `Saturation::latencySamples` (6). A second copy is delayed by the Pitch Tune
+   latency as well (always, so it is valid the moment Tune is switched on); while Tune is on (or ramping) the dry buffer is the
+   crossfade between the two, using the 20 ms Tune blend ramp.
 3. If Bypass is on, or Mix is 0 %, and the crossfade has settled: output the exact delayed dry copy, reset the
-   stages, return (almost no CPU).
-4. Otherwise run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain; then crossfade with the dry copy if Mix < 100 %
-   or a Bypass/Mix change is still ramping.
+   stages, return (almost no CPU). Pitch Tune only listens (`feed`) in this state.
+4. Otherwise: Pitch Tune (if on or ramping: zero non-finite input, keep a straight-through copy, correct in place, crossfade by the
+   Tune blend; if off: only `feed`, i.e. record the history), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
+   then crossfade with the dry copy if Mix < 100 % or a Bypass/Mix change is still ramping.
 5. Update peak meters.
 Host blocks larger than the dry buffer are split into chunks.
 
 ## Design rules
 - **Off means bit-exact.** Values within half a parameter step of neutral snap to exactly neutral, and idle stages
   are skipped. (Found on the Mac: the 0.1 dB grid produced 8.9e-07 dB at "0 dB" on Apple Silicon.)
-- **Constant latency, always reported:** 6 samples (0.125 ms at 48 kHz). It is the saturation oversampler's latency;
-  the dry/bypass path and an idle saturation stage are delayed by the same amount.
+- **Latency, always reported:** 6 samples (0.125 ms at 48 kHz) with Pitch Tune off. It is the saturation oversampler's latency;
+  the dry/bypass path and an idle saturation stage are delayed by the same amount. With Pitch Tune on it is 6 plus
+  `PitchCorrector::latencyFor(sampleRate)` (1504 samples = 31.3 ms at 48 kHz, 1383 at 44.1, 3004 at 96), reported through a
+  message-thread timer (10 Hz) so the audio thread never calls the host; the dry path is delayed by the same amount.
 - **Smoothing:** gain, Mix, EQ settings and drive ramp over 20 ms; EQ coefficients refresh every 32 samples while moving.
 - **Real-time safe:** no allocation, locks or I/O on the audio thread; buffers are sized in `prepareToPlay`
   (measured: 0 audio-thread heap allocations over 6,000 blocks in the audit).
@@ -50,7 +56,7 @@ Host blocks larger than the dry buffer are split into chunks.
   `gain, bypass, eq_lo_freq, eq_lo_gain, eq_b1_freq, eq_b1_gain, eq_b1_q, eq_b2_freq, eq_b2_gain, eq_b2_q,
   eq_hi_freq, eq_hi_gain, comp_thresh, comp_ratio, comp_attack, comp_release, comp_knee, comp_makeup, sat_drive,
   stutter_on, stutter_rate, stutter_mix, mix, echo_on, echo_sync, echo_time, echo_div, echo_fb, echo_tone,
-  echo_width, echo_mix, dim_on, dim_width, dim_detune, dim_depth, dim_mix`.
+  echo_width, echo_mix, dim_on, dim_width, dim_detune, dim_depth, dim_mix, tune_on, tune_key, tune_scale, tune_strength, tune_speed`.
 - **State:** XML via `copyState`/`replaceState`; unknown or garbage state is ignored; parameters missing from an
   older save keep their defaults. The saved state has no version attribute yet.
 
@@ -191,6 +197,26 @@ removes the variation.
 mixes, geometric for frequencies and times) and a rule for switches and the echo division (hold, then change under a fade), plus a stored second
 selection and tests for the intermediate states. Chaos already gives a safe continuous intensity axis; a Morph is a separate future stage.
 
+## Pitch Tune (Stage 4.2; prototype and measurements in `PITCH_CORRECTION_FEASIBILITY.md`)
+Vocal pitch correction for one voice, first in the chain. Five parameters, **default off** (so a fresh instance changes nothing and adds no
+latency): `tune_on`, `tune_key` (C..B), `tune_scale` (chromatic, major, natural/harmonic minor, major/minor pentatonic), `tune_strength`
+(0..100 %, how much of the distance to the target note is corrected), `tune_speed` (0..400 ms glide of the correction; 0 = instant).
+- **Detection:** YIN on the channel average (about 24 kHz, 5 ms hop, window about 2 longest periods), 80..800 Hz, voiced only when confidence is
+  at least 0.85; a 3-point median of the period; 60 ms hold when the voice drops out. Unvoiced audio (breaths, "s", noise) is passed through
+  uncorrected.
+- **Shifting:** one TD-PSOLA-style shifter per channel (Hann grains two periods wide, one period apart), all driven by the same period and ratio,
+  so stereo images do not move. Not aligned to glottal pulses; no formant control. Re-anchors its timing at the start of each voiced stretch so
+  the output matches the reported latency; a later change of period can leave up to half a period of timing offset (a phase shift on a held note).
+- **Latency and switching:** the output is always delayed by `latencyFor(sampleRate)` (2.5 x the longest period, 80 Hz lowest) while Tune is on. The
+  reported latency and the dry path follow the switch. Switching crossfades over 20 ms between the straight-through signal and the tuned (delayed)
+  signal; while off, the corrector keeps listening (`feed`: history only, no analysis) so that switching on has no silent gap.
+- **Order:** before the EQ, so the rest of the chain works on the tuned voice. Mix/Blend 0 % is the original voice (delayed to match).
+- **Safety:** non-finite input is zeroed before the straight-through copy; the corrector treats NaN/Inf/|x| >= 1e6 as 0. A test proves bit-exact
+  equality with the same audio containing zeros, both always-on and while switching.
+- **Cost:** about 2 to 3 % of one core while on (about 1 % while off and listening), 100 to 230 KiB of fixed memory (see the measurements in the feasibility doc).
+- **UI:** a Pitch Tune row above Liquid Echo (ON, KEY, SCALE, STRENGTH, SPEED) and a read-out `SUNG A3 +23c -> A3` / `listening...` / `OFF`.
+- Alter Egos, Chaos and Surprise never touch the Pitch Tune controls.
+
 ## What does not exist
-User presets (saving and browsing your own), pitch correction, other plug-in formats, host-grid phase-lock
-for the stutter. Moods have not been tuned by ear on real vocals.
+User presets (saving and browsing your own), other plug-in formats, host-grid phase-lock
+for the stutter, formant control for Pitch Tune, polyphonic pitch correction, pitch correction of a mixed (non-solo) signal. Moods have not been tuned by ear on real vocals.

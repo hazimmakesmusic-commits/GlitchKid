@@ -4,6 +4,12 @@
 
 namespace glitchkid::pitch
 {
+int PsolaPitchShifter::latencyFor (double sampleRate, float lowestF0Hz)
+{
+    const double maxP = (double) (float) (sampleRate / std::max (lowestF0Hz, 20.0f));
+    return (int) std::ceil (2.5 * maxP) + 4;
+}
+
 void PsolaPitchShifter::prepare (double sampleRate, float lowestF0Hz)
 {
     maxPeriod = (float) (sampleRate / std::max (lowestF0Hz, 20.0f));
@@ -11,7 +17,7 @@ void PsolaPitchShifter::prepare (double sampleRate, float lowestF0Hz)
     defaultPeriod = std::clamp ((float) std::round (sampleRate / 150.0), minPeriod, maxPeriod);
     // Grains reach 1.5 periods ahead of the read point, and a grain is two periods wide: 2.5 periods
     // of delay (plus interpolation margin) guarantees every grain is complete when it is cut.
-    latency = (int) std::ceil (2.5 * maxPeriod) + 4;
+    latency = latencyFor (sampleRate, lowestF0Hz);
 
     size_t size = 1024;
     while ((int) size < latency + 3 * (int) std::ceil (maxPeriod) + 16)
@@ -98,6 +104,20 @@ void PsolaPitchShifter::emitGrain()
     }
 
     sc += T / (double) ratio;
+}
+
+void PsolaPitchShifter::feed (float x)
+{
+    in[(size_t) (n & mask)] = x;
+    ++n;
+    sc = (double) n; // the first grain after feed() lands exactly at the next sample
+    first = true;
+}
+
+void PsolaPitchShifter::flush()
+{
+    std::fill (acc.begin(), acc.end(), 0.0f);
+    std::fill (wsum.begin(), wsum.end(), 0.0f);
 }
 
 float PsolaPitchShifter::process (float x)

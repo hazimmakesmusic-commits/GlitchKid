@@ -547,7 +547,11 @@ struct AlterEgoTests : public juce::UnitTest
                 if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q)) ids.insert (r->paramID);
             for (auto* id : allOriginalIds)
                 expect (ids.count (id) == 1, juce::String ("parameter ID still present: ") + id);
-            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds)); // no parameter was added, renamed or removed
+            // No original parameter was renamed or removed. The only additions are the five Pitch Tune parameters (Stage 4.2),
+            // which no Alter Ego may touch (checked in PitchTuneTests.cpp).
+            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds) + 5);
+            for (auto* id : { "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed" })
+                expect (ids.count (id) == 1, juce::String ("Pitch Tune parameter present: ") + id);
 
             CountingListener l;
             auto* sat = p.apvts.getParameter ("sat_drive");

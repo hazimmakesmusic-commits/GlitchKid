@@ -3,6 +3,14 @@
 namespace
 {
 const juce::Colour lime (0xffb6ff00), pink (0xffff2d95), violet (0xff8a2be2);
+
+// "A3" for MIDI note 57 (middle C = C4 = 60).
+juce::String noteName (float midi)
+{
+    static const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const int n = (int) std::lround (midi);
+    return juce::String (names[((n % 12) + 12) % 12]) + juce::String (n / 12 - 1); // (voice range only: n is never negative)
+}
 }
 
 void LevelMeter::pushPeak (float linearPeak)
@@ -86,6 +94,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       echoSyncAttachment (p.apvts, GlitchKidProcessor::echoSyncId, echoSyncButton),
       echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox),
       dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton),
+      tuneOnAttachment (p.apvts, GlitchKidProcessor::tuneOnId, tuneOnButton),
+      tuneKeyAttachment (p.apvts, GlitchKidProcessor::tuneKeyId, tuneKeyBox),
+      tuneScaleAttachment (p.apvts, GlitchKidProcessor::tuneScaleId, tuneScaleBox),
       blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
@@ -215,6 +226,37 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &echoTitle, &echoDivLabel, &echoOnButton, &echoSyncButton, &echoDivBox })
         content.addAndMakeVisible (c);
 
+    // Pitch Tune: pulls the sung note to the nearest note of the chosen key and scale. STRENGTH = how much of the distance is
+    // corrected; SPEED = how fast the correction glides (0 = instant, the "hard tune" sound). Adds about 31 ms of latency while ON.
+    for (const char* id : { GlitchKidProcessor::tuneKeyId, GlitchKidProcessor::tuneScaleId })
+        if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (id)))
+        {
+            auto& box = id == GlitchKidProcessor::tuneKeyId ? tuneKeyBox : tuneScaleBox;
+            box.addItemList (choice->choices, 1);
+            box.setSelectedItemIndex (choice->getIndex(), juce::dontSendNotification);
+        }
+    tuneTitle.setJustificationType (juce::Justification::centred);
+    tuneTitle.setColour (juce::Label::textColourId, violet);
+    for (auto* l : { &tuneKeyLabel, &tuneScaleLabel })
+    {
+        l->setJustificationType (juce::Justification::centred);
+        l->setFont (juce::FontOptions (11.0f));
+        content.addAndMakeVisible (l);
+    }
+    tuneReadout.setJustificationType (juce::Justification::centred);
+    tuneReadout.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    tuneReadout.setColour (juce::Label::textColourId, lime);
+    tuneOnButton.setColour (juce::ToggleButton::tickColourId, lime);
+    tuneOnButton.setTooltip ("Vocal pitch correction for a single voice (adds about 31 ms of latency while on). Sing or play a dry vocal.");
+    tuneKeyBox.setTooltip ("The key (root note) of the song.");
+    tuneScaleBox.setTooltip ("Which notes the voice may be pulled to. Chromatic = any semitone.");
+    tuneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::tuneStrengthId, "STRENGTH", " %", lime));
+    tuneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::tuneSpeedId, "SPEED", " ms", pink));
+    for (auto* k : tuneKnobs)
+        k->addTo (content);
+    for (auto* c : std::initializer_list<juce::Component*> { &tuneTitle, &tuneReadout, &tuneOnButton, &tuneKeyBox, &tuneScaleBox })
+        content.addAndMakeVisible (c);
+
     // Dimension: stereo thickening. WIDTH 0 = centred thickening, 100 = stereo spread; DETUNE = pitch swing in cents.
     dimTitle.setJustificationType (juce::Justification::centred);
     dimTitle.setColour (juce::Label::textColourId, violet);
@@ -276,7 +318,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    setSize (designW * 78 / 100, designH * 78 / 100);
+    setSize (designW * 74 / 100, designH * 74 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -330,6 +372,25 @@ void GlitchKidEditor::timerCallback()
     echoDivBox.setEnabled (synced);
     echoDivLabel.setAlpha (synced ? 1.0f : 0.4f);
 
+    // Pitch Tune read-out: the sung note, how far off it is, and the note it is pulled to.
+    juce::String tuneText = "OFF";
+    if (glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::tuneOnId)->load() >= 0.5f)
+    {
+        const float sung = glitchProcessor.getTuneDetectedMidi(), target = glitchProcessor.getTuneTargetMidi();
+        if (sung < 0.0f || target < 0.0f)
+            tuneText = "listening...";
+        else
+        {
+            const int cents = (int) std::lround ((sung - std::round (sung)) * 100.0f);
+            tuneText = "SUNG " + noteName (sung) + (cents >= 0 ? " +" : " ") + juce::String (cents) + "c   ->   " + noteName (target);
+        }
+    }
+    if (tuneText != shownTuneText)
+    {
+        shownTuneText = tuneText;
+        tuneReadout.setText (tuneText, juce::dontSendNotification);
+    }
+
     // Always say where the stutter tempo comes from: the host, or the 120 BPM fallback.
     const auto text = glitchProcessor.isStutterTempoFromHost()
                           ? "HOST TEMPO " + juce::String (glitchProcessor.getStutterTempoBpm(), 1) + " BPM"
@@ -346,8 +407,9 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.fillAll (juce::Colour (0xff121214)); // obsidian
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
     g.setColour (juce::Colour (0xff2a2a30));
-    g.drawLine (270.0f, 90.0f, 270.0f, (float) echoDividerY - 8.0f);
-    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) echoDividerY - 8.0f);
+    g.drawLine (270.0f, 90.0f, 270.0f, (float) tuneDividerY - 8.0f);
+    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) tuneDividerY - 8.0f);
+    g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
     g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
     g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
 }
@@ -376,6 +438,21 @@ void GlitchKidEditor::layoutContent()
 
     auto echoArea = r.removeFromBottom (132);
     echoDividerY = echoArea.getY() - 4;
+    auto tuneArea = r.removeFromBottom (132); // above Liquid Echo, as it comes first in the signal path
+    tuneDividerY = tuneArea.getY() - 4;
+    tuneTitle.setBounds (tuneArea.removeFromTop (20));
+    const int tuneCell = tuneArea.getWidth() / 7;
+    auto tuneSwitch = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
+    tuneOnButton.setBounds (tuneSwitch.removeFromTop (40).withSizeKeepingCentre (70, 28));
+    auto keyCell = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
+    tuneKeyLabel.setBounds (keyCell.removeFromTop (14));
+    tuneKeyBox.setBounds (keyCell.removeFromTop (40).withSizeKeepingCentre (76, 26));
+    auto scaleCell = tuneArea.removeFromLeft (tuneCell * 3 / 2).reduced (8, 0);
+    tuneScaleLabel.setBounds (scaleCell.removeFromTop (14));
+    tuneScaleBox.setBounds (scaleCell.removeFromTop (40).withSizeKeepingCentre (150, 26));
+    for (auto* k : tuneKnobs)
+        k->setBounds (tuneArea.removeFromLeft (tuneCell).reduced (8, 0));
+    tuneReadout.setBounds (tuneArea.reduced (4, 0).withTrimmedBottom (40));
     echoTitle.setBounds (echoArea.removeFromTop (20));
     const int cellW = echoArea.getWidth() / 7;
     auto switches = echoArea.removeFromLeft (cellW).reduced (8, 0);
