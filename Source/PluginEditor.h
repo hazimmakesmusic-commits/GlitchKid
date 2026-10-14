@@ -49,7 +49,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 830; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 848; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -78,11 +78,16 @@ private:
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
     int echoDividerY = 0;
 
-    // MOODS: one-tap vocal starting points (see Moods.h). The lit button is the Mood whose values all match the controls.
-    juce::Label moodTitle { {}, "MOODS" }, moodInfo;
-    juce::TextButton moodButtons[Moods::count];
-    int shownMood = -2;
-    void refreshMoods();
+    // ALTER EGOS + MOOD ENGINE (see AlterEgos.h). The lit Alter Ego is the one whose values all match the controls.
+    // CHAOS and SURPRISE ME write the normal parameters; BLEND is the ordinary "mix" parameter.
+    juce::Label egoTitle { {}, "ALTER EGOS" }, egoInfo, chaosLabel { {}, "CHAOS" }, blendLabel { {}, "BLEND" };
+    juce::TextButton egoButtons[AlterEgos::count];
+    juce::Slider chaosSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    juce::Slider blendSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
+    juce::TextButton surpriseButton { "SURPRISE ME" };
+    bool updatingChaosFromCode = false;
+    juce::String shownEgoText;
+    void refreshAlterEgos();
 
     // Dimension row: ON, width, detune, depth, mix.
     juce::Label dimTitle { {}, "DIMENSION" };
@@ -92,7 +97,6 @@ private:
 
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;
-    juce::OwnedArray<ParamKnob> mixKnob;
     juce::OwnedArray<ParamKnob> compKnobs;
     juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
@@ -101,6 +105,7 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment echoOnAttachment, echoSyncAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
+    juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
 };

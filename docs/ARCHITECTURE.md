@@ -1,6 +1,6 @@
 # Architecture
 
-What exists today (Stage 3.4: MOODS, on top of Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 3.4: MOODS 2.0, Alter Egos + Mood Engine, on top of Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
@@ -15,14 +15,14 @@ input -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dime
 | File | Role |
 |---|---|
 | `Source/PluginProcessor.*` | 36 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup |
-| `Source/PluginEditor.*` | Window designed at 1060x830 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 80%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
+| `Source/PluginEditor.*` | Window designed at 1060x848 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 78%: knobs, IN/OUT meters, gain-reduction meter, tempo readout, 30 Hz timer |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
 | `Source/DSP/Saturation.*` | `tanh(kx)/tanh(k)` waveshaper, 4x oversampled (JUCE polyphase IIR half-band) |
 | `Source/DSP/GlitchStutter.*` | Beat repeat of the slice before switch-on; per-sample state machine |
 | `Source/DSP/LiquidEcho.*` | Tempo-aware stereo delay with feedback, tone, width and its own mix |
 | `Source/DSP/Dimension.*` | Stereo thickening/widening: two modulated chorus voices split into mid and side |
-| `Source/Moods.*` | MOODS: the five built-in Mood tables (data only) and the function that applies one |
+| `Source/AlterEgos.*` | MOODS 2.0: the five Alter Ego tables, the Chaos mapping and the Surprise variation (data and maths only, no DSP) |
 | `Source/DSP/FixedDelay.h` | Constant delay used for the dry/bypass path and the idle saturation stage |
 | `Source/DSP/Finite.h` | `zeroNonFinite`: replaces NaN/Inf with 0 |
 | `Tests/` | Unit tests (see `TESTING.md`) |
@@ -137,32 +137,59 @@ chosen cents. The voice sum is the mid part M and the voice difference the side 
 - **Limits:** one fixed LFO rate pair (no rate control: it would add a control without improving the effect); Depth and Mix
   overlap (both scale the wet), Mix exists to match the other effects; the effect is built for vocals and is not tempo-synced.
 
-## MOODS
-Five built-in one-tap vocal starting points: **DREAM**, **DEMON**, **ALIEN**, **RAGE**, **GHOST** (`Source/Moods.cpp`).
-A Mood is data only: a table of (parameter id, value). `GlitchKidProcessor::applyMood(i)` (message thread) sets each value
-through the normal JUCE parameter calls (`beginChangeGesture`, `setValueNotifyingHost`, `endChangeGesture`), so the controls move,
-FL Studio records it like automation, and all the DSP's existing smoothing applies. There is no separate engine, nothing runs on the
-audio thread for MOODS, and nothing new is saved in the plug-in state (old sessions load unchanged).
-- **What a Mood owns:** every parameter of the EQ (4 bands), compressor, saturation drive, Liquid Echo and Dimension (30 parameters, the
-  same set in every Mood). So a Mood gives the same settings whatever was set before: nothing leaks from the previous Mood.
-- **What a Mood never touches:** Output Gain, Bypass, the main Mix and Glitch Stutter (`gain`, `bypass`, `mix`, `stutter_*`).
-  Stutter repeats captured audio and should only switch on when the user wants it.
-- **Selected Mood:** not stored. `getActiveMood()` compares the current parameter values to each table; a button is lit while all of
-  its values match and the label turns to CUSTOM as soon as any control is edited. Re-clicking restores it exactly.
-- **Level:** Moods do not change Output Gain. Saturation and compression do change loudness, so each Mood's compressor makeup is
-  tuned so that speech-like noise stays within 0.2 dB of its input level (measured; see `TESTING.md`). Real voices differ: watch OUT.
-- **Effects used:** all Moods use EQ, compressor, saturation, Liquid Echo and Dimension; RAGE switches echo and Dimension off on
-  purpose for clarity. No Mood uses Glitch Stutter. All effects exist, so no Mood is limited by a missing effect.
+## MOODS 2.0: Alter Egos and the Mood Engine
+Five curated vocal identities (**CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE**) plus three playable controls
+(**CHAOS, BLEND, SURPRISE ME**). All of it lives in `Source/AlterEgos.*` (pure data and maths) and the editor; no new DSP.
 
-| Mood | Character | Saturation | Compressor | Echo (synced) | Dimension |
+**How it works.** An Alter Ego is a table of the 30 parameters of the EQ, compressor, saturation drive, Liquid Echo and Dimension.
+`GlitchKidProcessor::applyAlterEgo(ego, chaos, seed)` (message thread only) computes the values and sets them through the normal JUCE
+parameter calls (`beginChangeGesture`, `setValueNotifyingHost`, `endChangeGesture`), so the knobs show exactly what you hear, FL Studio records
+it like automation, and every effect's own smoothing applies. Nothing in MOODS runs on the audio thread. An Alter Ego never touches Output Gain,
+Bypass, Blend (the main Mix) or Glitch Stutter.
+
+- **Selection state:** three ValueTree properties in the plug-in state (`alterEgo`, `alterEgoChaos`, `alterEgoSeed`). They only restore the
+  macro positions in the window; the parameters themselves are saved as before. Restoring a state never re-applies an Alter Ego, so your edits
+  and automation are never overwritten. No new automatable parameter was added (36 before, 36 now), so older sessions load unchanged and a state
+  without these properties means "no Alter Ego".
+- **Active or custom:** `isAlterEgoActive()` compares the current parameter values with what the selection would produce. The button is lit while
+  they match; as soon as you edit a control it reads CUSTOM (and remembers the last Alter Ego).
+- **Availability:** each Alter Ego lists the effects it requires and the ones it only uses when present. It is available only if every required
+  effect exists in the build (`AlterEgos::implementedEffects`); otherwise its button is disabled with an explanation. Optional effects that are
+  missing are skipped parameter by parameter. All five are available today. None uses Glitch Stutter (it repeats captured audio, so it stays a
+  deliberate user choice).
+
+| Alter Ego | Intent | Requires (optional) | Saturation 0 to 100 % Chaos | Echo (synced) | Dimension |
 |---|---|---|---|---|---|
-| DREAM | smooth, spacious | 3 dB | 2:1 | 1/4 dotted, fb 38 %, mix 22 % | on, width 70, detune 7 |
-| DEMON | dark, heavy | 9 dB | 4:1 | 1/8, fb 25 %, dark, mix 12 % | on, width 30, detune 4 |
-| ALIEN | strange, futuristic | 5 dB | 2.5:1 | 1/16 triplet, fb 55 %, width 100, mix 28 % | on, width 100, detune 14, depth 80 |
-| RAGE | forward, punchy | 10 dB | 6:1 fast | off | off |
-| GHOST | airy, distant | 0 dB | 1.8:1 | 1/4, fb 50 %, dark, mix 32 % | on, width 35, detune 5 |
+| CELESTIAL | polished, glossy, airy | EQ, comp, sat, echo (Dimension) | 3 to 6 dB | 1/4 dotted, fb 35 to 50 %, mix 16 to 30 % | width 60 to 85, detune 6 to 10 |
+| THE CLONE | fuller, layered, centred | EQ, comp, sat, Dimension (echo) | 2 to 5 dB | 1/8 slap, fb 20 to 35 %, mix 6 to 14 % | width 55 to 85, detune 8 to 16, depth 70 to 100 |
+| VOIDWALKER | dark, distant, cinematic | EQ, comp, sat, echo (Dimension) | 3 to 6 dB | 1/4, fb 48 to 65 %, tone 1.6 kHz to 900 Hz, mix 24 to 42 % | width 40 to 80, detune 5 to 9 |
+| THE PARASITE | distorted, textured, unnerving | EQ, comp, sat (echo, Dimension) | 9 to 16 dB | 1/32 flutter, fb 30 to 60 %, mix 8 to 22 % | width 60 to 100, detune 10 to 20 |
+| ALTERED STATE | psychedelic, experimental | EQ, comp, sat, echo, Dimension | 5 to 9 dB | 1/8 triplet, fb 55 to 75 %, tone 4.5 to 7.5 kHz, mix 25 to 42 % | width 100, detune 14 to 20, depth 80 to 100 |
 
-These are starting points chosen from measurement of the DSP and from sound-design intent; they have not been tuned by ear on real vocals.
+**CHAOS (0 to 100 %).** The table stores, for every parameter, its value at Chaos 0 and at Chaos 100 %. Chaos moves each continuous parameter in a
+straight line between the two (11 to 20 parameters per Alter Ego move, depending on the identity: EQ gains and Q, compressor ratio and speed, saturation, echo
+feedback/tone/width/mix, Dimension width/detune/depth/mix). Switches (`echo_on`, `echo_sync`, `echo_div`, `echo_time`, `dim_on`) never move, so Chaos
+cannot make an effect appear or an echo time jump. Every end value is inside a safe limit (drive at most 16 dB, echo feedback at most 75 % while
+the echo DSP itself caps at 90 %, detune at most 20 cents). The compressor makeup is part of the mapping and was tuned from measurements so the
+level on speech-like noise stays within 0.65 dB across the whole Chaos range (more saturation does not make it louder). Chaos 0 is exactly the
+documented base; the result is deterministic and clamped to 0..1.
+
+**BLEND** is the plug-in's existing main Mix parameter (`mix`, unchanged ID, so automation still works): `dry x (1 - blend) + processed x blend`
+with the dry path delayed by the same 6 samples as the processed path. 0 % is bit-exact the delayed input, 100 % the full processed sound.
+Because the effects keep their own mixes inside the chain and Blend is the single outer crossfade, nothing is mixed twice. It replaced the
+left-column Mix knob (the same parameter); the Alter Egos never set it.
+
+**SURPRISE ME** applies a seeded variation on top of the current Chaos result: for each parameter on a short allowlist
+(`eq_b1_freq/gain`, `eq_b2_freq/gain`, `eq_hi_gain`, `echo_fb/tone/width/mix`, `dim_width/detune/depth/mix`) it adds a random amount within that
+parameter's own jitter and clamps to hard limits (e.g. echo feedback 15 to 70 %). It skips echo parameters when the echo is off and Dimension
+parameters when Dimension is off. It never varies switches, echo division and time (the rhythm is part of the identity), the compressor,
+saturation or makeup (level), or anything outside the 30 owned parameters. The generator is a tiny integer xorshift, so the same
+(Alter Ego, Chaos, seed) gives the same values on every platform. The seed is stored with the selection; pressing the Alter Ego button again
+removes the variation.
+
+**MORPH** was assessed and deferred. A continuous morph between two Alter Egos needs, per parameter, an interpolation rule (linear for gains and
+mixes, geometric for frequencies and times) and a rule for switches and the echo division (hold, then change under a fade), plus a stored second
+selection and tests for the intermediate states. Chaos already gives a safe continuous intensity axis; a Morph is a separate future stage.
 
 ## What does not exist
 User presets (saving and browsing your own), pitch correction, other plug-in formats, host-grid phase-lock

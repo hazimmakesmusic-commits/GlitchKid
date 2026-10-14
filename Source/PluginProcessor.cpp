@@ -160,16 +160,43 @@ EchoSettings GlitchKidProcessor::readEchoSettings() const
     return s;
 }
 
-int GlitchKidProcessor::applyMood (int moodIndex)
+namespace
 {
-    if (moodIndex < 0 || moodIndex >= Moods::count)
+constexpr const char* egoIdKey = "alterEgo";
+constexpr const char* egoChaosKey = "alterEgoChaos";
+constexpr const char* egoSeedKey = "alterEgoSeed";
+}
+
+GlitchKidProcessor::AlterEgoSelection GlitchKidProcessor::getAlterEgoSelection() const
+{
+    AlterEgoSelection s;
+    const auto& st = apvts.state;
+    s.ego = AlterEgos::indexOfId (st.getProperty (egoIdKey, juce::String()).toString().toRawUTF8());
+    s.chaos = juce::jlimit (0.0f, 1.0f, (float) (double) st.getProperty (egoChaosKey, 0.0));
+    s.seed = (std::uint32_t) (int) st.getProperty (egoSeedKey, 0);
+    if (s.ego < 0)
+        s.seed = 0;
+    return s;
+}
+
+int GlitchKidProcessor::applyAlterEgo (int ego, float chaos, std::uint32_t seed)
+{
+    if (ego < 0 || ego >= AlterEgos::count)
         return 0;
 
-    return Moods::apply (Moods::get (moodIndex), [this] (const char* id, float value)
+    chaos = juce::jlimit (0.0f, 1.0f, chaos);
+    AlterEgos::Value values[AlterEgos::numOwned];
+    const int n = AlterEgos::compute (ego, chaos, seed, values);
+
+    apvts.state.setProperty (egoIdKey, AlterEgos::info (ego).id, nullptr);
+    apvts.state.setProperty (egoChaosKey, (double) chaos, nullptr);
+    apvts.state.setProperty (egoSeedKey, (int) seed, nullptr);
+
+    return AlterEgos::applyValues (values, n, [this] (const char* id, float value)
     {
         auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id));
         if (p == nullptr)
-            return false;
+            return false; // a missing parameter (an effect that does not exist) is skipped, never an error
         p->beginChangeGesture(); // lets the host record this as a normal automatable change
         p->setValueNotifyingHost (p->convertTo0to1 (value));
         p->endChangeGesture();
@@ -177,25 +204,42 @@ int GlitchKidProcessor::applyMood (int moodIndex)
     });
 }
 
-int GlitchKidProcessor::getActiveMood() const
+int GlitchKidProcessor::setChaos (float chaos)
 {
-    for (int m = 0; m < Moods::count; ++m)
+    const auto s = getAlterEgoSelection();
+    if (s.ego < 0)
     {
-        const auto& mood = Moods::get (m);
-        bool all = true;
-        for (int i = 0; i < mood.numValues && all; ++i)
-        {
-            auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (mood.values[i].id));
-            if (p == nullptr)
-                continue; // a missing parameter cannot make a Mood "not match"
-            const float step = p->getNormalisableRange().interval;
-            const float tolerance = step > 0.0f ? 0.5f * step + 1.0e-4f : 1.0e-3f;
-            all = std::abs (p->convertFrom0to1 (p->getValue()) - mood.values[i].value) <= tolerance;
-        }
-        if (all)
-            return m;
+        apvts.state.setProperty (egoChaosKey, (double) juce::jlimit (0.0f, 1.0f, chaos), nullptr); // remembered for the next selection
+        return 0;
     }
-    return -1;
+    return applyAlterEgo (s.ego, chaos, s.seed);
+}
+
+int GlitchKidProcessor::surprise (std::uint32_t seed)
+{
+    const auto s = getAlterEgoSelection();
+    return s.ego < 0 ? 0 : applyAlterEgo (s.ego, s.chaos, seed == 0 ? 1u : seed);
+}
+
+bool GlitchKidProcessor::isAlterEgoActive() const
+{
+    const auto s = getAlterEgoSelection();
+    if (s.ego < 0)
+        return false;
+
+    AlterEgos::Value values[AlterEgos::numOwned];
+    const int n = AlterEgos::compute (s.ego, s.chaos, s.seed, values);
+    for (int i = 0; i < n; ++i)
+    {
+        auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (values[i].id));
+        if (p == nullptr)
+            continue; // a missing parameter cannot make the selection "not match"
+        const float step = p->getNormalisableRange().interval;
+        const float tolerance = step > 0.0f ? 0.5f * step + 1.0e-4f : 1.0e-3f;
+        if (std::abs (p->convertFrom0to1 (p->getValue()) - values[i].value) > tolerance)
+            return false;
+    }
+    return true;
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const

@@ -7,7 +7,7 @@
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
-#include "Moods.h"
+#include "AlterEgos.h"
 
 // Signal path: input -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
@@ -84,11 +84,15 @@ public:
 
     juce::AudioProcessorValueTreeState apvts;
 
-    // MOODS (message thread only): applyMood() sets the Mood's parameters through the normal parameter system.
-    // getActiveMood() is the Mood whose values all match the current controls, or -1 ("custom").
-    // Returns the number of parameters set.
-    int applyMood (int moodIndex);
-    int getActiveMood() const;
+    // ALTER EGOS + MOOD ENGINE (message thread only). These write the normal parameters (so the knobs show what you hear and
+    // the host sees automation); nothing here runs on the audio thread. BLEND is the ordinary "mix" parameter.
+    // The selection (which Alter Ego, Chaos, Surprise seed) is saved in the plug-in state as three ValueTree properties.
+    struct AlterEgoSelection { int ego = -1; float chaos = 0.0f; std::uint32_t seed = 0; }; // ego -1 = none
+    AlterEgoSelection getAlterEgoSelection() const;
+    int applyAlterEgo (int ego, float chaos, std::uint32_t seed); // returns the number of parameters set
+    int setChaos (float chaos);                                   // re-applies the selected Alter Ego at this Chaos (keeps the variation)
+    int surprise (std::uint32_t seed);                            // a new seeded variation of the selected Alter Ego
+    bool isAlterEgoActive() const;                                // true while every owned parameter still matches the selection
 
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }

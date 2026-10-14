@@ -3,10 +3,11 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
-- Stage 3.4: **MOODS**, five built-in one-tap vocal starting points (DREAM, DEMON, ALIEN, RAGE, GHOST) that set the EQ, compressor, saturation, Liquid
-  Echo and Dimension through the normal parameter system. No new DSP and no new saved state. Output Gain, Bypass, Mix and Stutter are never touched.
-  The lit button follows the controls (CUSTOM once you edit). Editor gains a MOODS strip (window designed at 1060x830, opens at 80%). 10 new test groups
-  (117 total). See `docs/ARCHITECTURE.md`.
+- Stage 3.4: **MOODS 2.0**: five Alter Egos (CELESTIAL, THE CLONE, VOIDWALKER, THE PARASITE, ALTERED STATE; they replace the first five Moods) and a Mood
+  Engine: **CHAOS** (intensity of the selected Alter Ego, safe limits per parameter), **BLEND** (the existing main Mix, now in the Mood Engine strip) and
+  **SURPRISE ME** (seeded, bounded variation of a short allowlist). They set the EQ, compressor, saturation, Liquid Echo and Dimension through the normal
+  parameter system; Output Gain, Bypass, Blend and Stutter are never touched. No new DSP, no new automatable parameters; the selection is saved as three
+  state properties (older sessions load unchanged). MORPH deferred. 16 new test groups (123 total). See `docs/ARCHITECTURE.md`.
 - Editor: the window is now resizable (50% to 150%, fixed aspect ratio) and opens at 85%, because the 780 px design height did not fit a laptop screen in FL Studio. Layout and audio unchanged.
 - Stage 3.3: **Dimension**, a stereo thickening/widening effect for vocals (two modulated chorus voices split into mid/side; width,
   detune, depth, mix) after Liquid Echo. 5 new parameters (`dim_*`), default off; no latency added; editor gains a Dimension row

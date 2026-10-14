@@ -85,7 +85,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       echoOnAttachment (p.apvts, GlitchKidProcessor::echoOnId, echoOnButton),
       echoSyncAttachment (p.apvts, GlitchKidProcessor::echoSyncId, echoSyncButton),
       echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox),
-      dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton)
+      dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton),
+      blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
@@ -123,29 +124,74 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &stutterOnButton, &stutterRateBox })
         content.addAndMakeVisible (c);
 
-    // MOODS buttons: each applies a built-in Mood; the controls below stay fully editable.
-    moodTitle.setJustificationType (juce::Justification::centredLeft);
-    moodTitle.setColour (juce::Label::textColourId, violet);
-    moodTitle.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-    moodInfo.setJustificationType (juce::Justification::centredLeft);
-    moodInfo.setFont (juce::FontOptions (11.0f));
-    moodInfo.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
-    moodInfo.setMinimumHorizontalScale (1.0f);
-    content.addAndMakeVisible (moodTitle);
-    content.addAndMakeVisible (moodInfo);
-    for (int i = 0; i < Moods::count; ++i)
+    // ALTER EGOS: each button applies a curated identity; every control below stays editable.
+    egoTitle.setJustificationType (juce::Justification::centredLeft);
+    egoTitle.setColour (juce::Label::textColourId, violet);
+    egoTitle.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    egoInfo.setJustificationType (juce::Justification::centredLeft);
+    egoInfo.setFont (juce::FontOptions (11.0f));
+    egoInfo.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    content.addAndMakeVisible (egoTitle);
+    content.addAndMakeVisible (egoInfo);
+    for (int i = 0; i < AlterEgos::count; ++i)
     {
-        auto& b = moodButtons[i];
-        b.setButtonText (Moods::get (i).name);
+        auto& b = egoButtons[i];
+        b.setButtonText (AlterEgos::info (i).name);
         b.setClickingTogglesState (false);
         b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e1e22));
         b.setColour (juce::TextButton::buttonOnColourId, lime);
         b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
         b.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff121214));
-        b.setTooltip (Moods::get (i).description);
-        b.onClick = [this, i] { glitchProcessor.applyMood (i); refreshMoods(); };
+        const bool available = AlterEgos::isAvailable (i);
+        b.setEnabled (available);
+        b.setTooltip (available ? juce::String (AlterEgos::info (i).description)
+                                : juce::String ("Unavailable: one of the effects this Alter Ego needs is not in this build."));
+        b.onClick = [this, i]
+        {
+            const auto s = glitchProcessor.getAlterEgoSelection();
+            glitchProcessor.applyAlterEgo (i, s.chaos, 0); // keeps your Chaos setting, drops any Surprise variation
+            refreshAlterEgos();
+        };
         content.addAndMakeVisible (b);
     }
+
+    // MOOD ENGINE: CHAOS (intensity of the selected Alter Ego), BLEND (the main dry/processed Mix), SURPRISE ME (seeded variation).
+    for (auto* l : { &chaosLabel, &blendLabel })
+    {
+        l->setJustificationType (juce::Justification::centredLeft);
+        l->setFont (juce::FontOptions (11.0f, juce::Font::bold));
+        content.addAndMakeVisible (l);
+    }
+    chaosSlider.setRange (0.0, 100.0, 1.0);
+    chaosSlider.setTextValueSuffix (" %");
+    chaosSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
+    chaosSlider.setColour (juce::Slider::trackColourId, pink);
+    chaosSlider.setColour (juce::Slider::thumbColourId, pink);
+    chaosSlider.setTooltip ("Intensity of the selected Alter Ego: 0 is its base sound, 100 pushes its character further (within safe limits).");
+    chaosSlider.onValueChange = [this]
+    {
+        if (! updatingChaosFromCode)
+        {
+            glitchProcessor.setChaos ((float) chaosSlider.getValue() * 0.01f);
+            refreshAlterEgos();
+        }
+    };
+    blendSlider.setTextValueSuffix (" %");
+    blendSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
+    blendSlider.setColour (juce::Slider::trackColourId, violet);
+    blendSlider.setColour (juce::Slider::thumbColourId, violet);
+    blendSlider.setTooltip ("Dry original (0) to the fully processed sound (100). This is the plug-in's main Mix control.");
+    surpriseButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e1e22));
+    surpriseButton.setColour (juce::TextButton::textColourOffId, pink);
+    surpriseButton.setTooltip ("A new seeded variation of the selected Alter Ego (small, safe changes). Click again for another.");
+    surpriseButton.onClick = [this]
+    {
+        const auto s = glitchProcessor.getAlterEgoSelection();
+        glitchProcessor.surprise (AlterEgos::nextSeed (s.seed ^ (std::uint32_t) juce::Time::getMillisecondCounter()));
+        refreshAlterEgos();
+    };
+    for (auto* c : std::initializer_list<juce::Component*> { &chaosSlider, &blendSlider, &surpriseButton })
+        content.addAndMakeVisible (c);
 
     // Liquid Echo. TIME is used when SYNC is off, DIVISION when it is on (the unused one is dimmed).
     if (auto* div = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::echoDivId)))
@@ -186,8 +232,6 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     gainKnob[0]->addTo (content);
     driveKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "SATURATION DRIVE", " dB", lime));
     driveKnob[0]->addTo (content);
-    mixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::mixId, "MIX (DRY / PROCESSED)", " %", violet));
-    mixKnob[0]->addTo (content);
 
     const char* names[] = { "LOW SHELF", "BELL 1", "BELL 2", "HIGH SHELF" };
     for (int b = 0; b < ParametricEq::numBands; ++b)
@@ -231,29 +275,52 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizable (true, true);
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
-    refreshMoods();
-    setSize (designW * 80 / 100, designH * 80 / 100);
+    refreshAlterEgos();
+    setSize (designW * 78 / 100, designH * 78 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
 
-void GlitchKidEditor::refreshMoods()
+void GlitchKidEditor::refreshAlterEgos()
 {
-    const int active = glitchProcessor.getActiveMood();
-    if (active == shownMood)
+    const auto sel = glitchProcessor.getAlterEgoSelection();
+    const bool active = glitchProcessor.isAlterEgoActive();
+
+    juce::String text;
+    if (active)
+    {
+        text = AlterEgos::info (sel.ego).description;
+        if (sel.seed != 0)
+            text << "   SURPRISE VARIATION #" << juce::String ((int) (sel.seed % 1000u)).paddedLeft ('0', 3);
+    }
+    else
+    {
+        text = "CUSTOM. An Alter Ego sets the EQ, compressor, saturation, echo and Dimension; Output Gain, Blend and Stutter are never touched.";
+        if (sel.ego >= 0)
+            text << " (Last: " << AlterEgos::info (sel.ego).name << ", edited.)";
+    }
+
+    const auto key = text + juce::String (sel.ego) + (active ? "1" : "0") + juce::String (sel.chaos, 3);
+    if (key == shownEgoText)
         return;
-    shownMood = active;
-    for (int i = 0; i < Moods::count; ++i)
-        moodButtons[i].setToggleState (i == active, juce::dontSendNotification);
-    moodInfo.setText (active >= 0 ? Moods::get (active).description
-                                  : juce::String ("CUSTOM. A Mood sets the EQ, compressor, saturation, echo and Dimension; "
-                                                  "Output Gain, Mix and Stutter are never touched. Every control stays editable."),
-                      juce::dontSendNotification);
+    shownEgoText = key;
+
+    for (int i = 0; i < AlterEgos::count; ++i)
+        egoButtons[i].setToggleState (active && i == sel.ego, juce::dontSendNotification);
+    egoInfo.setText (text, juce::dontSendNotification);
+
+    updatingChaosFromCode = true;
+    chaosSlider.setValue (sel.chaos * 100.0, juce::dontSendNotification);
+    updatingChaosFromCode = false;
+    const bool hasEgo = sel.ego >= 0;
+    chaosSlider.setEnabled (hasEgo);
+    chaosLabel.setAlpha (hasEgo ? 1.0f : 0.4f);
+    surpriseButton.setEnabled (hasEgo);
 }
 
 void GlitchKidEditor::timerCallback()
 {
-    refreshMoods();
+    refreshAlterEgos();
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
@@ -298,7 +365,7 @@ void GlitchKidEditor::layoutContent()
     auto r = juce::Rectangle<int> (0, 0, designW, designH).reduced (16);
 
     // Bottom strips: Dimension (lowest), then Liquid Echo above it.
-    auto dimArea = r.removeFromBottom (140);
+    auto dimArea = r.removeFromBottom (132);
     dimDividerY = dimArea.getY() - 4;
     dimTitle.setBounds (dimArea.removeFromTop (20));
     const int dimCell = dimArea.getWidth() / 7;
@@ -307,7 +374,7 @@ void GlitchKidEditor::layoutContent()
     for (auto* k : dimKnobs)
         k->setBounds (dimArea.removeFromLeft (dimCell).reduced (8, 0));
 
-    auto echoArea = r.removeFromBottom (140);
+    auto echoArea = r.removeFromBottom (132);
     echoDividerY = echoArea.getY() - 4;
     echoTitle.setBounds (echoArea.removeFromTop (20));
     const int cellW = echoArea.getWidth() / 7;
@@ -324,17 +391,27 @@ void GlitchKidEditor::layoutContent()
     tagline.setBounds (r.removeFromTop (20));
     r.removeFromTop (8);
 
-    // MOODS strip: title, five buttons, then a one-line description.
-    auto moodRow = r.removeFromTop (44);
-    moodTitle.setBounds (moodRow.removeFromLeft (70));
-    for (auto& b : moodButtons)
+    // ALTER EGOS strip: title, five buttons, a one-line description; below it the Mood Engine: Chaos, Blend, Surprise Me.
+    auto egoRow = r.removeFromTop (34);
+    egoTitle.setBounds (egoRow.removeFromLeft (92));
+    for (auto& b : egoButtons)
     {
-        b.setBounds (moodRow.removeFromLeft (100).withSizeKeepingCentre (100, 30));
-        moodRow.removeFromLeft (8);
+        b.setBounds (egoRow.removeFromLeft (122).withSizeKeepingCentre (122, 28));
+        egoRow.removeFromLeft (6);
     }
-    moodRow.removeFromLeft (12);
-    moodInfo.setBounds (moodRow);
-    r.removeFromTop (8);
+    egoRow.removeFromLeft (10);
+    egoInfo.setBounds (egoRow);
+
+    auto engineRow = r.removeFromTop (34);
+    engineRow.removeFromLeft (92);
+    chaosLabel.setBounds (engineRow.removeFromLeft (50));
+    chaosSlider.setBounds (engineRow.removeFromLeft (290).withSizeKeepingCentre (290, 24));
+    engineRow.removeFromLeft (24);
+    blendLabel.setBounds (engineRow.removeFromLeft (50));
+    blendSlider.setBounds (engineRow.removeFromLeft (290).withSizeKeepingCentre (290, 24));
+    engineRow.removeFromLeft (24);
+    surpriseButton.setBounds (engineRow.removeFromLeft (130).withSizeKeepingCentre (130, 28));
+    r.removeFromTop (6);
 
     // Left: meters either side of the output-gain knob, Bypass underneath.
     auto left = r.removeFromLeft (240);
@@ -345,10 +422,9 @@ void GlitchKidEditor::layoutContent()
     outLabel.setBounds (outCol.removeFromBottom (16));
     inMeter.setBounds (inCol.reduced (6, 0));
     outMeter.setBounds (outCol.reduced (6, 0));
-    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 336);
-    driveKnob[0]->setBounds (knobs.removeFromTop (112).withTrimmedBottom (6));
-    gainKnob[0]->setBounds (knobs.removeFromTop (112).withTrimmedBottom (6));
-    mixKnob[0]->setBounds (knobs.withTrimmedBottom (6));
+    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 280); // (the main Mix is now the BLEND slider above)
+    driveKnob[0]->setBounds (knobs.removeFromTop (140).withTrimmedBottom (6));
+    gainKnob[0]->setBounds (knobs.removeFromTop (140).withTrimmedBottom (6));
 
     // Middle: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
     auto eqArea = r.removeFromLeft (400);
