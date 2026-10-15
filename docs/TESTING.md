@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 178 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 200 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -126,6 +126,21 @@ Mutation-checked (each caught): dry path not delayed, latency not reported, idle
 no re-anchor at voice onset, plus the module-level mutations listed in the feasibility doc.
 Not provable by these tests: how it sounds on real voices beyond the owner's single listening test, polyphonic or mixed material, host behaviour when the
 reported latency changes (FL Studio, Mac), and live-monitoring feel at 31 ms.
+
+## Vocal Mutation (Stage 4.5): what the tests prove, and what they cannot
+`MutationTests.cpp`, 22 groups. Module: the Mutation/Character mappings; off, MUTATION 0 and BLEND 0 are bit-exact and idle; **single sideband**: with a 0.5-amplitude tone, UP puts 0.5 at f + fc,
+DOWN at f - fc, ROBOT puts 0.354 (= 0.25 x sqrt 2) at both, and the unwanted sideband and the original partial are at least 35 dB down (measured worst -41.1 dB) at 44.1/48/88.2/96 kHz x
+300/1000/5000 Hz; Mutation moves the sideband to 600 Hz x m^2 and Character moves energy monotonically between DOWN and UP; **level is equal across Character** (worst 0.03 dB on noise) while
+the spectrum differs; **different from the saturator**: a 220 Hz harmonic voice keeps 100 % of its power at multiples of 220 Hz through the real `Saturation` at 15 dB drive and 0.0 % through Mutation;
+Blend 50 % is exactly the average of 0 and 100 %; continuity just above MUTATION 0; silence in = exact silence out, down to 1e-37 amplitude without blow-up; impulse and step responses finite,
+bounded, the tail dies; mono and stereo (identical channels stay identical, a one-sided signal stays one-sided, mono equals the stereo result); **bit-identical output for 1/7/64/333/2048-sample blocks**;
+random parameter automation, a Mutation/Character jump and on/off toggling stay click-free (largest step under 0.2); off is exact and no stale audio returns after re-enabling; NaN, +-Inf and an
+overflow burst behave as zeros and never contaminate later audio (bit-exact against the same signal with zeros). Processor: 46 parameters with the right defaults and ranges; reported latency
+unchanged; default is a bit-exact pass-through, ON changes the sound, Bypass / Mix 0 / BLEND 0 restore the exact input (mono and stereo); no stale audio after a settled Bypass; the whole chain
+with Pitch Tune, FORMANT, echo and Dimension on stays finite; random automation (mono/stereo, 3 block sizes, NaN/Inf injected); Alter Egos (every one, full Chaos, Surprise seeds) never change the four parameters; state round-trip and an older state without the parameters; **0 heap
+allocations per block** (module and plug-in). Mutation-checked: 15 deliberate breaks (sideband sign, missing quadrature delay, no level compensation, NaN guard, overflow guard, fade-in, linear instead of
+squared carrier, inverted Character, wrong blend, memory not cleared when idle, no smoothing, stage not in the chain, Blend wired to the wrong knob, latency wrongly reported, no reset in settled Bypass): each fails at least one test.
+Not provable by these tests: that it sounds good on a real voice, how much of each setting is useful musically, FL Studio behaviour, and the feel of the effect while singing.
 
 ## Manual FL Studio checklist (owner)
 Load on an insert; every knob changes sound; Bypass is clean and level-matched; Mix 0 % equals bypass; Glitch

@@ -7,11 +7,12 @@
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
+#include "DSP/VocalMutation.h"
 #include "DSP/PitchCorrection/PitchCorrector.h"
 #include "DSP/FormantShifting/FormantShifter.h"
 #include "AlterEgos.h"
 
-// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> vocal mutation (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Pitch Tune (off by default) adds its own constant delay (PitchCorrector::latencyFor, about 31 ms)
 // only while it is switched on, and Formant (off at 0 semitones) adds its own (FormantShifter::latencyFor, about 21 ms) only while it is away from 0: for each, the dry
@@ -71,6 +72,13 @@ public:
     // Formant (vocal "size"): moves the spectral envelope of a voice without changing its notes. -12..+12 semitones, 0 = off and neutral
     // (exactly bit-exact, no latency). Negative = bigger / darker voice, positive = smaller / brighter. Independent of Pitch Tune.
     static constexpr const char* formantShiftId = "formant_shift";
+
+    // Vocal Mutation (single-sideband frequency shifter / ring modulator: robotic and alien textures). Default off, so a fresh instance does not change the sound.
+    // Zero latency. Sits after Pitch Tune and FORMANT, before the EQ.
+    static constexpr const char* mutOnId        = "mut_on";
+    static constexpr const char* mutAmountId    = "mut_amount";    // percent, 0 = no change; sets the carrier / shift in Hz (0..600, squared curve)
+    static constexpr const char* mutCharacterId = "mut_character"; // percent, 0 = DOWN, 50 = ROBOT (ring modulation), 100 = UP
+    static constexpr const char* mutBlendId     = "mut_blend";     // percent, dry (0) to fully mutated (100)
 
     GlitchKidProcessor();
     ~GlitchKidProcessor() override;
@@ -157,6 +165,9 @@ private:
     LiquidEcho echo;
     Dimension dimension;
     std::atomic<float>* dimParams[5] {}; // on, width, detune, depth, mix
+    VocalMutation mutation;
+    std::atomic<float>* mutParams[4] {}; // on, amount, character, blend
+    MutationSettings readMutationSettings() const;
     DimensionSettings readDimensionSettings() const;
     std::atomic<float>* echoParams[8] {}; // on, sync, time, division, feedback, tone, width, mix
     EchoSettings readEchoSettings() const;

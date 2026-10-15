@@ -1,21 +1,22 @@
 # Architecture
 
-What exists today (Stage 4.4: Formant, on top of Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 4.5: Vocal Mutation, on top of Formant, Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
 32-bit float; no network, no hosted service. Plug-in codes: manufacturer `GlKd`, plug-in `Gkid` (never change).
 
 ```
-input -> [Pitch Tune, optional] -> [Formant, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
+input -> [Pitch Tune, optional] -> [Formant, optional] -> [Vocal Mutation, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
    \_ dry copy, delayed by 6 samples (+ the Pitch Tune delay while Tune is on, + the Formant delay while Formant is not 0) _/
 ```
 
 ## Files
 | File | Role |
 |---|---|
-| `Source/PluginProcessor.*` | 42 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
-| `Source/PluginEditor.*` | Window designed at 1060x980 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 74%: knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/PluginProcessor.*` | 46 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
+| `Source/PluginEditor.*` | Window designed at 1060x1112 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 70%: knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/DSP/VocalMutation.*` | Vocal Mutation: all-pass-pair Hilbert transform + shared carrier = single-sideband frequency shifter / ring modulator; mono/stereo, per-sample, zero latency |
 | `Source/DSP/FormantShifting/FormantShifter.*` | Formant: STFT cepstral-envelope warping with a real gain (moves the voice's resonances, not its notes); mono/stereo, per-sample, own FFT |
 | `Source/DSP/PitchCorrection/*` | Pitch Tune: `YinPitchDetector` (F0), `ScaleQuantizer` (key/scale), `PsolaPitchShifter` (TD-PSOLA-style, one per channel), `PitchCorrector` (ties them together, mono/stereo) |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
@@ -36,11 +37,11 @@ input -> [Pitch Tune, optional] -> [Formant, optional] -> EQ -> compressor -> sa
    crossfade between the two, using the 20 ms Tune blend ramp. A third copy, taken from that result, is delayed by the Formant latency and
    crossfaded the same way with the Formant blend ramp (so with both on the dry path is delayed by both).
 3. If Bypass is on, or Mix is 0 %, and the crossfade has settled: output the exact delayed dry copy, reset the
-   stages, return (almost no CPU). Pitch Tune only listens (`feed`) in this state.
+   stages (including Vocal Mutation), return (almost no CPU). Pitch Tune only listens (`feed`) in this state.
 4. Otherwise: Pitch Tune (if on or ramping: zero non-finite input, keep a straight-through copy, correct in place, crossfade by the
    Tune blend; if off: only `feed`, i.e. record the history), then Formant the same way (if away from 0 or ramping: zero non-finite input, keep a
    straight-through copy, shift in place, crossfade by the Formant blend; if at 0: the shifter still runs at 0 semitones on a scratch copy and the result
-   is thrown away, which keeps its overlap-add full so engaging has no fade-in), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
+   is thrown away, which keeps its overlap-add full so engaging has no fade-in), then Vocal Mutation (when on or still fading; zero latency, no dry copy needed, it blends internally), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
    then crossfade with the dry copy if Mix < 100 % or a Bypass/Mix change is still ramping.
 5. Update peak meters.
 Host blocks larger than the dry buffer are split into chunks.
@@ -231,6 +232,27 @@ Pitch Tune: 20 ms crossfade, dry path and reported latency follow, the shifter k
 non-zero value the shifter glides from 0 over 30 ms. The plug-in output equals the standalone module's output delayed by 6 samples, bit for bit (tested).
 Cost about 2.5-3 % of one core while shifting, about 0.15 % at 0. Weaker above about 250 Hz voices and beyond about +-6 semitones. UI: the FORMANT knob in the
 "PITCH TUNE + FORMANT" row. Alter Egos never touch it.
+
+## Vocal Mutation (Stage 4.5; `Source/DSP/VocalMutation.*`, tests in `Tests/MutationTests.cpp`)
+Four parameters, default off: **`mut_on`**, **`mut_amount`** (MUTATION, 0..100 %, default 40), **`mut_character`** (CHARACTER, 0..100 %, default 50), **`mut_blend`** (BLEND, 0..100 %, default 100).
+It is a *frequency shifter / ring modulator*, deliberately not a second saturator: a waveshaper multiplies every partial's frequency by whole numbers, so a harmonic voice
+stays harmonic; Mutation adds the same number of Hz to every partial, so a voice at 220 Hz (220, 440, 660 ...) shifted by 110 Hz becomes (330, 550, 770 ...), which is inharmonic
+(bell-like, metallic, alien). A pitch shifter moves partials by a ratio and keeps them harmonic; this does not.
+- **Analytic signal:** two chains of four second-order all-pass sections (coefficients found offline by least-squares design, listed in `VocalMutation.cpp`) give an in-phase and a
+  quadrature copy of the input, 90 degrees apart within 1.06 degrees from 100 Hz to 19.2 kHz at 48 kHz (2.4 degrees at the extremes), with unity gain. IIR, so no reported latency.
+- **Carrier and Character:** one cos/sin pair at fc shared by both channels (the stereo image cannot move); `out = g (I cos(wt) - s Q sin(wt))`. s = +1 keeps only the upper
+  sideband (every partial moves UP by fc), s = -1 only the lower (DOWN), s = 0 both (classic ring modulation, ROBOT). CHARACTER 0..100 % sweeps s from -1 to +1, so it changes
+  *what happens to the spectrum*, not how loud it is; `g = sqrt(2 / (1 + s^2))` keeps the level equal (measured within 0.03 dB on noise).
+- **MUTATION:** fc = 600 Hz x m^2 (m = 0..1): a few Hz is a slow phasing or tremolo-like movement, tens of Hz a rough growl, hundreds of Hz robotic or metallic. The wet signal also
+  fades in over the first 3 % of MUTATION, so MUTATION 0 is an exact copy; the carrier glides (40 ms smoothing), so sweeping the knob is a smooth, pitch-like sweep.
+- **BLEND:** `out = in + b (mutated - in)`. The dry part is not delayed (the all-pass chain delays the wet by a few samples, which is inaudible against a frequency-shifted signal).
+- **Off / MUTATION 0 / BLEND 0 (settled):** the stage is skipped, bit-exact, its memory cleared once; switching on or off is a 20 ms fade. **Zero latency:** the plug-in still reports 6 samples,
+  Mix and Bypass need no extra dry delay. NaN/Inf input is replaced by 0 before the filters; an absurd input (past 1e9) clears the filters at once and the dry signal passes. No allocation after `prepare()`.
+- **Place in the chain:** after Pitch Tune and FORMANT (so they analyse the clean voice) and before the EQ and compressor (which can tame the new partials) and the saturator. Alter Egos never touch it.
+- **Limits (known):** it does not follow the sung note, so what it does depends on the voice and the notes; below about 20 Hz carrier the ROBOT type is a tremolo; shifting UP folds the last
+  fc Hz below Nyquist back (inaudible for voices); shifting DOWN folds partials below fc through 0 Hz (they reappear as mirrored partials, part of the effect); the image sideband is at most
+  about -41 dB (not infinite), and weaker below about 50 Hz.
+- **Cost:** about 0.15-0.4 % of one core at 44.1/48 kHz, about 0.6-1.1 % at 96 kHz (Linux x86, 512-sample blocks; noisy).
 
 ## What does not exist
 User presets (saving and browsing your own), other plug-in formats, host-grid phase-lock

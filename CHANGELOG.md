@@ -3,6 +3,14 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.5: **Vocal Mutation** is now in the plug-in: a single-sideband frequency shifter / ring modulator for robotic and alien voices (not a waveshaper: it moves every
+  partial by the same number of Hz, so a harmonic voice becomes inharmonic; the saturator cannot do that). Four new parameters, default off (`mut_on`, `mut_amount`,
+  `mut_character`, `mut_blend`; 46 in total), a "VOCAL MUTATION" row in the window between Pitch Tune + FORMANT and Liquid Echo with a read-out of the type and the shift in Hz
+  (window now 1060x1112, opens at 70%). MUTATION 0..100 % sets the shift (0..600 Hz, squared curve; 0 = bit-exact), CHARACTER sweeps DOWN (alien, dark) - ROBOT (ring modulation) - UP
+  (alien, bright) at equal loudness, BLEND is dry to fully mutated. Zero latency (latency stays 6 samples, nothing to report), sits after Pitch Tune/FORMANT and before the EQ. Measured on synthetic
+  signals: unwanted sideband at most -41.1 dB, level within 0.03 dB across Character, a harmonic voice stays 100 % harmonic through the saturator and drops to 0.0 % through
+  Mutation, about 0.15-0.4 % of one core at 44.1/48 kHz. Alter Egos never touch it (tested). 22 new test groups (200 in total, 15 deliberate breaks all caught), ASan/UBSan clean, pluginval
+  SUCCESS. Not yet auditioned on a real vocal and not yet checked in FL Studio. No new dependency. See `docs/ARCHITECTURE.md` (Vocal Mutation) and `docs/DECISIONS.md` 24.
 - Stage 4.4: **FORMANT** is now in the plug-in: one new parameter, `formant_shift` (-12..+12 semitones, default 0 = off; 42 parameters in total), a FORMANT knob in
   the window's row (now "PITCH TUNE + FORMANT"; the note read-out moved under the ON switch). It changes the voice's size/character (negative = bigger and darker, positive =
   smaller and brighter) without changing the notes, works with or without Pitch Tune, and follows it in the chain. Off (0) is bit-exact and adds no latency (6 samples

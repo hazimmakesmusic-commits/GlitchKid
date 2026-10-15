@@ -49,7 +49,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 980; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 1112; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -78,6 +78,13 @@ private:
     juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed, formant
     juce::String shownTuneText;
     int tuneDividerY = 0;
+
+    // Vocal Mutation row: ON, a read-out of what the settings do (type + shift in Hz), MUTATION, CHARACTER, BLEND.
+    juce::Label mutTitle { {}, "VOCAL MUTATION" }, mutReadout;
+    juce::ToggleButton mutOnButton { "ON" };
+    juce::OwnedArray<ParamKnob> mutKnobs; // mutation, character, blend
+    juce::String shownMutText;
+    int mutDividerY = 0;
 
     // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
     juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
@@ -114,6 +121,7 @@ private:
     juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment tuneOnAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment mutOnAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment tuneKeyAttachment, tuneScaleAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
 

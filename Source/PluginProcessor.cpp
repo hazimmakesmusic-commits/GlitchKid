@@ -110,6 +110,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
         NormalisableRange<float> (glitchkid::formant::FormantShifter::minShiftSemitones, glitchkid::formant::FormantShifter::maxShiftSemitones, 0.1f),
         0.0f, AudioParameterFloatAttributes().withLabel ("st")));
 
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { mutOnId, 1 }, "Mutation On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mutAmountId, 1 }, "Mutation",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 40.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mutCharacterId, 1 }, "Mutation Character",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mutBlendId, 1 }, "Mutation Blend",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { dimOnId, 1 }, "Dimension On", false));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimWidthId, 1 }, "Dimension Width",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f, AudioParameterFloatAttributes().withLabel ("%")));
@@ -155,6 +163,9 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* dimIds[] = { dimOnId, dimWidthId, dimDetuneId, dimDepthId, dimMixId };
     for (int i = 0; i < 5; ++i)
         dimParams[i] = apvts.getRawParameterValue (dimIds[i]);
+    const char* mutIds[] = { mutOnId, mutAmountId, mutCharacterId, mutBlendId };
+    for (int i = 0; i < 4; ++i)
+        mutParams[i] = apvts.getRawParameterValue (mutIds[i]);
     const char* tuneIds[] = { tuneOnId, tuneKeyId, tuneScaleId, tuneStrengthId, tuneSpeedId };
     for (int i = 0; i < 5; ++i)
         tuneParams[i] = apvts.getRawParameterValue (tuneIds[i]);
@@ -189,6 +200,16 @@ int GlitchKidProcessor::getWantedLatencySamples() const
 void GlitchKidProcessor::updateReportedLatency()
 {
     setLatencySamples (getWantedLatencySamples());
+}
+
+MutationSettings GlitchKidProcessor::readMutationSettings() const
+{
+    MutationSettings s;
+    s.on = mutParams[0]->load() >= 0.5f;
+    s.mutationPct = mutParams[1]->load();
+    s.characterPct = mutParams[2]->load();
+    s.blendPct = mutParams[3]->load();
+    return s;
 }
 
 DimensionSettings GlitchKidProcessor::readDimensionSettings() const
@@ -368,6 +389,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dimension.setSettings (readDimensionSettings());
     dimension.prepare (sampleRate);
 
+    mutation.setSettings (readMutationSettings());
+    mutation.prepare (sampleRate);
+
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
     dryBuffer2.setSize (2, dryBuffer.getNumSamples());
     undelayedBuffer.setSize (2, dryBuffer.getNumSamples());
@@ -507,6 +531,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         stutter.reset();
         echo.reset();
         dimension.reset();
+        mutation.reset();
         pitch.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // keep listening, so un-bypassing has no gap
         formantListen (buffer, numChannels, dryChannels, numSamples);
         shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
@@ -574,6 +599,10 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     }
     else
         formantListen (buffer, numChannels, dryChannels, numSamples); // idle: keep the shifter's history, output discarded
+
+    // Vocal Mutation: after Pitch Tune and FORMANT (so they hear the clean voice), before the EQ and compressor (which can shape the new partials).
+    mutation.setSettings (readMutationSettings());
+    mutation.process (buffer);
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),

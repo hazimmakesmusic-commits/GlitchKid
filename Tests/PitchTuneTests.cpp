@@ -165,7 +165,7 @@ struct PitchTuneTests : public juce::UnitTest
                                      "eq_lo_freq", "eq_b1_q", "comp_thresh", "comp_makeup" };
             for (auto* id : oldIds)
                 expect (getParam (p, id) > -998.0f, id);
-            expectEquals (p.getParameters().size(), 42);
+            expectEquals (p.getParameters().size(), 46);
         }
 
         beginTest ("Off: the output is the input delayed by exactly 6 samples (no Pitch Tune cost, bit-exact)");

@@ -3,7 +3,7 @@
 Only the first section exists today. Everything else is a plan, not a feature, and the order can change.
 
 ## Built (see `../CHANGELOG.md`)
-Gain/bypass, 4-band EQ, compressor, saturation (4x oversampled), Glitch Stutter, Liquid Echo (tempo-aware delay), Dimension (stereo thickening), MOODS 2.0 (five Alter Egos with Chaos, Blend and Surprise Me), Mix, meters, state save/restore,
+Gain/bypass, 4-band EQ, compressor, saturation (4x oversampled), Glitch Stutter, Liquid Echo (tempo-aware delay), Dimension (stereo thickening), MOODS 2.0 (five Alter Egos with Chaos, Blend and Surprise Me), Pitch Tune, FORMANT, Vocal Mutation (Stage 4.5, single-sideband frequency shifter / ring modulator; not yet checked in FL Studio), Mix, meters, state save/restore,
 NaN/Inf-safe EQ and saturation, unit tests.
 
 ## Next (hardening, from the project audit; not yet started unless noted)
@@ -20,6 +20,7 @@ NaN/Inf-safe EQ and saturation, unit tests.
 - Liquid Echo extras if wanted: ping-pong, ducking, modulation, tail reporting to the host.
 - Stutter locked to the host beat grid (PPQ phase).
 - Pitch Tune is in the plug-in (Stage 4.2). Reported working in FL Studio on the Mac. Next: check mono tracks and the latency change when switching in more detail; listening tests on more voices; if it sounds grainy, add pitch-mark alignment to the shifter; FORMANT is in the plug-in (Stage 4.4; check it in FL Studio, including both effects on at once, and with more voices; improve the envelope estimator for high voices); consider a lower-latency mode (higher lowest pitch); optional: a vibrato-preserving mode, a "target note" lock, scale editor.
+- Vocal Mutation follow-ups (after the owner has auditioned it on real vocals): MOODS integration (an Alter Ego that switches it on with a chosen Character; needs a decision on whether Alter Egos may own `mut_*`); optionally lock the carrier to a note of the Pitch Tune key (musical but couples it to the pitch detector); a gentle low-pass before shifting UP if aliasing is ever heard; drive/feedback inside the stage if it is too clean.
 - Release: signing/notarisation (Apple Developer Program, about US$99/year), installer, licensing decision.
 
 ## Needs the owner's decision

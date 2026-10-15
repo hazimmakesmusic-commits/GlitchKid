@@ -95,6 +95,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       echoDivAttachment (p.apvts, GlitchKidProcessor::echoDivId, echoDivBox),
       dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton),
       tuneOnAttachment (p.apvts, GlitchKidProcessor::tuneOnId, tuneOnButton),
+      mutOnAttachment (p.apvts, GlitchKidProcessor::mutOnId, mutOnButton),
       tuneKeyAttachment (p.apvts, GlitchKidProcessor::tuneKeyId, tuneKeyBox),
       tuneScaleAttachment (p.apvts, GlitchKidProcessor::tuneScaleId, tuneScaleBox),
       blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider)
@@ -260,6 +261,23 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &tuneTitle, &tuneReadout, &tuneOnButton, &tuneKeyBox, &tuneScaleBox })
         content.addAndMakeVisible (c);
 
+    // Vocal Mutation: a frequency shifter / ring modulator, not a distortion. MUTATION = how far every partial of the voice is moved in Hz
+    // (0 = no change); CHARACTER = DOWN (alien, dark) / ROBOT (ring modulation) / UP (alien, bright); BLEND = dry to fully mutated. No latency.
+    mutTitle.setJustificationType (juce::Justification::centred);
+    mutTitle.setColour (juce::Label::textColourId, violet);
+    mutReadout.setJustificationType (juce::Justification::centredTop);
+    mutReadout.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    mutReadout.setColour (juce::Label::textColourId, lime);
+    mutOnButton.setColour (juce::ToggleButton::tickColourId, lime);
+    mutOnButton.setTooltip ("Turns the voice robotic or alien by moving every partial by a fixed number of Hz (a frequency shifter / ring modulator). No latency.");
+    mutKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::mutAmountId, "MUTATION", " %", pink));
+    mutKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::mutCharacterId, "CHARACTER", " %", violet));
+    mutKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::mutBlendId, "MUTATION BLEND", " %", lime));
+    for (auto* k : mutKnobs)
+        k->addTo (content);
+    for (auto* c : std::initializer_list<juce::Component*> { &mutTitle, &mutReadout, &mutOnButton })
+        content.addAndMakeVisible (c);
+
     // Dimension: stereo thickening. WIDTH 0 = centred thickening, 100 = stereo spread; DETUNE = pitch swing in cents.
     dimTitle.setJustificationType (juce::Justification::centred);
     dimTitle.setColour (juce::Label::textColourId, violet);
@@ -321,7 +339,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    setSize (designW * 74 / 100, designH * 74 / 100);
+    setSize (designW * 70 / 100, designH * 70 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -394,6 +412,28 @@ void GlitchKidEditor::timerCallback()
         tuneReadout.setText (tuneText, juce::dontSendNotification);
     }
 
+    // Vocal Mutation read-out: computed from the same mapping the DSP uses, so it always matches what is heard.
+    juce::String mutText = "OFF";
+    if (glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::mutOnId)->load() >= 0.5f)
+    {
+        const float amount = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::mutAmountId)->load();
+        const float character = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::mutCharacterId)->load();
+        const double hz = VocalMutation::carrierHzFor (amount);
+        if (hz <= 0.0)
+            mutText = "no change";
+        else
+        {
+            const char* kind = character <= 15.0f ? "DOWN" : character < 45.0f ? "DOWN ~ ROBOT" : character <= 55.0f ? "ROBOT"
+                               : character < 85.0f ? "ROBOT ~ UP" : "UP";
+            mutText = juce::String (kind) + "\n" + (hz < 10.0 ? juce::String (hz, 1) : juce::String (juce::roundToInt (hz))) + " Hz";
+        }
+    }
+    if (mutText != shownMutText)
+    {
+        shownMutText = mutText;
+        mutReadout.setText (mutText, juce::dontSendNotification);
+    }
+
     // Always say where the stutter tempo comes from: the host, or the 120 BPM fallback.
     const auto text = glitchProcessor.isStutterTempoFromHost()
                           ? "HOST TEMPO " + juce::String (glitchProcessor.getStutterTempoBpm(), 1) + " BPM"
@@ -413,6 +453,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.drawLine (270.0f, 90.0f, 270.0f, (float) tuneDividerY - 8.0f);
     g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) tuneDividerY - 8.0f);
     g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
+    g.drawLine (16.0f, (float) mutDividerY, (float) designW - 16.0f, (float) mutDividerY);
     g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
     g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
 }
@@ -441,6 +482,15 @@ void GlitchKidEditor::layoutContent()
 
     auto echoArea = r.removeFromBottom (132);
     echoDividerY = echoArea.getY() - 4;
+    auto mutArea = r.removeFromBottom (132); // Vocal Mutation sits between Pitch Tune / FORMANT and the EQ in the signal path; its row is shown above Liquid Echo
+    mutDividerY = mutArea.getY() - 4;
+    mutTitle.setBounds (mutArea.removeFromTop (20));
+    const int mutCell = mutArea.getWidth() / 7;
+    auto mutSwitch = mutArea.removeFromLeft (mutCell).reduced (8, 0);
+    mutOnButton.setBounds (mutSwitch.removeFromTop (40).withSizeKeepingCentre (70, 28));
+    mutReadout.setBounds (mutSwitch.removeFromTop (40));
+    for (auto* k : mutKnobs)
+        k->setBounds (mutArea.removeFromLeft (mutCell).reduced (8, 0));
     auto tuneArea = r.removeFromBottom (132); // above Liquid Echo, as it comes first in the signal path
     tuneDividerY = tuneArea.getY() - 4;
     tuneTitle.setBounds (tuneArea.removeFromTop (20));

@@ -548,9 +548,11 @@ struct AlterEgoTests : public juce::UnitTest
             for (auto* id : allOriginalIds)
                 expect (ids.count (id) == 1, juce::String ("parameter ID still present: ") + id);
             // No original parameter was renamed or removed. The only additions are the five Pitch Tune parameters (Stage 4.2) and
-            // Formant Shift (Stage 4.4), which no Alter Ego may touch (checked in PitchTuneTests.cpp and FormantTuneTests.cpp).
-            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds) + 6);
-            for (auto* id : { "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed", "formant_shift" })
+            // Formant Shift (Stage 4.4), which no Alter Ego may touch (checked in PitchTuneTests.cpp and FormantTuneTests.cpp), and the four
+            // Vocal Mutation parameters (Stage 4.5), which Alter Egos do not touch either (checked in MutationTests.cpp).
+            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds) + 10);
+            for (auto* id : { "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed", "formant_shift",
+                              "mut_on", "mut_amount", "mut_character", "mut_blend" })
                 expect (ids.count (id) == 1, juce::String ("Pitch Tune parameter present: ") + id);
 
             CountingListener l;
