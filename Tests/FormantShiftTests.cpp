@@ -8,16 +8,16 @@
 #include <new>
 #include <random>
 #include <thread>
-#include "../Source/Experimental/FormantShifting/FormantShifter.h"
+#include "../Source/DSP/FormantShifting/FormantShifter.h"
 
-// Stage 4.3: tests for the experimental formant shifter. Synthetic signals only: they prove the maths (envelope moves,
+// Stage 4.3: tests for the formant shifter module on its own (the plug-in stage is tested in FormantTuneTests.cpp). Synthetic signals only: they prove the maths (envelope moves,
 // harmonics and pitch stay, safety), not how a real voice sounds. Real vocals need the listening test in
 // docs/FORMANT_SHIFTING_FEASIBILITY.md.
 
 // --- allocation counter -------------------------------------------------------------------------------------------
 // Counts every heap allocation in this test program, so a test can prove that process() allocates nothing.
 // (Replacing the global operator new is allowed; these forward to malloc/free so every other allocation still works.)
-static std::atomic<long> g_allocations { 0 };
+std::atomic<long> g_allocations { 0 }; // (shared: FormantTuneTests.cpp checks the whole plug-in with it)
 
 // GCC sees (after inlining) a standard-library new paired with our free() and warns, although the pairing is consistent.
 #if defined(__GNUC__) || defined(__clang__)
@@ -376,7 +376,7 @@ bool allFinite (const Vec& v)
 
 struct FormantShiftTests : public juce::UnitTest
 {
-    FormantShiftTests() : juce::UnitTest ("FormantShifter (experimental)", "GlitchKid") {}
+    FormantShiftTests() : juce::UnitTest ("FormantShifter (module)", "GlitchKid") {}
 
     void runTest() override
     {

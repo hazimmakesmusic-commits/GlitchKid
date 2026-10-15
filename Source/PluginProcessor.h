@@ -8,12 +8,14 @@
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
 #include "DSP/PitchCorrection/PitchCorrector.h"
+#include "DSP/FormantShifting/FormantShifter.h"
 #include "AlterEgos.h"
 
-// Signal path: input -> pitch tune (optional) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Pitch Tune (off by default) adds its own constant delay (PitchCorrector::latencyFor, about 31 ms)
-// only while it is switched on: the dry path and the reported latency follow it, with a 20 ms crossfade when it is switched. Peak meters tap the input and output.
+// only while it is switched on, and Formant (off at 0 semitones) adds its own (FormantShifter::latencyFor, about 21 ms) only while it is away from 0: for each, the dry
+// path and the reported latency follow it, with a 20 ms crossfade when it is switched. Peak meters tap the input and output.
 class GlitchKidProcessor : public juce::AudioProcessor, private juce::Timer
 {
 public:
@@ -65,6 +67,10 @@ public:
     static constexpr const char* tuneScaleId    = "tune_scale";    // index into glitchkid::pitch::ScaleQuantizer::Scale
     static constexpr const char* tuneStrengthId = "tune_strength"; // percent of the distance to the target note that is corrected
     static constexpr const char* tuneSpeedId    = "tune_speed";    // ms, how fast the correction glides; 0 = instant
+
+    // Formant (vocal "size"): moves the spectral envelope of a voice without changing its notes. -12..+12 semitones, 0 = off and neutral
+    // (exactly bit-exact, no latency). Negative = bigger / darker voice, positive = smaller / brighter. Independent of Pitch Tune.
+    static constexpr const char* formantShiftId = "formant_shift";
 
     GlitchKidProcessor();
     ~GlitchKidProcessor() override;
@@ -118,7 +124,7 @@ public:
     float getTuneDetectedMidi() const { return shownDetectedMidi.load(); }
     float getTuneTargetMidi() const { return shownTargetMidi.load(); }
 
-    // The latency this instance should report right now (6 samples, plus the Pitch Tune delay while it is on). A timer
+    // The latency this instance should report right now (6 samples, plus the Pitch Tune delay while it is on, plus the Formant delay while it is away from 0). A timer
     // on the message thread calls updateReportedLatency(); tests call it directly.
     int getWantedLatencySamples() const;
     void updateReportedLatency();
@@ -127,6 +133,7 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void timerCallback() override { updateReportedLatency(); }
     void processChunk (juce::AudioBuffer<float>&);
+    void formantListen (const juce::AudioBuffer<float>&, int numChannels, int dryChannels, int numSamples);
 
     std::atomic<float>* gainDb = nullptr;
     std::atomic<float>* bypass = nullptr;
@@ -161,6 +168,14 @@ private:
     std::vector<float> blendBuffer;       // per-sample Pitch Tune blend for the current chunk
     juce::SmoothedValue<float> tuneBlend { 0.0f }; // 1 = Pitch Tune path (delayed), 0 = straight through
     int pitchLatency = 0;
+
+    glitchkid::formant::FormantShifter formant;
+    std::atomic<float>* formantShift = nullptr;
+    FixedDelay formantDryDelay;           // extra dry-path delay for Formant (used while it is away from 0)
+    juce::AudioBuffer<float> dryBuffer3, scratchBuffer; // preallocated; scratch keeps the shifter listening while it is not used
+    std::vector<float> formantBlendBuffer;
+    juce::SmoothedValue<float> formantBlend { 0.0f }; // 1 = Formant path (delayed), 0 = straight through
+    int formantLatency = 0;
     std::atomic<float> shownDetectedMidi { -1.0f }, shownTargetMidi { -1.0f };
     FixedDelay dryDelay; // delays the dry (bypass) path by the saturation latency
     std::atomic<float>* satDrive = nullptr;

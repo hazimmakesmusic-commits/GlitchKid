@@ -1,21 +1,22 @@
 # Architecture
 
-What exists today (Stage 4.2: Pitch Tune, on top of MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 4.4: Formant, on top of Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
 32-bit float; no network, no hosted service. Plug-in codes: manufacturer `GlKd`, plug-in `Gkid` (never change).
 
 ```
-input -> [Pitch Tune, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
-   \______ dry copy, delayed by 6 samples (+ the Pitch Tune delay while Tune is on) ______/
+input -> [Pitch Tune, optional] -> [Formant, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
+   \_ dry copy, delayed by 6 samples (+ the Pitch Tune delay while Tune is on, + the Formant delay while Formant is not 0) _/
 ```
 
 ## Files
 | File | Role |
 |---|---|
-| `Source/PluginProcessor.*` | 41 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune latency reporting |
+| `Source/PluginProcessor.*` | 42 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
 | `Source/PluginEditor.*` | Window designed at 1060x980 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 74%: knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/DSP/FormantShifting/FormantShifter.*` | Formant: STFT cepstral-envelope warping with a real gain (moves the voice's resonances, not its notes); mono/stereo, per-sample, own FFT |
 | `Source/DSP/PitchCorrection/*` | Pitch Tune: `YinPitchDetector` (F0), `ScaleQuantizer` (key/scale), `PsolaPitchShifter` (TD-PSOLA-style, one per channel), `PitchCorrector` (ties them together, mono/stereo) |
 | `Source/DSP/ParametricEq.*` | 4 bands (low shelf, 2 bells, high shelf), RBJ cookbook biquads in double precision |
 | `Source/DSP/Compressor.*` | Feed-forward, stereo-linked peak detector, soft knee, attack/release on the gain reduction |
@@ -32,11 +33,14 @@ input -> [Pitch Tune, optional] -> EQ -> compressor -> saturation -> Glitch Stut
 1. Resolve host tempo once per block (play head BPM, clamped 40..300, fallback 120).
 2. Copy the input to the dry buffer and delay it by `Saturation::latencySamples` (6). A second copy is delayed by the Pitch Tune
    latency as well (always, so it is valid the moment Tune is switched on); while Tune is on (or ramping) the dry buffer is the
-   crossfade between the two, using the 20 ms Tune blend ramp.
+   crossfade between the two, using the 20 ms Tune blend ramp. A third copy, taken from that result, is delayed by the Formant latency and
+   crossfaded the same way with the Formant blend ramp (so with both on the dry path is delayed by both).
 3. If Bypass is on, or Mix is 0 %, and the crossfade has settled: output the exact delayed dry copy, reset the
    stages, return (almost no CPU). Pitch Tune only listens (`feed`) in this state.
 4. Otherwise: Pitch Tune (if on or ramping: zero non-finite input, keep a straight-through copy, correct in place, crossfade by the
-   Tune blend; if off: only `feed`, i.e. record the history), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
+   Tune blend; if off: only `feed`, i.e. record the history), then Formant the same way (if away from 0 or ramping: zero non-finite input, keep a
+   straight-through copy, shift in place, crossfade by the Formant blend; if at 0: the shifter still runs at 0 semitones on a scratch copy and the result
+   is thrown away, which keeps its overlap-add full so engaging has no fade-in), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
    then crossfade with the dry copy if Mix < 100 % or a Bypass/Mix change is still ramping.
 5. Update peak meters.
 Host blocks larger than the dry buffer are split into chunks.
@@ -47,7 +51,9 @@ Host blocks larger than the dry buffer are split into chunks.
 - **Latency, always reported:** 6 samples (0.125 ms at 48 kHz) with Pitch Tune off. It is the saturation oversampler's latency;
   the dry/bypass path and an idle saturation stage are delayed by the same amount. With Pitch Tune on it is 6 plus
   `PitchCorrector::latencyFor(sampleRate)` (1504 samples = 31.3 ms at 48 kHz, 1383 at 44.1, 3004 at 96), reported through a
-  message-thread timer (10 Hz) so the audio thread never calls the host; the dry path is delayed by the same amount.
+  message-thread timer (10 Hz) so the audio thread never calls the host; the dry path is delayed by the same amount. Formant adds
+  `FormantShifter::latencyFor(sampleRate)` (1023 samples = 21-23 ms at 44.1/48 kHz, 2047 at 88.2/96 kHz) only while `formant_shift` is not 0; with both
+  on the delays add (about 53 ms at 48 kHz).
 - **Smoothing:** gain, Mix, EQ settings and drive ramp over 20 ms; EQ coefficients refresh every 32 samples while moving.
 - **Real-time safe:** no allocation, locks or I/O on the audio thread; buffers are sized in `prepareToPlay`
   (measured: 0 audio-thread heap allocations over 6,000 blocks in the audit).
@@ -56,7 +62,7 @@ Host blocks larger than the dry buffer are split into chunks.
   `gain, bypass, eq_lo_freq, eq_lo_gain, eq_b1_freq, eq_b1_gain, eq_b1_q, eq_b2_freq, eq_b2_gain, eq_b2_q,
   eq_hi_freq, eq_hi_gain, comp_thresh, comp_ratio, comp_attack, comp_release, comp_knee, comp_makeup, sat_drive,
   stutter_on, stutter_rate, stutter_mix, mix, echo_on, echo_sync, echo_time, echo_div, echo_fb, echo_tone,
-  echo_width, echo_mix, dim_on, dim_width, dim_detune, dim_depth, dim_mix, tune_on, tune_key, tune_scale, tune_strength, tune_speed`.
+  echo_width, echo_mix, dim_on, dim_width, dim_detune, dim_depth, dim_mix, tune_on, tune_key, tune_scale, tune_strength, tune_speed, formant_shift`.
 - **State:** XML via `copyState`/`replaceState`; unknown or garbage state is ignored; parameters missing from an
   older save keep their defaults. The saved state has no version attribute yet.
 
@@ -217,6 +223,15 @@ latency): `tune_on`, `tune_key` (C..B), `tune_scale` (chromatic, major, natural/
 - **UI:** a Pitch Tune row above Liquid Echo (ON, KEY, SCALE, STRENGTH, SPEED) and a read-out `SUNG A3 +23c -> A3` / `listening...` / `OFF`.
 - Alter Egos, Chaos and Surprise never touch the Pitch Tune controls.
 
+## Formant (Stage 4.4; algorithm, measurements and limits in `FORMANT_SHIFTING_FEASIBILITY.md`)
+One parameter, **`formant_shift`**, -12..+12 semitones, **default 0 = off** (bit-exact, no latency; anything within half a 0.1 step of 0 counts as 0). It moves the
+spectral envelope (the formants: what makes a voice sound big, small, male, female) while the harmonics, and so the notes, stay put. Negative = bigger /
+darker voice, positive = smaller / brighter. It works on its own (Pitch Tune does not have to be on) and follows Pitch Tune in the chain. Same switching design as
+Pitch Tune: 20 ms crossfade, dry path and reported latency follow, the shifter keeps listening while idle. At start-up or when a session loads with a
+non-zero value the shifter glides from 0 over 30 ms. The plug-in output equals the standalone module's output delayed by 6 samples, bit for bit (tested).
+Cost about 2.5-3 % of one core while shifting, about 0.15 % at 0. Weaker above about 250 Hz voices and beyond about +-6 semitones. UI: the FORMANT knob in the
+"PITCH TUNE + FORMANT" row. Alter Egos never touch it.
+
 ## What does not exist
 User presets (saving and browsing your own), other plug-in formats, host-grid phase-lock
-for the stutter, formant shifting in the plug-in (a tested prototype exists in `Source/Experimental/FormantShifting/`, Stage 4.3), polyphonic pitch correction, pitch correction of a mixed (non-solo) signal. Moods have not been tuned by ear on real vocals.
+for the stutter, polyphonic pitch correction, pitch correction of a mixed (non-solo) signal. Moods have not been tuned by ear on real vocals.

@@ -2,6 +2,13 @@
 #include "PluginEditor.h"
 #include "DSP/Finite.h"
 
+namespace
+{
+// Formant is "on" (adds latency, runs the shifter) only when it is at least half a parameter step (0.05 st) away from 0; the
+// 0.1 st grid can leave float residue at "0", so anything closer is exactly neutral.
+bool formantIsOn (float semitones) { return std::abs (semitones) >= 0.05f; }
+}
+
 juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLayout()
 {
     using namespace juce;
@@ -99,6 +106,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { tuneSpeedId, 1 }, "Tune Speed",
         skewed (0.0f, 400.0f, 1.0f, 40.0f), 20.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { formantShiftId, 1 }, "Formant Shift",
+        NormalisableRange<float> (glitchkid::formant::FormantShifter::minShiftSemitones, glitchkid::formant::FormantShifter::maxShiftSemitones, 0.1f),
+        0.0f, AudioParameterFloatAttributes().withLabel ("st")));
 
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { dimOnId, 1 }, "Dimension On", false));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimWidthId, 1 }, "Dimension Width",
@@ -148,6 +158,7 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* tuneIds[] = { tuneOnId, tuneKeyId, tuneScaleId, tuneStrengthId, tuneSpeedId };
     for (int i = 0; i < 5; ++i)
         tuneParams[i] = apvts.getRawParameterValue (tuneIds[i]);
+    formantShift = apvts.getRawParameterValue (formantShiftId);
 
     if (juce::MessageManager::existsAndIsCurrentThread())
         startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
@@ -171,7 +182,8 @@ glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings(
 
 int GlitchKidProcessor::getWantedLatencySamples() const
 {
-    return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0);
+    return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0)
+           + (formantIsOn (formantShift->load()) ? formantLatency : 0);
 }
 
 void GlitchKidProcessor::updateReportedLatency()
@@ -342,6 +354,12 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     pitchDryDelay.prepare (pitchLatency);
     tuneBlend.reset (sampleRate, 0.02);
     tuneBlend.setCurrentAndTargetValue (tuneParams[0]->load() >= 0.5f ? 1.0f : 0.0f);
+
+    formantLatency = glitchkid::formant::FormantShifter::latencyFor (sampleRate);
+    formant.prepare (sampleRate);
+    formantDryDelay.prepare (formantLatency);
+    formantBlend.reset (sampleRate, 0.02);
+    formantBlend.setCurrentAndTargetValue (formantIsOn (formantShift->load()) ? 1.0f : 0.0f);
     updateReportedLatency();
 
     echo.setSettings (readEchoSettings());
@@ -354,6 +372,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryBuffer2.setSize (2, dryBuffer.getNumSamples());
     undelayedBuffer.setSize (2, dryBuffer.getNumSamples());
     blendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
+    dryBuffer3.setSize (2, dryBuffer.getNumSamples());
+    scratchBuffer.setSize (2, dryBuffer.getNumSamples());
+    formantBlendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
 }
 
 // Raise a peak value; only the audio thread writes, so a plain load/store is enough.
@@ -393,6 +414,17 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                                         start, juce::jmin (cap, total - start));
         processChunk (chunk);
     }
+}
+
+// While Formant is not in use, still run the shifter at 0 semitones on a copy and throw the result away. That keeps its
+// overlap-add full, so moving the control off 0 starts straight away with no fade-in; at 0 the frames skip the transforms
+// (about 0.15 % of a core).
+void GlitchKidProcessor::formantListen (const juce::AudioBuffer<float>& buffer, int numChannels, int dryChannels, int numSamples)
+{
+    for (int ch = 0; ch < dryChannels; ++ch)
+        scratchBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+    formant.setShiftSemitones (0.0f);
+    formant.process (scratchBuffer.getArrayOfWritePointers(), numChannels, numSamples);
 }
 
 void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
@@ -439,6 +471,30 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         }
     }
 
+    // Formant: the same for its own latency, applied after the Pitch Tune step above (so with both on the dry path is delayed by both).
+    const float formantSt = formantShift->load();
+    const bool formantOn = formantIsOn (formantSt);
+    formantBlend.setTargetValue (formantOn ? 1.0f : 0.0f);
+    const bool formantActive = formantOn || formantBlend.isSmoothing();
+    for (int ch = 0; ch < dryChannels; ++ch)
+        dryBuffer3.copyFrom (ch, 0, dry, ch, 0, numSamples);
+    juce::AudioBuffer<float> dryLate2 (dryBuffer3.getArrayOfWritePointers(), dryChannels, 0, numSamples);
+    formantDryDelay.process (dryLate2); // always fed, so it is valid the moment Formant is moved off 0
+    if (formantActive)
+    {
+        for (int i = 0; i < numSamples; ++i)
+            formantBlendBuffer[(size_t) i] = formantBlend.getNextValue();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = formantBlendBuffer[(size_t) i];
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float a = dry.getSample (ch, i), late = dryLate2.getSample (ch, i);
+                dry.setSample (ch, i, b >= 1.0f ? late : a + (late - a) * b);
+            }
+        }
+    }
+
     const bool bypassed = bypass->load() >= 0.5f;
     const float wetTarget = wetAmount (bypassed, mixPercent->load());
     wetMix.setTargetValue (wetTarget);
@@ -452,6 +508,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         echo.reset();
         dimension.reset();
         pitch.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // keep listening, so un-bypassing has no gap
+        formantListen (buffer, numChannels, dryChannels, numSamples);
         shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
         shownTargetMidi.store (-1.0f, std::memory_order_relaxed);
         for (int ch = 0; ch < dryChannels; ++ch)
@@ -493,6 +550,30 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
         shownTargetMidi.store (-1.0f, std::memory_order_relaxed);
     }
+
+    if (formantActive)
+    {
+        // Formant follows Pitch Tune. Same safety as above: zero non-finite input before the straight-through copy is taken.
+        for (int ch = 0; ch < numChannels; ++ch)
+            dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
+        for (int ch = 0; ch < dryChannels; ++ch)
+            undelayedBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+        formant.setShiftSemitones (formantOn ? formantSt : 0.0f);
+        formant.process (buffer.getArrayOfWritePointers(), numChannels, numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = formantBlendBuffer[(size_t) i];
+            if (b >= 1.0f)
+                continue;
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float u = undelayedBuffer.getSample (ch, i), t = buffer.getSample (ch, i);
+                buffer.setSample (ch, i, u + (t - u) * b);
+            }
+        }
+    }
+    else
+        formantListen (buffer, numChannels, dryChannels, numSamples); // idle: keep the shifter's history, output discarded
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),

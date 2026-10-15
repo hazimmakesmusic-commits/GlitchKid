@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-// EXPERIMENTAL (Stage 4.3): not part of the plugin. Compiled only into the test target and FormantLab.
+// Formant shifter (Stage 4.3 prototype, productised in Stage 4.4).
 //
 // Formant shifter for vocals: moves the spectral ENVELOPE (the vocal-tract resonances that give a voice its
 // size and character) while the harmonics, and so the pitch, stay where they are.

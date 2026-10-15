@@ -160,12 +160,12 @@ struct PitchTuneTests : public juce::UnitTest
             p.updateReportedLatency();
             expectEquals (p.getLatencySamples(), pluginLatency);
             expectEquals (p.getWantedLatencySamples(), pluginLatency);
-            // Five parameters were added; none of the 36 earlier ones may have moved or gone.
+            // Pitch Tune added five parameters (Formant Shift a sixth, tested in FormantTuneTests.cpp); none of the 36 earlier ones may have moved or gone.
             const char* oldIds[] = { "gain", "bypass", "mix", "sat_drive", "stutter_on", "echo_on", "echo_mix", "dim_on", "dim_mix",
                                      "eq_lo_freq", "eq_b1_q", "comp_thresh", "comp_makeup" };
             for (auto* id : oldIds)
                 expect (getParam (p, id) > -998.0f, id);
-            expectEquals (p.getParameters().size(), 41);
+            expectEquals (p.getParameters().size(), 42);
         }
 
         beginTest ("Off: the output is the input delayed by exactly 6 samples (no Pitch Tune cost, bit-exact)");

@@ -243,8 +243,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         l->setFont (juce::FontOptions (11.0f));
         content.addAndMakeVisible (l);
     }
-    tuneReadout.setJustificationType (juce::Justification::centred);
-    tuneReadout.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    tuneReadout.setJustificationType (juce::Justification::centredTop);
+    tuneReadout.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     tuneReadout.setColour (juce::Label::textColourId, lime);
     tuneOnButton.setColour (juce::ToggleButton::tickColourId, lime);
     tuneOnButton.setTooltip ("Vocal pitch correction for a single voice (adds about 31 ms of latency while on). Sing or play a dry vocal.");
@@ -252,6 +252,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     tuneScaleBox.setTooltip ("Which notes the voice may be pulled to. Chromatic = any semitone.");
     tuneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::tuneStrengthId, "STRENGTH", " %", lime));
     tuneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::tuneSpeedId, "SPEED", " ms", pink));
+    // FORMANT (vocal "size"): works on its own, whether or not Pitch Tune is on. Negative = bigger / darker voice, positive = smaller / brighter.
+    // The notes stay the same. Adds about 21 ms of latency while it is away from 0.
+    tuneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::formantShiftId, "FORMANT", " st", violet));
     for (auto* k : tuneKnobs)
         k->addTo (content);
     for (auto* c : std::initializer_list<juce::Component*> { &tuneTitle, &tuneReadout, &tuneOnButton, &tuneKeyBox, &tuneScaleBox })
@@ -382,7 +385,7 @@ void GlitchKidEditor::timerCallback()
         else
         {
             const int cents = (int) std::lround ((sung - std::round (sung)) * 100.0f);
-            tuneText = "SUNG " + noteName (sung) + (cents >= 0 ? " +" : " ") + juce::String (cents) + "c   ->   " + noteName (target);
+            tuneText = "SUNG " + noteName (sung) + (cents >= 0 ? " +" : " ") + juce::String (cents) + "c\n->  " + noteName (target);
         }
     }
     if (tuneText != shownTuneText)
@@ -444,6 +447,7 @@ void GlitchKidEditor::layoutContent()
     const int tuneCell = tuneArea.getWidth() / 7;
     auto tuneSwitch = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
     tuneOnButton.setBounds (tuneSwitch.removeFromTop (40).withSizeKeepingCentre (70, 28));
+    tuneReadout.setBounds (tuneSwitch.removeFromTop (40));
     auto keyCell = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
     tuneKeyLabel.setBounds (keyCell.removeFromTop (14));
     tuneKeyBox.setBounds (keyCell.removeFromTop (40).withSizeKeepingCentre (76, 26));
@@ -452,7 +456,7 @@ void GlitchKidEditor::layoutContent()
     tuneScaleBox.setBounds (scaleCell.removeFromTop (40).withSizeKeepingCentre (150, 26));
     for (auto* k : tuneKnobs)
         k->setBounds (tuneArea.removeFromLeft (tuneCell).reduced (8, 0));
-    tuneReadout.setBounds (tuneArea.reduced (4, 0).withTrimmedBottom (40));
+    // (the read-out sits under the ON switch, in the space the FORMANT knob took)
     echoTitle.setBounds (echoArea.removeFromTop (20));
     const int cellW = echoArea.getWidth() / 7;
     auto switches = echoArea.removeFromLeft (cellW).reduced (8, 0);

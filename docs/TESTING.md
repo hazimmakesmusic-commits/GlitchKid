@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 167 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 178 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -36,7 +36,7 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
 
 ## Test files (groups)
 `main.cpp` 18 (processor, EQ) · `CompressorTests.cpp` 12 · `SaturationTests.cpp` 12 · `MixTests.cpp` 8 ·
-`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise) · `PitchCorrectionTests.cpp` 14 (the pitch-correction module on its own) · `PitchTuneTests.cpp` 14 (Pitch Tune inside the plug-in) · `FormantShiftTests.cpp` 16 (experimental formant shifter).
+`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise) · `PitchCorrectionTests.cpp` 14 (the pitch-correction module on its own) · `PitchTuneTests.cpp` 14 (Pitch Tune inside the plug-in) · `FormantShiftTests.cpp` 16 (the formant shifter module) · `FormantTuneTests.cpp` 11 (Formant inside the plug-in).
 
 ## Conventions
 - A test that cannot fail is not a test: new tests are mutation-checked (deliberately break the code; the test must fail).
@@ -96,7 +96,16 @@ without hard limits, Surprise that randomises the drive, an Alter Ego that sets 
 Not provable by these tests: whether the Alter Egos sound good on a real voice (they are measured starting points, not tuned by ear), how loud your
 voice gets (makeup is matched to speech-like noise), and behaviour inside FL Studio on the Mac.
 
-## Formant shifter prototype (Stage 4.3): what the tests prove, and what they cannot
+## Formant in the plug-in (Stage 4.4): what the tests prove, and what they cannot
+`FormantTuneTests.cpp`, 11 groups: the parameter (-12..+12, default 0, 0.1 step) and 6 reported samples at 0; with Formant at 0 the output is the input delayed by exactly 6
+samples, bit-exact (3 rates x 3 block sizes, fresh and after use); latency 6 + Formant (+ Pitch Tune) at 44.1/48/96 kHz; **the plug-in output equals the standalone module's
+output delayed by 6 samples, bit for bit** (mono/stereo, 2 rates, 2 shifts, block sizes 64 to 4096); notes preserved and formants moved against an ideal vowel; Mix 0 and Bypass
+give the dry input delayed by the total latency, bit-exact, with Formant alone and together with Pitch Tune; moving Formant off and on during playback (finite, bounded, no dip
+on engage, 0 exact again); NaN/Inf/huge equal zeros always-on and during the crossfade; Formant + Pitch Tune together (note pulled onto the note, spectral centroid moves up);
+Alter Egos never touch it, state round-trips, an older state loads at 0; 0 heap allocations per block with both on. Mutation-checked (see CHANGELOG/DECISIONS 23).
+Not provable by these tests: FL Studio behaviour with two effects changing the latency, real-voice quality beyond the owner's single test, live-monitoring feel at about 53 ms.
+
+## Formant shifter module (Stage 4.3): what the tests prove, and what they cannot
 `FormantShiftTests.cpp`, 16 groups, synthetic signals only (vowels with known formants, noise, bursts): latency reported and measured; neutral exact (3e-8) at 7 rates;
 fundamental within 0.09 cents over 60 cases; formants move toward an ideal moved-formant vowel (2.9 dB mean error vs 6.7 dB for doing nothing); almost no energy between the harmonics
 (mean -42.6 dB, worst -28.4 dB); loudness held (within 1.7 dB); silence/low-level/DC; voiced-unvoiced transitions; band-limited "s" noise; abrupt pitch change; mono = stereo and shared gain;

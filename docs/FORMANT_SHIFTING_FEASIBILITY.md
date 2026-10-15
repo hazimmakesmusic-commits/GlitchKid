@@ -1,6 +1,6 @@
 # Formant shifting: feasibility prototype (Stage 4.3)
 
-**Status: experimental. Not in the plugin.** The production signal path, parameters, GUI, MOODS and Pitch Tune are unchanged. The prototype is compiled only into the test target (`GlitchKidTests`) and the optional `FormantLab` command-line harness. (The milestone prompt called this "Stage 4.2"; that number was already used for Pitch Tune, so it is Stage 4.3 here.)
+**Status: the feasibility question is answered (see below) and the module is now part of the plug-in as the FORMANT control (Stage 4.4, see `ARCHITECTURE.md`).** This document keeps the Stage 4.3 findings and measurements; the code moved from `Source/Experimental/FormantShifting/` to `Source/DSP/FormantShifting/`. `FormantLab` still builds from the same module. (The milestone prompt called this "Stage 4.2"; that number was already used for Pitch Tune, so it is Stage 4.3 here.)
 
 ## What formant shifting is (and is not)
 The **pitch** of a voice is how fast the vocal folds vibrate (the harmonics at f0, 2 f0, 3 f0 ...). The **formants** are the resonances of the throat and mouth that shape the loudness of those harmonics: they are what make a voice sound big, small, male, female, nasal or open. Pitch shifting moves the harmonics (and drags the formants with them: the "chipmunk" effect). **Formant shifting moves the formants and leaves the harmonics alone.** Resampling, or moving every spectral component, is a pitch shift and is not what this module does.
@@ -14,7 +14,7 @@ Can GlitchKid change the perceived size/character of a vocal, without changing i
 ## Files (all new; nothing existing was modified except `CMakeLists.txt` and the docs)
 | File | Role |
 |---|---|
-| `Source/Experimental/FormantShifting/FormantShifter.{h,cpp}` | The shifter: mono/stereo, per-sample, constant latency, own radix-2 FFT |
+| `Source/DSP/FormantShifting/FormantShifter.{h,cpp}` (first in `Source/Experimental/`) | The shifter: mono/stereo, per-sample, constant latency, own radix-2 FFT |
 | `Tests/FormantShiftTests.cpp` | 16 test groups, including a global allocation counter |
 | `Tools/FormantLab/main.cpp` | `--report`, `--demo dir`, or `in.wav out.wav semitones` |
 | `CMakeLists.txt` | the module and tests added to `GlitchKidTests` only; new optional `GLITCHKID_BUILD_FORMANTLAB` target. The plugin target's source list is unchanged. |

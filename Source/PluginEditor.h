@@ -71,11 +71,11 @@ private:
     juce::OwnedArray<ParamKnob> stutterMixKnob;
     juce::String shownTempoText;
 
-    // Pitch Tune row: ON, key, scale, strength, speed, and a read-out of the sung note and the note it is pulled to.
-    juce::Label tuneTitle { {}, "PITCH TUNE" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
+    // Pitch Tune row: ON, key, scale, strength, speed, FORMANT (independent of ON), and a read-out of the sung note and the note it is pulled to.
+    juce::Label tuneTitle { {}, "PITCH TUNE  +  FORMANT" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
     juce::ToggleButton tuneOnButton { "ON" };
     juce::ComboBox tuneKeyBox, tuneScaleBox;
-    juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed
+    juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed, formant
     juce::String shownTuneText;
     int tuneDividerY = 0;
 

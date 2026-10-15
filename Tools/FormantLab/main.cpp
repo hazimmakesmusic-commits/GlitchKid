@@ -1,4 +1,4 @@
-// FormantLab - EXPERIMENTAL command-line harness for the Stage 4.3 formant shifter. Not part of the plugin.
+// FormantLab - command-line harness for the formant shifter (Stage 4.3). Not part of the plugin.
 // Build with -DGLITCHKID_BUILD_FORMANTLAB=ON.
 //
 //   FormantLab --report                       latency, CPU, memory, pitch preservation and formant accuracy on synthetic vowels
@@ -8,7 +8,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <chrono>
 #include <cstdio>
-#include "../../Source/Experimental/FormantShifting/FormantShifter.h"
+#include "../../Source/DSP/FormantShifting/FormantShifter.h"
 
 using namespace glitchkid::formant;
 

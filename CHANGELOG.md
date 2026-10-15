@@ -3,7 +3,13 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
-- Stage 4.3: **formant shifting feasibility prototype** (experimental, NOT in the plug-in): `Source/Experimental/FormantShifting/FormantShifter` moves the spectral
+- Stage 4.4: **FORMANT** is now in the plug-in: one new parameter, `formant_shift` (-12..+12 semitones, default 0 = off; 42 parameters in total), a FORMANT knob in
+  the window's row (now "PITCH TUNE + FORMANT"; the note read-out moved under the ON switch). It changes the voice's size/character (negative = bigger and darker, positive =
+  smaller and brighter) without changing the notes, works with or without Pitch Tune, and follows it in the chain. Off (0) is bit-exact and adds no latency (6 samples
+  as before); away from 0 it adds 21-23 ms (reported to the host; the dry path, Mix and Bypass follow; 20 ms crossfade when switched; no dip on engage), about 53 ms with
+  Pitch Tune as well. About 2.5-3 % of one core while shifting. The plug-in's output equals the standalone module's, delayed by 6 samples, bit for bit. Alter Egos never
+  touch it. 11 new test groups (178 in total). The module moved from `Source/Experimental/FormantShifting/` to `Source/DSP/FormantShifting/`.
+- Stage 4.3: formant shifting feasibility prototype: `FormantShifter` moves the spectral
   envelope (the formants) of a mono or stereo voice by -12..+12 semitones while the harmonics, and so the pitch, stay put (STFT cepstral envelope warping with a
   real gain: no phase change). No new dependency, no production source changed; an optional `FormantLab` command-line harness
   (`-DGLITCHKID_BUILD_FORMANTLAB=ON`) and 16 new test groups (167 total). Measured on synthetic vowels only: fundamental within 0.09 cents, latency a constant
