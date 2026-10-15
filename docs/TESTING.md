@@ -3,7 +3,7 @@
 ## What is verified, and where
 | Level | How | Status |
 |---|---|---|
-| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 151 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
+| Source logic, DSP maths, safety properties | `GlitchKidTests` (`juce::UnitTest`), run by `ctest` on Linux and on the owner's Mac | 167 test groups, all passing on Linux (Release build, 0 warnings). The Mac `ctest` run was reported passing at Stage 2.x; **it has not been re-run on the Mac since the NaN/Inf hardening and the JUCE pin.** |
 | Memory/UB errors | GCC AddressSanitizer + UBSan build of the same tests | Clean (exit 0, no reports) |
 | Plug-in conformance | `pluginval --strictness-level 5` on the Linux VST3 | SUCCESS |
 | Loads and runs in FL Studio (macOS arm64) | Owner's manual checks | Reported working for every implemented stage (see README "Verification status"). Not independently measured. |
@@ -36,7 +36,7 @@ Headless Linux needs a display, e.g. prefix with `xvfb-run -a`.
 
 ## Test files (groups)
 `main.cpp` 18 (processor, EQ) · `CompressorTests.cpp` 12 · `SaturationTests.cpp` 12 · `MixTests.cpp` 8 ·
-`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise) · `PitchCorrectionTests.cpp` 14 (the pitch-correction module on its own) · `PitchTuneTests.cpp` 14 (Pitch Tune inside the plug-in).
+`StutterTests.cpp` 17 · `RobustnessTests.cpp` 6 (NaN/Inf/overflow) · `EchoTests.cpp` 15 (Liquid Echo) · `DimensionTests.cpp` 15 (Dimension) · `AlterEgoTests.cpp` 16 (Alter Egos, Chaos, Blend, Surprise) · `PitchCorrectionTests.cpp` 14 (the pitch-correction module on its own) · `PitchTuneTests.cpp` 14 (Pitch Tune inside the plug-in) · `FormantShiftTests.cpp` 16 (experimental formant shifter).
 
 ## Conventions
 - A test that cannot fail is not a test: new tests are mutation-checked (deliberately break the code; the test must fail).
@@ -95,6 +95,14 @@ without hard limits, Surprise that randomises the drive, an Alter Ego that sets 
 "active" match, availability that ignores required effects, a mis-tuned makeup (level).
 Not provable by these tests: whether the Alter Egos sound good on a real voice (they are measured starting points, not tuned by ear), how loud your
 voice gets (makeup is matched to speech-like noise), and behaviour inside FL Studio on the Mac.
+
+## Formant shifter prototype (Stage 4.3): what the tests prove, and what they cannot
+`FormantShiftTests.cpp`, 16 groups, synthetic signals only (vowels with known formants, noise, bursts): latency reported and measured; neutral exact (3e-8) at 7 rates;
+fundamental within 0.09 cents over 60 cases; formants move toward an ideal moved-formant vowel (2.9 dB mean error vs 6.7 dB for doing nothing); almost no energy between the harmonics
+(mean -42.6 dB, worst -28.4 dB); loudness held (within 1.7 dB); silence/low-level/DC; voiced-unvoiced transitions; band-limited "s" noise; abrupt pitch change; mono = stereo and shared gain;
+7 rates x 9 block sizes bit-identical; parameter changes while running (identical for any block split, thread-safe setter); NaN/Inf/huge bit-identical to zeros; reset and boundaries;
+0 heap allocations in `process()` (a global operator-new counter). Mutation-checked. A sine wave is never used as evidence. What they cannot show: how a real voice sounds
+(breath, sibilants, vibrato, consonants), which needs the listening test in `docs/FORMANT_SHIFTING_FEASIBILITY.md`; behaviour above about 250 Hz is documented as weak.
 
 ## Pitch Tune (Stages 4.1 and 4.2): what the tests prove, and what they cannot
 `PitchCorrectionTests.cpp` (module, synthetic voices; numbers in `docs/PITCH_CORRECTION_FEASIBILITY.md`) and `PitchTuneTests.cpp` (in the plug-in):

@@ -3,12 +3,18 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.3: **formant shifting feasibility prototype** (experimental, NOT in the plug-in): `Source/Experimental/FormantShifting/FormantShifter` moves the spectral
+  envelope (the formants) of a mono or stereo voice by -12..+12 semitones while the harmonics, and so the pitch, stay put (STFT cepstral envelope warping with a
+  real gain: no phase change). No new dependency, no production source changed; an optional `FormantLab` command-line harness
+  (`-DGLITCHKID_BUILD_FORMANTLAB=ON`) and 16 new test groups (167 total). Measured on synthetic vowels only: fundamental within 0.09 cents, latency a constant
+  21-23 ms, about 2.5 % of one core, level held within 1.7 dB, zero allocations. Weaker for very high voices (about 300 Hz and up) and extreme shifts; never heard
+  on a real vocal yet. See `docs/FORMANT_SHIFTING_FEASIBILITY.md`.
 - Stage 4.2: **Pitch Tune** is now in the plug-in: vocal pitch correction for one voice, first in the chain (before the EQ). Five new parameters, default off
   (`tune_on`, `tune_key`, `tune_scale`, `tune_strength`, `tune_speed`; 41 in total), a Pitch Tune row in the window above Liquid Echo with a live
   `SUNG A3 +23c -> A3` read-out (window 1060x980, opens at 74%). While on it adds a constant 31.3 ms at 48 kHz (reported to the host; the dry path, Mix and
   Bypass follow it; switching crossfades over 20 ms with no gap); while off it adds nothing (still 6 samples, bit-exact) and only listens (about 1 % of a
-  core). Stereo and mono. Alter Egos never touch it. 14 new test groups (151 in total), mutation-checked, ASan/UBSan clean, pluginval SUCCESS. Not yet
-  checked in FL Studio. No new dependency. See `docs/ARCHITECTURE.md` (Pitch Tune) and `docs/PITCH_CORRECTION_FEASIBILITY.md`.
+  core). Stereo and mono. Alter Egos never touch it. 14 new test groups (151 in total), mutation-checked, ASan/UBSan clean, pluginval SUCCESS. The owner
+  reported it working in FL Studio on the Mac (not independently measured). No new dependency. See `docs/ARCHITECTURE.md` (Pitch Tune) and `docs/PITCH_CORRECTION_FEASIBILITY.md`.
 - Stage 4.1: pitch-correction feasibility prototype: YIN detector, key/scale quantiser, TD-PSOLA-style shifter and corrector (now `Source/DSP/PitchCorrection/`), an
   optional `PitchLab` command-line harness (`-DGLITCHKID_BUILD_PITCHLAB=ON`) and 14 test groups. Measured on synthetic voices: 0 octave errors, median
   error under 2.5 cents, 31 ms latency, about 2 % of one core; the owner's listening test on one real recording sounded natural.

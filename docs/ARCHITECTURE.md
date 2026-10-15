@@ -219,4 +219,4 @@ latency): `tune_on`, `tune_key` (C..B), `tune_scale` (chromatic, major, natural/
 
 ## What does not exist
 User presets (saving and browsing your own), other plug-in formats, host-grid phase-lock
-for the stutter, formant control for Pitch Tune, polyphonic pitch correction, pitch correction of a mixed (non-solo) signal. Moods have not been tuned by ear on real vocals.
+for the stutter, formant shifting in the plug-in (a tested prototype exists in `Source/Experimental/FormantShifting/`, Stage 4.3), polyphonic pitch correction, pitch correction of a mixed (non-solo) signal. Moods have not been tuned by ear on real vocals.

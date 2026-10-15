@@ -73,6 +73,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/AlterEgoTests.cpp
         Tests/PitchCorrectionTests.cpp
         Tests/PitchTuneTests.cpp
+        Tests/FormantShiftTests.cpp
+        Source/Experimental/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
         Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
@@ -110,6 +112,21 @@ if(GLITCHKID_BUILD_PITCHLAB)
         Source/DSP/PitchCorrection/PitchCorrector.cpp)
     target_compile_definitions(PitchLab PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(PitchLab
+        PRIVATE juce::juce_audio_formats
+        PUBLIC  juce::juce_recommended_config_flags
+                juce::juce_recommended_warning_flags)
+endif()
+
+# EXPERIMENTAL (Stage 4.3): command-line harness for the formant shifter. Not part of the plugin.
+#   cmake -S . -B build-formant -DGLITCHKID_BUILD_FORMANTLAB=ON && cmake --build build-formant --target FormantLab
+option(GLITCHKID_BUILD_FORMANTLAB "Build the experimental FormantLab harness" OFF)
+if(GLITCHKID_BUILD_FORMANTLAB)
+    juce_add_console_app(FormantLab PRODUCT_NAME "FormantLab")
+    target_sources(FormantLab PRIVATE
+        Tools/FormantLab/main.cpp
+        Source/Experimental/FormantShifting/FormantShifter.cpp)
+    target_compile_definitions(FormantLab PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(FormantLab
         PRIVATE juce::juce_audio_formats
         PUBLIC  juce::juce_recommended_config_flags
                 juce::juce_recommended_warning_flags)
