@@ -7,8 +7,7 @@ Format: newest first. Version 0.1.0 is the CMake project version; nothing has be
   envelope (the formants) of a mono or stereo voice by -12..+12 semitones while the harmonics, and so the pitch, stay put (STFT cepstral envelope warping with a
   real gain: no phase change). No new dependency, no production source changed; an optional `FormantLab` command-line harness
   (`-DGLITCHKID_BUILD_FORMANTLAB=ON`) and 16 new test groups (167 total). Measured on synthetic vowels only: fundamental within 0.09 cents, latency a constant
-  21-23 ms, about 2.5 % of one core, level held within 1.7 dB, zero allocations. Weaker for very high voices (about 300 Hz and up) and extreme shifts; never heard
-  on a real vocal yet. See `docs/FORMANT_SHIFTING_FEASIBILITY.md`.
+  21-23 ms, about 2.5 % of one core, level held within 1.7 dB, zero allocations. Weaker for very high voices (about 300 Hz and up) and extreme shifts; the owner's listening test on one real vocal (+3, -3, neutral) passed. See `docs/FORMANT_SHIFTING_FEASIBILITY.md`.
 - Stage 4.2: **Pitch Tune** is now in the plug-in: vocal pitch correction for one voice, first in the chain (before the EQ). Five new parameters, default off
   (`tune_on`, `tune_key`, `tune_scale`, `tune_strength`, `tune_speed`; 41 in total), a Pitch Tune row in the window above Liquid Echo with a live
   `SUNG A3 +23c -> A3` read-out (window 1060x980, opens at 74%). While on it adds a constant 31.3 ms at 48 kHz (reported to the host; the dry path, Mix and

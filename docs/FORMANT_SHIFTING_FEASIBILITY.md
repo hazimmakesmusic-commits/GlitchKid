@@ -86,5 +86,8 @@ Mutation-checked (9 deliberate breaks, each caught): warp direction inverted, ne
    - Are artifacts **acceptable at +-3** (moderate)? at +-6?
    - Does **0 (neutral)** sound identical to the original?
 
+## Owner listening result (Mac, one recording)
+The owner ran the demo and shifted one dry vocal at +3, -3 and 0 and replied "yes it works" to the checklist (notes stay, voice sounds bigger/smaller, consonants intelligible, no warble, neutral identical). The reply was a single line, so per-item detail, the shifts beyond +-3, and the voice's pitch range were not recorded. One singer, one take: evidence, not proof (breathy, high or very low voices and shifts of +-6 and beyond are untested by ear).
+
 ## Readiness
 **Ready for listening tests, not for integration.** Decision gate after listening: (a) natural enough at +-3..+-5 -> integrate (parameter `formant_shift` -12..+12, off by default; place it after Pitch Tune; reported latency while on; a shared crossfade/dry-path design like Pitch Tune); (b) artifacts on breathy or high voices -> improve the envelope estimator (LPC-based, or temporal smoothing tuned on real recordings) and re-test; (c) latency judged too high -> shorter frame with lower pitch-resolution (a "low-latency" mode) or hide it behind a "print" workflow.
