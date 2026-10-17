@@ -11,6 +11,7 @@
 #include "DSP/PitchCorrection/PitchCorrector.h"
 #include "DSP/FormantShifting/FormantShifter.h"
 #include "AlterEgos.h"
+#include "Presets/SoundState.h"
 
 // Signal path: input -> pitch tune (optional) -> formant shift (optional) -> vocal mutation (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
@@ -118,6 +119,35 @@ public:
     int surprise (std::uint32_t seed);                            // a new seeded variation of the selected Alter Ego
     bool isAlterEgoActive() const;                                // true while every owned parameter still matches the selection
 
+    // PRESETS and A/B (message thread only; never called from the audio thread, which only ever sees ordinary parameter changes).
+    // A "sound" (glitchkid::SoundState) is every parameter value plus the Alter Ego selection; Bypass is not part of a sound. The live
+    // sound always stays in the parameters (apvts); a SoundState is just a copy of it. Applying one sets every parameter through the normal
+    // parameter calls (host gestures, each effect's own smoothing), so every intermediate state is a legal sound and nothing clicks.
+    glitchkid::SoundState captureSoundState() const;
+    int applySoundState (const glitchkid::SoundState&);   // parameters missing from the state get their default; returns how many were set
+    glitchkid::SoundState factoryDefaultState() const;    // every parameter at its default, no Alter Ego
+    bool matchesSoundState (const glitchkid::SoundState&) const; // true if every parameter in it equals the live value (within one step)
+
+    // User presets: the name shown in the window and whether the live sound still equals what was loaded or saved.
+    // Loading a preset (or the factory default) replaces the live sound, keeps both A/B snapshots untouched and leaves neither A nor B
+    // marked active (so you can capture the new sound into a slot and compare it with the old one).
+    void applyPreset (const juce::String& name, const glitchkid::SoundState&);
+    void notePresetSaved (const juce::String& name, const glitchkid::SoundState&); // after a successful save: the live sound is the baseline
+    juce::String getPresetName() const;                  // "" if none; saved in the DAW session
+    void clearPresetName();                              // after the loaded preset's file was deleted: the sound stays, the name goes
+    bool isPresetModified() const;                       // false if no preset was loaded or saved since this instance was restored
+
+    // A/B comparison: two temporary snapshots kept in the plug-in state (so they survive a DAW save/reopen). Only the explicit actions
+    // below change a slot; switching (recall) never does.
+    static constexpr int numAbSlots = 2;
+    bool hasAbSlot (int slot) const;
+    glitchkid::SoundState getAbSlot (int slot) const;
+    void captureAbSlot (int slot);                       // store the live sound in the slot and mark it active
+    bool recallAbSlot (int slot);                        // false if the slot is empty; otherwise applies it and marks it active
+    bool copyAbSlot (int from, int to);                  // false if `from` is empty
+    int getAbActive() const;                             // 0 = A, 1 = B, -1 = neither
+    bool isAbSlotModified() const;                       // the live sound differs from the active slot's snapshot
+
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
@@ -164,6 +194,8 @@ private:
     std::atomic<int> shownLoopLength { 0 };
     LiquidEcho echo;
     Dimension dimension;
+    glitchkid::SoundState presetBaseline;  // message thread only
+    bool hasPresetBaseline = false;
     std::atomic<float>* dimParams[5] {}; // on, width, detune, depth, mix
     VocalMutation mutation;
     std::atomic<float>* mutParams[4] {}; // on, amount, character, blend

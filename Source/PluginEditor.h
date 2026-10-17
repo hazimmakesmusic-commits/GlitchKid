@@ -1,5 +1,6 @@
 #pragma once
 #include "PluginProcessor.h"
+#include "Presets/PresetController.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -49,7 +50,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 1112; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 1148; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -93,6 +94,21 @@ private:
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
     int echoDividerY = 0;
 
+    // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes the
+    // loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it, A>B / B>A copy a slot.
+    juce::TextButton presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
+    juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
+    juce::Label presetStatus, abLabel { {}, "A/B" };
+    juce::String shownPresetText, shownAbText;
+    int statusTicks = 0;
+    void refreshPresetBar();
+    void showStatus (const juce::String&);
+    void openPresetMenu();
+    void askSavePreset();
+    void trySave (const juce::String& name, bool overwrite);
+    void askDeletePreset();
+    void askYesNo (const juce::String& heading, const juce::String& message, const juce::String& yesText, std::function<void()> onYes);
+
     // ALTER EGOS + MOOD ENGINE (see AlterEgos.h). The lit Alter Ego is the one whose values all match the controls.
     // CHAOS and SURPRISE ME write the normal parameters; BLEND is the ordinary "mix" parameter.
     juce::Label egoTitle { {}, "ALTER EGOS" }, egoInfo, chaosLabel { {}, "CHAOS" }, blendLabel { {}, "BLEND" };
@@ -124,6 +140,7 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment mutOnAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment tuneKeyAttachment, tuneScaleAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
+    glitchkid::PresetController presets;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
 };

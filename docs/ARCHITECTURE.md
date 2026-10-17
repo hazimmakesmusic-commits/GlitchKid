@@ -1,6 +1,6 @@
 # Architecture
 
-What exists today (Stage 4.5: Vocal Mutation, on top of Formant, Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 4.6: presets, A/B and MOODS + Vocal Mutation, on top of Stage 4.5: Vocal Mutation, on top of Formant, Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
@@ -15,7 +15,8 @@ input -> [Pitch Tune, optional] -> [Formant, optional] -> [Vocal Mutation, optio
 | File | Role |
 |---|---|
 | `Source/PluginProcessor.*` | 46 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
-| `Source/PluginEditor.*` | Window designed at 1060x1112 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 70%: knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/PluginEditor.*` | Window designed at 1060x1148 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 68%: preset and A/B bar, knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/Presets/*` | `SoundState` (plain copy of every sound parameter + Alter Ego selection), `PresetStore` (versioned XML files, safe names, atomic writes), `PresetController` (what Save / Load / Delete / Factory Default do to the plug-in; no UI) |
 | `Source/DSP/VocalMutation.*` | Vocal Mutation: all-pass-pair Hilbert transform + shared carrier = single-sideband frequency shifter / ring modulator; mono/stereo, per-sample, zero latency |
 | `Source/DSP/FormantShifting/FormantShifter.*` | Formant: STFT cepstral-envelope warping with a real gain (moves the voice's resonances, not its notes); mono/stereo, per-sample, own FFT |
 | `Source/DSP/PitchCorrection/*` | Pitch Tune: `YinPitchDetector` (F0), `ScaleQuantizer` (key/scale), `PsolaPitchShifter` (TD-PSOLA-style, one per channel), `PitchCorrector` (ties them together, mono/stereo) |
@@ -31,6 +32,7 @@ input -> [Pitch Tune, optional] -> [Formant, optional] -> [Vocal Mutation, optio
 | `Tests/` | Unit tests (see `TESTING.md`) |
 
 ## Per-block flow (`PluginProcessor::processChunk`)
+0. Replace any NaN/Inf in the input by 0 (once, before anything is copied; finite audio is untouched).
 1. Resolve host tempo once per block (play head BPM, clamped 40..300, fallback 120).
 2. Copy the input to the dry buffer and delay it by `Saturation::latencySamples` (6). A second copy is delayed by the Pitch Tune
    latency as well (always, so it is valid the moment Tune is switched on); while Tune is on (or ramping) the dry buffer is the
@@ -253,6 +255,33 @@ stays harmonic; Mutation adds the same number of Hz to every partial, so a voice
   fc Hz below Nyquist back (inaudible for voices); shifting DOWN folds partials below fc through 0 Hz (they reappear as mirrored partials, part of the effect); the image sideband is at most
   about -41 dB (not infinite), and weaker below about 50 Hz.
 - **Cost:** about 0.15-0.4 % of one core at 44.1/48 kHz, about 0.6-1.1 % at 96 kHz (Linux x86, 512-sample blocks; noisy).
+
+## MOODS + Vocal Mutation (Stage 4.6)
+Alter Egos own 34 parameters: the 30 effect parameters plus `mut_on`, `mut_amount`, `mut_character`, `mut_blend`. Every Alter Ego table lists all 34 in the same order; each value carries an `active` flag. Inactive values are placeholders: they are never applied and never compared, so that parameter stays exactly as it is.
+| Alter Ego | Mutation | What it is for |
+|---|---|---|
+| CELESTIAL | ON, UP (CHARACTER 100), MUTATION 8 -> 14 % (3.8 -> 11.8 Hz), BLEND 18 -> 28 % | a slow, airy shimmer; at a few Hz it is a slow beating, not a pitch change |
+| THE CLONE | OFF; the other three values are left alone | Dimension already is its detuned second voice; a fixed-Hz shift would fight it. OFF is still set so a robotic setting from the previous Alter Ego cannot leak into it |
+| VOIDWALKER | ON, DOWN (CHARACTER 8 -> 0), MUTATION 30 -> 45 % (54 -> 122 Hz), BLEND 22 -> 38 % | a hollow, ghostly undertone under the dark voice |
+| THE PARASITE | ON, ROBOT (CHARACTER 50), MUTATION 45 -> 68 % (122 -> 277 Hz), BLEND 35 -> 60 % | metallic ring modulation: unnerving and robotic |
+| ALTERED STATE | ON, UP (CHARACTER 75 -> 100), MUTATION 25 -> 58 % (38 -> 202 Hz), BLEND 30 -> 52 % | alien, inharmonic shimmer that gets stranger with Chaos |
+Chaos moves the continuous values linearly (as everywhere else); `mut_on` is a switch and never moves. Surprise Me does not vary Mutation (the allowlist is unchanged). Mutation BLEND is separate from the global Mix (BLEND slider): Mutation BLEND is how much of the shifted voice is added
+inside the Mutation stage; Mix then blends the whole chain with the dry input. Level: a dry/wet blend of two different signals is quieter, so the four tables' `comp_makeup` values were raised from measurements (CELESTIAL 2.6/1.7 -> 3.5/2.9, VOIDWALKER 5.4/6.1 -> 6.6/7.9,
+THE PARASITE 3.0/7.1 -> 3.8/7.75, ALTERED STATE 3.9/0.9 -> 5.1/2.1); the result is within 0.70 dB of the input at Chaos 0, 0.5 and 1 on speech-like noise. These mappings are designed and measured on synthetic signals; whether each one sounds right on a real voice is a listening decision.
+
+## Presets and A/B (Stage 4.6)
+**One source of truth.** The live sound is the parameters (`apvts`). A `SoundState` is only a copy: `captureSoundState()` reads every parameter (except Bypass) in its own units plus the Alter Ego selection; `applySoundState()` writes every parameter back through the normal calls
+(`beginChangeGesture` / `setValueNotifyingHost` / `endChangeGesture`, so the host sees ordinary automation and every effect smooths the change). Parameters missing from a state take their default; NaN/Inf become the default; out-of-range values are clamped. All of this runs on the message thread; the audio
+thread never touches files, strings or the preset code, it only reads parameters as always. Applying a sound is a sequence of single-parameter changes (as Alter Egos already were), so for a moment a block may see a mix of old and new values; every such mixture is a legal sound and no stage can click from it.
+**File format** (`PresetStore`): `<GlitchKidPreset formatVersion="1" name=".." plugin="GlitchKid"><Param id=".." value=".."/> ... <AlterEgo id=".." chaos=".." seed=".."/></GlitchKidPreset>`. Plain units, so a file stays valid if the internal normalisation ever changes. A newer `formatVersion` loads what it understands
+and says so; a missing or zero version, a wrong root element, a file over 1 MB, damaged XML, no usable parameters, NaN or Inf values are refused with a plain-English message and change nothing. Folder: macOS `~/Library/Application Support/GlitchKid/Presets/User/` (Windows `%APPDATA%\GlitchKid\Presets\User`,
+Linux `~/.config/GlitchKid/Presets/User`). Factory presets are not files: the only one is the built-in "Factory Default" (every parameter at its default, no Alter Ego).
+**Names:** cleaned to letters/digits of any script, space and `- _ . ( ) ' + # &`; everything else (including `/ \ :`) becomes `_`; leading dots and spaces are dropped (no hidden files); reserved Windows names get a `_`; at most 60 characters. Comparison is case-insensitive. Saving an existing name needs an explicit
+confirmation (`needsOverwriteConfirmation`, then the window asks); the stored spelling is kept. A save writes a temporary file and swaps it in, so a failed write cannot destroy a good preset.
+**Window:** PRESET opens a menu (FACTORY: Factory Default; YOUR PRESETS: the saved ones; the loaded one is ticked); the name shows `*` when the live sound no longer equals what was loaded or saved; SAVE asks for a name; DELETE (only for a saved user preset) asks first; a status line gives plain feedback.
+**A/B:** two snapshots are stored as properties of the plug-in state (`abSlotA`, `abSlotB`, `abActive`), so they persist in the DAW project; presets are files that persist everywhere. SET A / SET B capture the live sound and mark that slot active; A / B recall (disabled while the slot is empty); A>B / B>A copy (disabled when the source is empty).
+**Only the explicit actions change a slot**, so switching never alters a stored sound; edits made while a slot is active are flagged (`A *`) and are lost if you switch without pressing SET again (by design: nothing is overwritten behind your back). **Policy for preset loading:** loading a preset or the factory default keeps both snapshots and clears the active marker, so you can SET A before
+loading and SET B after, then compare. A damaged slot counts as empty. The preset name is saved in the session; the "edited" marker needs the loaded sound as a baseline and is therefore only known until the session is reopened.
 
 ## What does not exist
 User presets (saving and browsing your own), other plug-in formats, host-grid phase-lock

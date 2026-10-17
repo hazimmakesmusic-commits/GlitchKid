@@ -592,20 +592,119 @@ struct MutationTests : public juce::UnitTest
                 expect (finite, "channels " + juce::String (channels) + " block " + juce::String (bs));
             }
 
-        beginTest ("Alter Egos never touch the Mutation parameters (every Alter Ego, at full Chaos and with Surprise variations)");
+        beginTest ("MOODS: each Alter Ego maps to Vocal Mutation as designed; THE CLONE only switches it off and leaves the other three values alone");
         {
-            GlitchKidProcessor p;
-            setParam (p, "mut_on", 1.0f); setParam (p, "mut_amount", 77.0f); setParam (p, "mut_character", 13.0f); setParam (p, "mut_blend", 61.0f);
-            bool untouched = true;
-            for (int ego = 0; ego < AlterEgos::count; ++ego)
-                for (std::uint32_t seed : { 0u, 7u, 4242u })
+            struct Map { int ego; bool on; float amount0, amount1, character0, character1, blend0, blend1; };
+            const Map maps[] = {
+                { 0, true,  8.0f, 14.0f, 100.0f, 100.0f, 18.0f, 28.0f },  // CELESTIAL: slow UP shimmer, light blend
+                { 2, true, 30.0f, 45.0f,   8.0f,   0.0f, 22.0f, 38.0f },  // VOIDWALKER: DOWN shift, hollow undertone
+                { 3, true, 45.0f, 68.0f,  50.0f,  50.0f, 35.0f, 60.0f },  // THE PARASITE: ROBOT ring modulation
+                { 4, true, 25.0f, 58.0f,  75.0f, 100.0f, 30.0f, 52.0f } };// ALTERED STATE: alien UP, moving toward full UP
+            for (const auto& m : maps)
+                for (float chaos : { 0.0f, 0.5f, 1.0f })
                 {
-                    p.applyAlterEgo (ego, 1.0f, seed);
-                    untouched &= juce::exactlyEqual (getParam (p, "mut_on"), 1.0f);
-                    untouched &= std::abs (getParam (p, "mut_amount") - 77.0f) < 0.06f && std::abs (getParam (p, "mut_character") - 13.0f) < 0.06f
-                                 && std::abs (getParam (p, "mut_blend") - 61.0f) < 0.06f;
+                    GlitchKidProcessor p;
+                    setParam (p, "mut_on", 0.0f); setParam (p, "mut_amount", 99.0f); setParam (p, "mut_character", 1.0f); setParam (p, "mut_blend", 1.0f);
+                    expectEquals (p.applyAlterEgo (m.ego, chaos, 0), AlterEgos::numActive (m.ego));
+                    expectEquals (AlterEgos::numActive (m.ego), AlterEgos::numOwned, "uses all four Mutation values");
+                    expectEquals (getParam (p, "mut_on"), 1.0f);
+                    expectWithinAbsoluteError (getParam (p, "mut_amount"), m.amount0 + chaos * (m.amount1 - m.amount0), 0.06f);
+                    expectWithinAbsoluteError (getParam (p, "mut_character"), m.character0 + chaos * (m.character1 - m.character0), 0.06f);
+                    expectWithinAbsoluteError (getParam (p, "mut_blend"), m.blend0 + chaos * (m.blend1 - m.blend0), 0.06f);
+                    expect (p.isAlterEgoActive());
                 }
-            expect (untouched);
+            // Distinct identities: the four mappings really are different kinds of transformation.
+            expect (VocalMutation::sidebandFor (8.0f) < -0.8 && VocalMutation::sidebandFor (100.0f) > 0.99, "VOIDWALKER is a DOWN shift, CELESTIAL an UP shift");
+            expectWithinAbsoluteError (VocalMutation::sidebandFor (50.0f), 0.0, 1.0e-9, "THE PARASITE is ring modulation");
+            expect (VocalMutation::carrierHzFor (68.0f) > 250.0 && VocalMutation::carrierHzFor (14.0f) < 15.0, "Parasite robotic (hundreds of Hz), Celestial a slow shimmer (a few Hz)");
+
+            GlitchKidProcessor c;
+            setParam (c, "mut_on", 1.0f); setParam (c, "mut_amount", 66.0f); setParam (c, "mut_character", 22.0f); setParam (c, "mut_blend", 77.0f);
+            expectEquals (c.applyAlterEgo (1, 1.0f, 0), AlterEgos::numActive (1));
+            expectEquals (getParam (c, "mut_on"), 0.0f);
+            expectWithinAbsoluteError (getParam (c, "mut_amount"), 66.0f, 0.06f);
+            expectWithinAbsoluteError (getParam (c, "mut_character"), 22.0f, 0.06f);
+            expectWithinAbsoluteError (getParam (c, "mut_blend"), 77.0f, 0.06f);
+            expect (c.isAlterEgoActive(), "the Clone stays 'active' although it leaves three Mutation values alone");
+            // Applying another Alter Ego afterwards fully replaces the Mutation identity (no leak from a previous one).
+            c.applyAlterEgo (3, 0.0f, 0);
+            expectEquals (getParam (c, "mut_on"), 1.0f);
+            c.applyAlterEgo (1, 0.0f, 0);
+            expectEquals (getParam (c, "mut_on"), 0.0f);
+        }
+
+        beginTest ("MOODS + Mutation: Surprise Me never varies Mutation; switching Alter Egos never produces invalid or runaway output; mono, stereo and NaN/Inf stay safe");
+        {
+            for (int ego = 0; ego < AlterEgos::count; ++ego)
+            {
+                GlitchKidProcessor a, b;
+                a.applyAlterEgo (ego, 0.5f, 0);
+                b.applyAlterEgo (ego, 0.5f, 9999);
+                for (auto* id : { "mut_on", "mut_amount", "mut_character", "mut_blend" })
+                    expectWithinAbsoluteError (getParam (a, id), getParam (b, id), 1.0e-4f, "Surprise leaves " + juce::String (id) + " alone");
+            }
+
+            const double sr = 48000.0;
+            const Buf voice = harmonicVoice (2, 48000 * 3, sr, 180.0);
+            for (int channels : { 1, 2 })
+            {
+                GlitchKidProcessor p;
+                if (channels == 1) setLayout (p, juce::AudioChannelSet::mono());
+                p.prepareToPlay (sr, 480);
+                juce::MidiBuffer midi;
+                bool finite = true;
+                float peak = 0.0f;
+                for (int blk = 0; blk < 300; ++blk)
+                {
+                    if (blk % 50 == 0) // switch Alter Ego every 50 blocks, cycling through all five at varied Chaos
+                        p.applyAlterEgo ((blk / 50) % AlterEgos::count, (blk % 100) == 0 ? 1.0f : 0.0f, 0);
+                    Buf b (channels, 480);
+                    for (int ch = 0; ch < channels; ++ch)
+                        b.copyFrom (ch, 0, voice, ch, (blk % 290) * 480, 480);
+                    if (blk % 37 == 11) b.setSample (0, 100, qNaN);
+                    if (blk % 41 == 13) b.setSample (channels - 1, 200, posInf);
+                    p.processBlock (b, midi);
+                    finite &= allFinite (b);
+                    peak = juce::jmax (peak, b.getMagnitude (0, 480));
+                }
+                expect (finite, "channels " + juce::String (channels));
+                expect (peak < 4.0f, "bounded output, peak " + juce::String (peak));
+            }
+        }
+
+        beginTest ("MOODS + Mutation: the level of every Alter Ego stays within +-1 dB of the input at Chaos 0, 0.5 and 1 (makeup is tuned for the Mutation blend)");
+        {
+            double worst = 0.0;
+            for (int ego = 0; ego < AlterEgos::count; ++ego)
+                for (float chaos : { 0.0f, 0.5f, 1.0f })
+                {
+                    GlitchKidProcessor p;
+                    p.prepareToPlay (48000.0, 512);
+                    p.applyAlterEgo (ego, chaos, 0);
+                    Buf in (2, 48000 * 4);
+                    juce::Random rng (60 + ego);
+                    for (int ch = 0; ch < 2; ++ch)
+                    {
+                        double lp = 0.0;
+                        for (int i = 0; i < in.getNumSamples(); ++i)
+                        {
+                            lp += 0.35 * ((rng.nextDouble() * 2.0 - 1.0) - lp);
+                            in.setSample (ch, i, (float) lp);
+                        }
+                        in.applyGain (ch, 0, in.getNumSamples(), 0.1f / in.getRMSLevel (ch, 0, in.getNumSamples()));
+                    }
+                    Buf out;
+                    out.makeCopyOf (in);
+                    juce::MidiBuffer midi;
+                    for (int start = 0; start < out.getNumSamples(); start += 512)
+                    {
+                        Buf view (out.getArrayOfWritePointers(), 2, start, juce::jmin (512, out.getNumSamples() - start));
+                        p.processBlock (view, midi);
+                    }
+                    worst = juce::jmax (worst, std::abs (db (rms (out, 0, 48000, 48000 * 3), rms (in, 0, 48000, 48000 * 3))));
+                }
+            logMessage ("worst level change over 5 Alter Egos x 3 Chaos values: " + juce::String (worst, 2) + " dB");
+            expect (worst < 1.0, "level change " + juce::String (worst) + " dB");
         }
 
         beginTest ("state: Mutation parameters round-trip; an older state without them loads with Mutation defaults");

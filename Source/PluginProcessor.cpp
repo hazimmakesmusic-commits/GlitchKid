@@ -309,6 +309,8 @@ bool GlitchKidProcessor::isAlterEgoActive() const
     const int n = AlterEgos::compute (s.ego, s.chaos, s.seed, values);
     for (int i = 0; i < n; ++i)
     {
+        if (! values[i].active)
+            continue; // this Alter Ego leaves that parameter alone, so it cannot make the selection "not match"
         auto* p = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (values[i].id));
         if (p == nullptr)
             continue; // a missing parameter cannot make the selection "not match"
@@ -318,6 +320,170 @@ bool GlitchKidProcessor::isAlterEgoActive() const
             return false;
     }
     return true;
+}
+
+// ---- Sounds, presets and A/B ------------------------------------------------------------------------------------------------------
+
+namespace
+{
+constexpr const char* presetNameKey = "presetName";
+constexpr const char* abActiveKey = "abActive";
+const char* abSlotKey (int slot) { return slot == 0 ? "abSlotA" : "abSlotB"; }
+
+float toolerance (const juce::RangedAudioParameter& p)
+{
+    const float step = p.getNormalisableRange().interval;
+    return step > 0.0f ? 0.5f * step + 1.0e-4f : 1.0e-3f;
+}
+}
+
+glitchkid::SoundState GlitchKidProcessor::captureSoundState() const
+{
+    glitchkid::SoundState s;
+    for (auto* q : getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q))
+            if (glitchkid::SoundState::isSoundParameter (r->paramID))
+                s.values.push_back ({ r->paramID, r->convertFrom0to1 (r->getValue()) });
+    const auto sel = getAlterEgoSelection();
+    if (sel.ego >= 0)
+    {
+        s.egoId = AlterEgos::info (sel.ego).id;
+        s.egoChaos = sel.chaos;
+        s.egoSeed = (int) sel.seed;
+    }
+    return s;
+}
+
+glitchkid::SoundState GlitchKidProcessor::factoryDefaultState() const
+{
+    glitchkid::SoundState s;
+    for (auto* q : getParameters())
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q))
+            if (glitchkid::SoundState::isSoundParameter (r->paramID))
+                s.values.push_back ({ r->paramID, r->convertFrom0to1 (r->getDefaultValue()) });
+    return s;
+}
+
+int GlitchKidProcessor::applySoundState (const glitchkid::SoundState& s)
+{
+    int set = 0;
+    for (auto* q : getParameters())
+    {
+        auto* r = dynamic_cast<juce::RangedAudioParameter*> (q);
+        if (r == nullptr || ! glitchkid::SoundState::isSoundParameter (r->paramID))
+            continue;
+        float value = s.get (r->paramID, r->convertFrom0to1 (r->getDefaultValue())); // older states miss newer parameters: use the default
+        if (! std::isfinite (value))
+            value = r->convertFrom0to1 (r->getDefaultValue());
+        r->beginChangeGesture(); // lets the host record this as a normal automatable change
+        r->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, r->convertTo0to1 (value)));
+        r->endChangeGesture();
+        ++set;
+    }
+
+    // The Alter Ego selection (only a known Alter Ego is accepted; anything else clears it).
+    const int ego = s.egoId.isEmpty() ? -1 : AlterEgos::indexOfId (s.egoId.toRawUTF8());
+    apvts.state.setProperty (egoIdKey, ego >= 0 ? juce::String (AlterEgos::info (ego).id) : juce::String(), nullptr);
+    apvts.state.setProperty (egoChaosKey, (double) (ego >= 0 ? juce::jlimit (0.0f, 1.0f, s.egoChaos) : 0.0f), nullptr);
+    apvts.state.setProperty (egoSeedKey, ego >= 0 ? s.egoSeed : 0, nullptr);
+    return set;
+}
+
+bool GlitchKidProcessor::matchesSoundState (const glitchkid::SoundState& s) const
+{
+    for (const auto& e : s.values)
+        if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (e.id)))
+            if (std::abs (r->convertFrom0to1 (r->getValue()) - e.value) > toolerance (*r))
+                return false;
+    return true;
+}
+
+void GlitchKidProcessor::applyPreset (const juce::String& name, const glitchkid::SoundState& s)
+{
+    applySoundState (s);
+    apvts.state.setProperty (presetNameKey, name, nullptr);
+    apvts.state.setProperty (abActiveKey, -1, nullptr); // the live sound is the preset now; both A/B snapshots are kept
+    presetBaseline = captureSoundState();
+    hasPresetBaseline = true;
+}
+
+void GlitchKidProcessor::notePresetSaved (const juce::String& name, const glitchkid::SoundState& s)
+{
+    apvts.state.setProperty (presetNameKey, name, nullptr);
+    presetBaseline = s;
+    hasPresetBaseline = true;
+}
+
+void GlitchKidProcessor::clearPresetName()
+{
+    apvts.state.setProperty (presetNameKey, juce::String(), nullptr);
+    hasPresetBaseline = false;
+}
+
+juce::String GlitchKidProcessor::getPresetName() const
+{
+    return apvts.state.getProperty (presetNameKey, juce::String()).toString();
+}
+
+bool GlitchKidProcessor::isPresetModified() const
+{
+    return hasPresetBaseline && ! matchesSoundState (presetBaseline);
+}
+
+bool GlitchKidProcessor::hasAbSlot (int slot) const
+{
+    return slot >= 0 && slot < numAbSlots && apvts.state.getProperty (abSlotKey (slot), juce::String()).toString().isNotEmpty();
+}
+
+glitchkid::SoundState GlitchKidProcessor::getAbSlot (int slot) const
+{
+    glitchkid::SoundState s;
+    if (slot >= 0 && slot < numAbSlots)
+        if (auto xml = juce::XmlDocument::parse (apvts.state.getProperty (abSlotKey (slot), juce::String()).toString()))
+            s.readFrom (*xml);
+    return s;
+}
+
+void GlitchKidProcessor::captureAbSlot (int slot)
+{
+    if (slot < 0 || slot >= numAbSlots)
+        return;
+    juce::XmlElement xml ("Sound");
+    captureSoundState().writeTo (xml);
+    apvts.state.setProperty (abSlotKey (slot), xml.toString (juce::XmlElement::TextFormat().singleLine()), nullptr);
+    apvts.state.setProperty (abActiveKey, slot, nullptr);
+}
+
+bool GlitchKidProcessor::recallAbSlot (int slot)
+{
+    if (! hasAbSlot (slot))
+        return false;
+    const auto s = getAbSlot (slot);
+    if (s.values.empty())
+        return false; // a damaged slot is treated as empty
+    applySoundState (s);
+    apvts.state.setProperty (abActiveKey, slot, nullptr);
+    return true;
+}
+
+bool GlitchKidProcessor::copyAbSlot (int from, int to)
+{
+    if (from == to || ! hasAbSlot (from) || to < 0 || to >= numAbSlots)
+        return false;
+    apvts.state.setProperty (abSlotKey (to), apvts.state.getProperty (abSlotKey (from)), nullptr);
+    return true;
+}
+
+int GlitchKidProcessor::getAbActive() const
+{
+    const int a = (int) apvts.state.getProperty (abActiveKey, -1);
+    return hasAbSlot (a) ? a : -1;
+}
+
+bool GlitchKidProcessor::isAbSlotModified() const
+{
+    const int a = getAbActive();
+    return a >= 0 && ! matchesSoundState (getAbSlot (a));
 }
 
 CompressorSettings GlitchKidProcessor::readCompressorSettings() const
@@ -459,6 +625,11 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     // Layouts are matched in/out, but never pass unrelated data through extra outputs.
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
+
+    // Non-finite input (NaN / +-Inf) is replaced by 0 once, up front, so it can never travel through the dry copy that Bypass and Mix use
+    // (the stages also guard themselves). Finite audio is not touched.
+    for (int ch = 0; ch < numChannels; ++ch)
+        dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
 
     const float inMag = buffer.getMagnitude (0, numSamples);
     raisePeak (inputPeak, inMag);
@@ -673,7 +844,10 @@ void GlitchKidProcessor::setStateInformation (const void* data, int sizeInBytes)
     // Ignore anything that is not our own state (corrupt or foreign data).
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            hasPresetBaseline = false; // the restored sound is not known to match any preset on disk
+        }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()

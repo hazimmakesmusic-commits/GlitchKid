@@ -98,7 +98,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       mutOnAttachment (p.apvts, GlitchKidProcessor::mutOnId, mutOnButton),
       tuneKeyAttachment (p.apvts, GlitchKidProcessor::tuneKeyId, tuneKeyBox),
       tuneScaleAttachment (p.apvts, GlitchKidProcessor::tuneScaleId, tuneScaleBox),
-      blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider)
+      blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider),
+      presets (p)
 {
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
@@ -135,6 +136,44 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &stutterTitle, &stutterRateLabel, &tempoLabel,
                                                               &stutterOnButton, &stutterRateBox })
         content.addAndMakeVisible (c);
+
+    // PRESETS + A/B bar.
+    auto styleBarButton = [this] (juce::TextButton& b, juce::Colour text, const juce::String& tip)
+    {
+        b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e1e22));
+        b.setColour (juce::TextButton::buttonOnColourId, lime);
+        b.setColour (juce::TextButton::textColourOffId, text);
+        b.setColour (juce::TextButton::textColourOnId, juce::Colour (0xff121214));
+        b.setTooltip (tip);
+        content.addAndMakeVisible (b);
+    };
+    styleBarButton (presetMenuButton, juce::Colours::white, "Choose the factory default sound or one of your saved presets.");
+    styleBarButton (presetSaveButton, lime, "Save the current sound (all controls and the Alter Ego) as a named preset. Existing presets are never replaced without asking.");
+    styleBarButton (presetDeleteButton, pink, "Delete the loaded user preset (asks first). The factory default cannot be deleted.");
+    styleBarButton (abSetA, violet, "Capture the current sound into slot A.");
+    styleBarButton (abSetB, violet, "Capture the current sound into slot B.");
+    styleBarButton (abRecallA, juce::Colours::white, "Switch to the sound stored in A.");
+    styleBarButton (abRecallB, juce::Colours::white, "Switch to the sound stored in B.");
+    styleBarButton (abCopyAB, juce::Colours::lightgrey, "Copy slot A into slot B.");
+    styleBarButton (abCopyBA, juce::Colours::lightgrey, "Copy slot B into slot A.");
+    presetMenuButton.setClickingTogglesState (false);
+    presetMenuButton.onClick = [this] { openPresetMenu(); };
+    presetSaveButton.onClick = [this] { askSavePreset(); };
+    presetDeleteButton.onClick = [this] { askDeletePreset(); };
+    abSetA.onClick = [this] { glitchProcessor.captureAbSlot (0); showStatus ("Current sound captured in A."); refreshPresetBar(); };
+    abSetB.onClick = [this] { glitchProcessor.captureAbSlot (1); showStatus ("Current sound captured in B."); refreshPresetBar(); };
+    abRecallA.onClick = [this] { if (glitchProcessor.recallAbSlot (0)) refreshAlterEgos(); refreshPresetBar(); };
+    abRecallB.onClick = [this] { if (glitchProcessor.recallAbSlot (1)) refreshAlterEgos(); refreshPresetBar(); };
+    abCopyAB.onClick = [this] { if (glitchProcessor.copyAbSlot (0, 1)) showStatus ("A copied to B."); refreshPresetBar(); };
+    abCopyBA.onClick = [this] { if (glitchProcessor.copyAbSlot (1, 0)) showStatus ("B copied to A."); refreshPresetBar(); };
+    presetStatus.setJustificationType (juce::Justification::centredLeft);
+    presetStatus.setFont (juce::FontOptions (11.0f));
+    presetStatus.setColour (juce::Label::textColourId, lime);
+    abLabel.setJustificationType (juce::Justification::centredRight);
+    abLabel.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    abLabel.setColour (juce::Label::textColourId, violet);
+    content.addAndMakeVisible (presetStatus);
+    content.addAndMakeVisible (abLabel);
 
     // ALTER EGOS: each button applies a curated identity; every control below stays editable.
     egoTitle.setJustificationType (juce::Justification::centredLeft);
@@ -339,7 +378,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    setSize (designW * 70 / 100, designH * 70 / 100);
+    setSize (designW * 68 / 100, designH * 68 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -358,7 +397,7 @@ void GlitchKidEditor::refreshAlterEgos()
     }
     else
     {
-        text = "CUSTOM. An Alter Ego sets the EQ, compressor, saturation, echo and Dimension; Output Gain, Blend and Stutter are never touched.";
+        text = "CUSTOM. An Alter Ego sets the EQ, compressor, saturation, echo, Dimension and Vocal Mutation; Output Gain, Blend and Stutter are never touched.";
         if (sel.ego >= 0)
             text << " (Last: " << AlterEgos::info (sel.ego).name << ", edited.)";
     }
@@ -381,9 +420,136 @@ void GlitchKidEditor::refreshAlterEgos()
     surpriseButton.setEnabled (hasEgo);
 }
 
+// ---- Presets and A/B -----------------------------------------------------------------------------------------------------------------
+
+void GlitchKidEditor::showStatus (const juce::String& text)
+{
+    presetStatus.setText (text, juce::dontSendNotification);
+    statusTicks = 30 * 5; // about five seconds
+}
+
+void GlitchKidEditor::refreshPresetBar()
+{
+    const auto name = glitchProcessor.getPresetName();
+    const auto presetText = "PRESET:  " + (name.isEmpty() ? juce::String ("(none)") : name) + (glitchProcessor.isPresetModified() ? "  *" : "") + "   v";
+    if (presetText != shownPresetText)
+    {
+        shownPresetText = presetText;
+        presetMenuButton.setButtonText (presetText);
+        presetDeleteButton.setEnabled (presets.isUserPreset (name)); // looks at the preset folder, so only when the name changed or after an action
+    }
+
+    const int active = glitchProcessor.getAbActive();
+    const bool hasA = glitchProcessor.hasAbSlot (0), hasB = glitchProcessor.hasAbSlot (1);
+    const bool edited = glitchProcessor.isAbSlotModified();
+    const auto abText = juce::String (active) + (hasA ? "a" : "-") + (hasB ? "b" : "-") + (edited ? "e" : "-");
+    if (abText != shownAbText)
+    {
+        shownAbText = abText;
+        abRecallA.setEnabled (hasA);
+        abRecallB.setEnabled (hasB);
+        abRecallA.setToggleState (active == 0, juce::dontSendNotification);
+        abRecallB.setToggleState (active == 1, juce::dontSendNotification);
+        abRecallA.setButtonText (active == 0 && edited ? "A *" : "A");
+        abRecallB.setButtonText (active == 1 && edited ? "B *" : "B");
+        abCopyAB.setEnabled (hasA);
+        abCopyBA.setEnabled (hasB);
+        abRecallA.setTooltip (hasA ? "Switch to the sound stored in A." : "Slot A is empty: press SET A to capture the current sound.");
+        abRecallB.setTooltip (hasB ? "Switch to the sound stored in B." : "Slot B is empty: press SET B to capture the current sound.");
+    }
+}
+
+void GlitchKidEditor::openPresetMenu()
+{
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("FACTORY");
+    menu.addItem (1, glitchkid::PresetController::factoryDefaultName);
+    menu.addSeparator();
+    menu.addSectionHeader ("YOUR PRESETS");
+    const auto names = presets.getStore().listUserPresets();
+    if (names.isEmpty())
+        menu.addItem (-1, "(none saved yet: press SAVE)", false);
+    for (int i = 0; i < names.size(); ++i)
+        menu.addItem (100 + i, names[i], true, names[i].equalsIgnoreCase (glitchProcessor.getPresetName()));
+
+    juce::Component::SafePointer<GlitchKidEditor> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (presetMenuButton), [safe, names] (int choice)
+    {
+        if (safe == nullptr || choice <= 0)
+            return;
+        const auto outcome = choice == 1 ? safe->presets.loadFactoryDefault() : safe->presets.loadUser (names[choice - 100]);
+        safe->showStatus (outcome.message);
+        safe->refreshAlterEgos();
+        safe->shownPresetText = {};
+        safe->refreshPresetBar();
+    });
+}
+
+void GlitchKidEditor::askSavePreset()
+{
+    const auto current = glitchProcessor.getPresetName();
+    auto* w = new juce::AlertWindow ("Save preset", "Name this sound (letters, numbers and spaces work best):", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", current == glitchkid::PresetController::factoryDefaultName ? juce::String() : current, "Name:");
+    w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<GlitchKidEditor> safe (this);
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int result)
+    {
+        if (result == 1 && safe != nullptr)
+            safe->trySave (w->getTextEditorContents ("name"), false);
+    }), true);
+}
+
+void GlitchKidEditor::trySave (const juce::String& name, bool overwrite)
+{
+    const auto outcome = presets.saveAs (name, overwrite);
+    if (outcome.needsOverwriteConfirmation)
+    {
+        juce::Component::SafePointer<GlitchKidEditor> safe (this);
+        askYesNo ("Replace preset?", "A preset called \"" + outcome.name + "\" already exists. Replace it with the current sound?", "Replace",
+                  [safe, name] { if (safe != nullptr) safe->trySave (name, true); });
+        return;
+    }
+    showStatus (outcome.message);
+    shownPresetText = {};
+    refreshPresetBar();
+}
+
+void GlitchKidEditor::askDeletePreset()
+{
+    const auto name = glitchProcessor.getPresetName();
+    if (! presets.isUserPreset (name))
+        return;
+    juce::Component::SafePointer<GlitchKidEditor> safe (this);
+    askYesNo ("Delete preset?", "Delete \"" + name + "\"? This cannot be undone. Your current sound is not changed.", "Delete",
+             [safe, name]
+             {
+                 if (safe == nullptr)
+                     return;
+                 safe->showStatus (safe->presets.deleteUser (name).message);
+                 safe->shownPresetText = {};
+                 safe->refreshPresetBar();
+             });
+}
+
+void GlitchKidEditor::askYesNo (const juce::String& heading, const juce::String& message, const juce::String& yesText, std::function<void()> onYes)
+{
+    auto* w = new juce::AlertWindow (heading, message, juce::MessageBoxIconType::QuestionIcon, this);
+    w->addButton (yesText, 1);
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey)); // the safe choice is the one the Escape key picks
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([onYes] (int result)
+    {
+        if (result == 1)
+            onYes();
+    }), true);
+}
+
 void GlitchKidEditor::timerCallback()
 {
     refreshAlterEgos();
+    refreshPresetBar();
+    if (statusTicks > 0 && --statusTicks == 0)
+        presetStatus.setText ({}, juce::dontSendNotification);
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
@@ -521,6 +687,30 @@ void GlitchKidEditor::layoutContent()
     title.setBounds (r.removeFromTop (44));
     tagline.setBounds (r.removeFromTop (20));
     r.removeFromTop (8);
+
+    // PRESETS + A/B bar: preset menu, SAVE, DELETE and a status line on the left; A/B controls on the right.
+    auto bar = r.removeFromTop (30);
+    presetMenuButton.setBounds (bar.removeFromLeft (270));
+    bar.removeFromLeft (6);
+    presetSaveButton.setBounds (bar.removeFromLeft (64));
+    bar.removeFromLeft (6);
+    presetDeleteButton.setBounds (bar.removeFromLeft (76));
+    bar.removeFromLeft (12);
+    abCopyBA.setBounds (bar.removeFromRight (54));
+    bar.removeFromRight (6);
+    abCopyAB.setBounds (bar.removeFromRight (54));
+    bar.removeFromRight (10);
+    abRecallB.setBounds (bar.removeFromRight (46));
+    bar.removeFromRight (6);
+    abRecallA.setBounds (bar.removeFromRight (46));
+    bar.removeFromRight (10);
+    abSetB.setBounds (bar.removeFromRight (62));
+    bar.removeFromRight (6);
+    abSetA.setBounds (bar.removeFromRight (62));
+    bar.removeFromRight (8);
+    abLabel.setBounds (bar.removeFromRight (38));
+    presetStatus.setBounds (bar);
+    r.removeFromTop (6);
 
     // ALTER EGOS strip: title, five buttons, a one-line description; below it the Mood Engine: Chaos, Blend, Surprise Me.
     auto egoRow = r.removeFromTop (34);

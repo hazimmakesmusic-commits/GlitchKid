@@ -21,7 +21,8 @@
 - Pitch Tune (vocal pitch correction for one voice: key, scale, strength, speed; adds about 31 ms of latency only while it is on) is built, tested on synthetic voices and one real recording, and the owner reported it working in FL Studio on the Mac (Stage 4.2; not independently measured).
 - FORMANT (vocal size: moves the voice's resonances without changing the notes; adds about 21 ms only while away from 0) is built and tested on synthetic voices; the prototype passed one owner listening test; not yet checked inside FL Studio.
 - Vocal Mutation (Stage 4.5; a frequency shifter / ring modulator for robotic and alien voices: MUTATION = how far every partial is moved in Hz, CHARACTER = DOWN - ROBOT - UP, BLEND; adds no latency; default off) is built and tested on synthetic signals only (200 test groups); not yet auditioned on a real vocal or checked in FL Studio. IDs: `mut_on`, `mut_amount`, `mut_character`, `mut_blend`.
-- Not built yet: presets. 
+- MOODS now also drive Vocal Mutation (Stage 4.6): CELESTIAL a slow shimmer, VOIDWALKER a hollow undertone, THE PARASITE robotic ring modulation, ALTERED STATE an alien shift; THE CLONE switches it off. User presets (PRESET menu, SAVE, DELETE, "Factory Default"; files in `~/Library/Application Support/GlitchKid/Presets/User/`) and A/B comparison (SET A / SET B, A, B, A>B, B>A) are built and tested on Linux (219 test groups); not yet checked on the Mac or in FL Studio.
+- Not built yet: factory presets beyond the default, preset folders and import/export. 
 
 ## Verification status (what has actually been checked)
 - Verified on a real Apple Silicon Mac with FL Studio 2025: builds with the Command Line Tools only, `arm64` binary, loads as `VST3 (Apple - native)`, `ctest` passes, window renders and fits, IN/OUT/GR meters move, FL Studio shows the plugin-reported latency (0.14 ms = 6 samples at 44.1 kHz).

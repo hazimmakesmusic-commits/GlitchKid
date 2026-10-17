@@ -3,6 +3,19 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.6: **MOODS + Vocal Mutation, user presets and A/B comparison.**
+  - **MOODS now drives Vocal Mutation.** Alter Egos own four more parameters (34 in total, `AlterEgos::numOwned`): CELESTIAL a slow UP shimmer (8-14 % MUTATION, blend 18-28 %), VOIDWALKER a DOWN shift for a hollow undertone (30-45 %, CHARACTER 8 -> 0, blend 22-38 %),
+    THE PARASITE ROBOT ring modulation (45-68 %, blend 35-60 %), ALTERED STATE alien UP (25-58 %, CHARACTER 75 -> 100, blend 30-52 %). THE CLONE does not use Mutation (Dimension is its detuned second voice): it only switches Mutation OFF and leaves the other three
+    values alone (new per-value `active` flag). Chaos moves the Mutation values linearly like the rest; Surprise Me does not vary Mutation. Because a dry/wet blend of two different signals is quieter, the four tables' compressor makeup was re-tuned from measurements:
+    every Alter Ego at Chaos 0, 0.5 and 1 is within 0.70 dB of the input level on speech-like noise (budget 1 dB). The existing identities, names and other values are unchanged.
+  - **User presets.** A preset is a small versioned XML file (`.gkpreset`, format version 1) holding every sound parameter in plain units plus the Alter Ego selection; Bypass is not part of a sound. Folder on macOS:
+    `~/Library/Application Support/GlitchKid/Presets/User/`. Names are cleaned (no path separators, no hidden or reserved names, 60 characters), duplicates are compared case-insensitively and never replaced without an explicit confirmation, writes go to a temporary file first, damaged,
+    foreign, empty, oversized or outdated files are reported and never applied, a missing folder is created on the first save, missing parameters in older presets take their defaults. A built-in "Factory Default" restores every parameter to its default. Everything runs on the message thread.
+  - **A/B comparison.** SET A / SET B capture the whole sound, A / B recall it, A>B / B>A copy. Only those explicit actions change a slot, so switching never alters a stored sound. The slots, their active marker and the preset name are saved in the DAW session. Loading a preset keeps both snapshots and
+    clears the active marker (capture the old sound into A before loading, the new one into B after).
+  - **Window:** a new bar under the title (PRESET menu, SAVE, DELETE, status line, A/B buttons); window now 1060x1148, opens at 68 %.
+  - **Fix found on the way:** non-finite input (NaN, +-Inf) used to travel through the dry copy that Bypass and Mix 0-99 % use and could reappear delayed; it is now zeroed once at the start of every block (finite audio untouched).
+  - 19 new test groups (219 in total), 21 + 1 deliberate breaks checked (one was an equivalent mutant), ASan/UBSan clean, pluginval SUCCESS. Not yet checked on the Mac or in FL Studio. No new dependency.
 - Stage 4.5: **Vocal Mutation** is now in the plug-in: a single-sideband frequency shifter / ring modulator for robotic and alien voices (not a waveshaper: it moves every
   partial by the same number of Hz, so a harmonic voice becomes inharmonic; the saturator cannot do that). Four new parameters, default off (`mut_on`, `mut_amount`,
   `mut_character`, `mut_blend`; 46 in total), a "VOCAL MUTATION" row in the window between Pitch Tune + FORMANT and Liquid Echo with a read-out of the type and the shift in Hz
