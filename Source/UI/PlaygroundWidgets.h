@@ -8,9 +8,15 @@
 // jump straight to their end state, and nothing repaints unless something changed.
 namespace glitchkid::ui
 {
-// Palette. Obsidian base; acid lime = primary/active; electric violet = atmosphere; hot pink = chaos, mutation, errors; chrome = highlights.
-const juce::Colour obsidian (0xff0b0b10), panelTop (0xff1d1d27), panelBottom (0xff101016), lime (0xffb6ff00), violet (0xff8a2be2),
-                   pink (0xffff2d95), chrome (0xffe3ebf7), chromeDark (0xff5b6478), textBright (0xfff2f2f8), textDim (0xff9a9aa8);
+// Palette (design tokens). Matte black surfaces; electric purple is the brand colour; lime is reserved for active states, toggles and important feedback;
+// cyan and pink only help tell effects apart; red means clipping or an error.
+const juce::Colour obsidian (0xff08090d), panelBottom (0xff101219), panelTop (0xff151923), border (0xff252b38),
+                   violet (0xff963bff), neon (0xffb56aff), lime (0xffb7ff3c), cyan (0xff24d8f2), pink (0xffff4fa3),
+                   textDim (0xff9299aa), textBright (0xfff4f3f8), disabled (0xff454957), errorRed (0xffff496a),
+                   chrome (0xfff4f3f8), chromeDark (0xff454957);
+
+// Inter (SIL Open Font License, bundled in Assets/Fonts and compiled in, so it is the same on every machine). Falls back to the system font if loading fails.
+juce::Font fontOf (float height, bool bold = false);
 
 // A soft coloured halo behind a rounded rectangle: three translucent layers (cheap; no blur).
 void drawGlow (juce::Graphics&, juce::Rectangle<float> r, juce::Colour c, float radius, float strength);
@@ -137,6 +143,78 @@ private:
 // A hull plate outline: chamfered corners (shape "plate") or a slanted tab (shape "tab"). Buttons pick the shape with the component property "shape".
 juce::Path makePlatePath (juce::Rectangle<float> r, bool tab);
 
+// A small vector icon for each effect (juce effect index, see EffectModel.h), drawn with strokes in `colour` inside `area`.
+void drawEffectIcon (juce::Graphics&, int effect, juce::Rectangle<float> area, juce::Colour colour);
+// The crown mark used with the wordmark.
+void drawCrown (juce::Graphics&, juce::Rectangle<float> area, juce::Colour colour);
+
+// A tile in the EFFECTS grid: icon, name, a state light. `state`: -1 = always in the chain and neutral/shaped (dot only), 0 = off, 1 = on.
+class EffectTile : public juce::Button
+{
+public:
+    EffectTile (int effect, juce::Colour identity);
+    void setSelected (bool s) { if (s != selected) { selected = s; repaint(); } }
+    void setState (int s) { if (s != state) { state = s; repaint(); } }
+    int getEffect() const { return effect; }
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    int effect, state = 0;
+    juce::Colour identity;
+    bool selected = false;
+};
+
+// One row of the FX CHAIN panel (in processing order). Clicking the switch at the left toggles the effect (only where it has a real on/off parameter);
+// clicking anywhere else selects it.
+class ChainRow : public juce::Button
+{
+public:
+    ChainRow (int effect, juce::Colour identity);
+    void setSelected (bool s) { if (s != selected) { selected = s; repaint(); } }
+    void setState (bool active) { if (active != isOn) { isOn = active; repaint(); } }
+    int getEffect() const { return effect; }
+    std::function<void()> onSelect, onToggle;
+    using juce::Button::clicked;
+    void mouseDown (const juce::MouseEvent&) override;
+    void clicked (const juce::ModifierKeys&) override;
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    int effect, downX = 0;
+    juce::Colour identity;
+    bool selected = false, isOn = false;
+};
+
+// The settings gear (drawn, not a font glyph).
+class GearButton : public juce::Button
+{
+public:
+    GearButton() : juce::Button ("Settings") { setTooltip ("Settings"); }
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+};
+
+// A compact horizontal level indicator (8 segments) for the top bar, fed with real peaks.
+class ActivityMeter : public juce::Component
+{
+public:
+    void push (float linearPeak);
+    void paint (juce::Graphics&) override;
+
+private:
+    float shownDb = -60.0f;
+};
+
+// Lights red when a peak reached full scale, and stays lit for about a second.
+class ClipLed : public juce::Component
+{
+public:
+    void push (float linearPeak);
+    void paint (juce::Graphics&) override;
+
+private:
+    int hold = 0;
+};
+
 // One look for every existing control too: glossy rounded buttons, chrome-capped rotary knobs with a coloured arc, and slim linear sliders.
 // Colours come from each control's own colour ids, so every knob keeps its meaning (lime / violet / pink).
 class PlaygroundLookAndFeel : public juce::LookAndFeel_V4
@@ -145,6 +223,10 @@ public:
     PlaygroundLookAndFeel();
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool highlighted, bool down) override;
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override;
+    juce::Font getLabelFont (juce::Label&) override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
+    juce::Font getPopupMenuFont() override;
+    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider&) override;
     void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h, float pos, float minPos, float maxPos, juce::Slider::SliderStyle, juce::Slider&) override;
 };

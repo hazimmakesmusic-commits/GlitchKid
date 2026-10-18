@@ -1,4 +1,6 @@
 #include "PlaygroundWidgets.h"
+#include "EffectModel.h"
+#include <BinaryData.h>
 #include <juce_audio_basics/juce_audio_basics.h>
 
 namespace glitchkid::ui
@@ -102,6 +104,76 @@ void drawLedDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, f
         g.setColour (chrome);
         g.drawEllipse (dial.reduced (0.5f), 1.2f);
     }
+}
+
+juce::Font fontOf (float height, bool bold)
+{
+    static const juce::Typeface::Ptr regular = juce::Typeface::createSystemTypefaceFor (BinaryData::InterRegular_otf, BinaryData::InterRegular_otfSize);
+    static const juce::Typeface::Ptr strong = juce::Typeface::createSystemTypefaceFor (BinaryData::InterBold_otf, BinaryData::InterBold_otfSize);
+    const auto& face = bold ? strong : regular;
+    if (face != nullptr)
+        return juce::Font (juce::FontOptions (face).withHeight (height));
+    return juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
+}
+
+void drawEffectIcon (juce::Graphics& g, int effect, juce::Rectangle<float> area, juce::Colour c)
+{
+    const float s = juce::jmin (area.getWidth(), area.getHeight());
+    const auto o = juce::Point<float> (area.getCentreX() - s * 0.5f, area.getCentreY() - s * 0.5f);
+    auto P = [&] (float x, float y) { return juce::Point<float> (o.x + x * s, o.y + y * s); };
+    const juce::PathStrokeType stroke (juce::jmax (1.4f, s * 0.075f), juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+    g.setColour (c);
+    juce::Path p;
+    auto line = [&] (std::initializer_list<juce::Point<float>> pts, bool close = false)
+    {
+        bool first = true;
+        for (const auto& q : pts)
+        {
+            if (first) p.startNewSubPath (q);
+            else p.lineTo (q);
+            first = false;
+        }
+        if (close) p.closeSubPath();
+    };
+    switch (effect)
+    {
+        case fx::pitchTune:   line ({ P (.08f, .72f), P (.30f, .72f), P (.30f, .46f), P (.56f, .46f), P (.56f, .24f), P (.92f, .24f) }); break;
+        case fx::formant:     p.startNewSubPath (P (.06f, .8f)); p.cubicTo (P (.16f, .15f), P (.32f, .15f), P (.40f, .6f)); p.cubicTo (P (.46f, .28f), P (.58f, .28f), P (.64f, .62f)); p.cubicTo (P (.7f, .4f), P (.84f, .4f), P (.94f, .8f)); break;
+        case fx::harmony:     p.startNewSubPath (P (.06f, .38f)); p.cubicTo (P (.2f, .08f), P (.34f, .08f), P (.5f, .38f)); p.cubicTo (P (.66f, .68f), P (.8f, .68f), P (.94f, .38f));
+                              p.startNewSubPath (P (.06f, .68f)); p.cubicTo (P (.2f, .38f), P (.34f, .38f), P (.5f, .68f)); p.cubicTo (P (.66f, .98f), P (.8f, .98f), P (.94f, .68f)); break;
+        case fx::mutation:    line ({ P (.58f, .06f), P (.26f, .56f), P (.48f, .56f), P (.40f, .94f), P (.76f, .42f), P (.54f, .42f) }, true); break;
+        case fx::doubler:     p.addEllipse (o.x + .08f * s, o.y + .26f * s, .5f * s, .48f * s); p.addEllipse (o.x + .42f * s, o.y + .26f * s, .5f * s, .48f * s); break;
+        case fx::eq:          for (int i = 0; i < 3; ++i) { const float x = .22f + i * .28f; p.startNewSubPath (P (x, .12f)); p.lineTo (P (x, .88f)); const float ky = i == 1 ? .34f : (i == 0 ? .62f : .5f); p.addEllipse (P (x, ky).x - .08f * s, P (x, ky).y - .08f * s, .16f * s, .16f * s); } break;
+        case fx::compressor:  line ({ P (.22f, .14f), P (.5f, .4f), P (.78f, .14f) }); line ({ P (.22f, .86f), P (.5f, .6f), P (.78f, .86f) }); line ({ P (.34f, .5f), P (.66f, .5f) }); break;
+        case fx::saturation:  line ({ P (.06f, .66f), P (.2f, .3f), P (.4f, .26f), P (.5f, .5f), P (.62f, .74f), P (.8f, .74f), P (.94f, .36f) }); break;
+        case fx::stutter:     for (int i = 0; i < 4; ++i) { const float x = .16f + i * .22f, h = .7f - i * .16f; p.startNewSubPath (P (x, .5f - h * .5f)); p.lineTo (P (x, .5f + h * .5f)); } break;
+        case fx::echo:        for (int i = 0; i < 3; ++i) p.addCentredArc (o.x + .16f * s, o.y + .5f * s, (.22f + i * .2f) * s, (.22f + i * .2f) * s, 0.0f, juce::MathConstants<float>::halfPi - 0.95f, juce::MathConstants<float>::halfPi + 0.95f, true); break;
+        case fx::dimension:   line ({ P (.5f, .06f), P (.9f, .28f), P (.9f, .72f), P (.5f, .94f), P (.1f, .72f), P (.1f, .28f) }, true); line ({ P (.1f, .28f), P (.5f, .5f), P (.9f, .28f) }); line ({ P (.5f, .5f), P (.5f, .94f) }); break;
+        default: break;
+    }
+    g.strokePath (p, stroke);
+}
+
+void drawCrown (juce::Graphics& g, juce::Rectangle<float> a, juce::Colour c)
+{
+    const float s = juce::jmin (a.getWidth(), a.getHeight());
+    const auto o = juce::Point<float> (a.getCentreX() - s * 0.5f, a.getCentreY() - s * 0.5f);
+    auto P = [&] (float x, float y) { return juce::Point<float> (o.x + x * s, o.y + y * s); };
+    juce::Path crown;
+    crown.startNewSubPath (P (.08f, .78f));
+    crown.lineTo (P (.08f, .32f));
+    crown.lineTo (P (.30f, .55f));
+    crown.lineTo (P (.5f, .16f));
+    crown.lineTo (P (.70f, .55f));
+    crown.lineTo (P (.92f, .32f));
+    crown.lineTo (P (.92f, .78f));
+    crown.closeSubPath();
+    g.setColour (c);
+    g.fillPath (crown);
+    for (const auto& q : { P (.08f, .26f), P (.5f, .1f), P (.92f, .26f) })
+        g.fillEllipse (q.x - s * 0.06f, q.y - s * 0.06f, s * 0.12f, s * 0.12f);
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRect (o.x + .08f * s, o.y + .72f * s, .84f * s, .06f * s);
 }
 
 // ---- Mascot ----------------------------------------------------------------------------------------------------------------------------
@@ -361,13 +433,13 @@ void WorldCard::paint (juce::Graphics& g)
 
     const float tx = r.getX() + 66.0f, tw = r.getWidth() - 66.0f - 40.0f;
     g.setColour (textBright);
-    g.setFont (juce::FontOptions (17.0f, juce::Font::bold));
-    g.drawText (title, tx, r.getY() + 5.0f, tw, 22.0f, juce::Justification::centredLeft);
+    g.setFont (fontOf (16.0f, true));
+    g.drawFittedText (title, juce::Rectangle<float> (tx, r.getY() + 5.0f, tw, 22.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.75f);
     g.setColour (textBright.withAlpha (0.82f));
-    g.setFont (juce::FontOptions (12.0f));
+    g.setFont (fontOf (12.0f));
     g.drawText (tagline, tx, r.getY() + 26.0f, tw + 30.0f, 16.0f, juce::Justification::centredLeft);
     g.setColour (accent.brighter (0.6f).withAlpha (0.95f));
-    g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+    g.setFont (fontOf (10.5f, true));
     g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "LOADS: " + loads, tx, r.getY() + 43.0f, tw + 30.0f, 14.0f, juce::Justification::centredLeft);
 }
 
@@ -454,14 +526,14 @@ void MacroDial::paint (juce::Graphics& g)
     auto r = getLocalBounds().toFloat();
     const float alpha = isEnabled() ? 1.0f : 0.4f;
     g.setColour (textBright.withAlpha (alpha));
-    g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
+    g.setFont (fontOf (16.0f, true));
     g.drawText (name, r.removeFromTop (22.0f), juce::Justification::centred);
 
     auto valueArea = r.removeFromBottom (24.0f);
     drawLedDial (g, r.reduced (2.0f), pi * 1.25f, pi * 2.75f, shown, accent, alpha, hover, hasKeyboardFocus (false));
 
     g.setColour (accent.brighter (0.3f).withAlpha (alpha));
-    g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
+    g.setFont (fontOf (15.0f, true));
     g.drawText (isEnabled() ? juce::String (juce::roundToInt (shown * 100.0f)) + " %" : juce::String ("NEEDS ALTER EGO"), valueArea, juce::Justification::centred);
 }
 
@@ -589,8 +661,178 @@ void ReactorButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
         g.drawEllipse (c.x - coreR - 2.0f, c.y - coreR - 2.0f + oy, coreR * 2.0f + 4.0f, coreR * 2.0f + 4.0f, 1.4f);
     }
     g.setColour (juce::Colour (0xff0b1400).withAlpha (alpha));
-    g.setFont (juce::FontOptions (juce::jlimit (11.0f, 17.0f, d * 0.115f), juce::Font::bold));
+    g.setFont (fontOf (juce::jlimit (11.0f, 17.0f, d * 0.115f), true));
     g.drawFittedText (getButtonText().replaceFirstOccurrenceOf (" ", "\n"), juce::Rectangle<int> ((int) (c.x - coreR), (int) (c.y - coreR * 0.5f + oy), (int) (coreR * 2.0f), (int) coreR), juce::Justification::centred, 2);
+}
+
+// ---- effect tiles, chain rows, meters ---------------------------------------------------------------------------------------------------
+
+EffectTile::EffectTile (int e, juce::Colour c) : juce::Button (fx::info (e).name), effect (e), identity (c)
+{
+    setTooltip (fx::info (e).description);
+    setWantsKeyboardFocus (true);
+}
+
+void EffectTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    if (down)
+        r = r.reduced (1.0f);
+    juce::ColourGradient fill ((selected ? violet.withAlpha (0.30f) : panelTop), r.getX(), r.getY(), (selected ? violet.withAlpha (0.10f) : panelBottom), r.getX(), r.getBottom(), false);
+    g.setGradientFill (fill);
+    g.fillRoundedRectangle (r, 9.0f);
+    g.setColour (selected ? neon : (highlighted ? violet : border));
+    g.drawRoundedRectangle (r, 9.0f, selected ? 2.0f : 1.2f);
+    if (hasKeyboardFocus (true))
+    {
+        g.setColour (chrome);
+        g.drawRoundedRectangle (r.expanded (2.0f), 11.0f, 1.2f);
+    }
+
+    const bool lit = state == 1;
+    drawEffectIcon (g, effect, { r.getX() + 8.0f, r.getCentreY() - 11.0f, 22.0f, 22.0f }, lit ? lime : (state == 0 ? textDim : identity));
+    g.setColour (lit || selected ? textBright : textDim);
+    g.setFont (fontOf (11.0f, true));
+    g.drawFittedText (getButtonText(), juce::Rectangle<float> (r.getX() + 34.0f, r.getY() + 4.0f, r.getWidth() - 34.0f - 6.0f, r.getHeight() - 4.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+
+    const juce::Point<float> led (r.getRight() - 12.0f, r.getY() + 12.0f);
+    const bool shaped = state == -1;
+    if (lit)
+        drawGlowCircle (g, { led.x - 3.0f, led.y - 3.0f, 6.0f, 6.0f }, lime, 5.0f, 0.8f);
+    g.setColour (lit ? lime : (shaped ? neon.withAlpha (0.4f) : disabled));
+    g.fillEllipse (led.x - 3.5f, led.y - 3.5f, 7.0f, 7.0f);
+}
+
+ChainRow::ChainRow (int e, juce::Colour c) : juce::Button (fx::info (e).name), effect (e), identity (c)
+{
+    setTooltip (juce::String (fx::info (e).description) + (fx::canToggle (e) ? " Click the switch to turn it on or off." : " (Always in the chain: no on/off switch.)"));
+    setWantsKeyboardFocus (true);
+}
+
+void ChainRow::mouseDown (const juce::MouseEvent& e)
+{
+    downX = e.x;
+    juce::Button::mouseDown (e);
+}
+
+void ChainRow::clicked (const juce::ModifierKeys&)
+{
+    if (fx::canToggle (effect) && downX < 48)
+    {
+        if (onToggle)
+            onToggle();
+    }
+    else if (onSelect)
+        onSelect();
+}
+
+void ChainRow::paintButton (juce::Graphics& g, bool highlighted, bool)
+{
+    auto r = getLocalBounds().toFloat().reduced (1.0f);
+    if (selected || highlighted)
+    {
+        g.setColour (selected ? violet.withAlpha (0.22f) : juce::Colours::white.withAlpha (0.04f));
+        g.fillRoundedRectangle (r, 8.0f);
+    }
+    if (selected)
+    {
+        g.setColour (neon);
+        g.fillRoundedRectangle (r.getX(), r.getY() + 6.0f, 3.0f, r.getHeight() - 12.0f, 1.5f);
+    }
+    if (hasKeyboardFocus (true))
+    {
+        g.setColour (chrome);
+        g.drawRoundedRectangle (r, 8.0f, 1.2f);
+    }
+
+    // switch (real on/off) or a dot (always in the chain)
+    const auto sw = juce::Rectangle<float> (28.0f, 14.0f).withCentre ({ r.getX() + 26.0f, r.getCentreY() });
+    if (fx::canToggle (effect))
+    {
+        g.setColour (isOn ? lime.withAlpha (0.25f) : juce::Colour (0xff05060a));
+        g.fillRoundedRectangle (sw, 7.0f);
+        g.setColour (isOn ? lime : border);
+        g.drawRoundedRectangle (sw, 7.0f, 1.2f);
+        g.setColour (isOn ? lime : disabled);
+        g.fillEllipse (isOn ? sw.getRight() - 12.0f : sw.getX() + 2.0f, sw.getY() + 2.0f, 10.0f, 10.0f);
+    }
+    else
+    {
+        g.setColour (isOn ? lime : disabled);
+        g.fillEllipse (sw.getCentreX() - 3.5f, sw.getCentreY() - 3.5f, 7.0f, 7.0f);
+    }
+    drawEffectIcon (g, effect, { r.getX() + 50.0f, r.getCentreY() - 10.0f, 20.0f, 20.0f }, isOn ? lime : identity);
+    g.setColour (isOn || selected ? textBright : textDim);
+    g.setFont (fontOf (12.0f, true));
+    g.drawText (getButtonText(), r.getX() + 78.0f, r.getY(), r.getWidth() - 82.0f, r.getHeight(), juce::Justification::centredLeft, true);
+}
+
+void GearButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    g.setColour (highlighted ? panelTop.brighter (0.1f) : panelBottom);
+    g.fillRoundedRectangle (r, 9.0f);
+    g.setColour (hasKeyboardFocus (true) ? chrome : (highlighted ? violet : border));
+    g.drawRoundedRectangle (r, 9.0f, 1.2f);
+    const auto c = r.getCentre();
+    const float R = r.getWidth() * 0.27f + (down ? -0.5f : 0.0f);
+    juce::Path gear;
+    for (int i = 0; i < 8; ++i)
+    {
+        const float a = (float) i * juce::MathConstants<float>::pi / 4.0f;
+        juce::Path tooth;
+        tooth.addRoundedRectangle (c.x - 2.0f, c.y - R - 3.5f, 4.0f, 6.0f, 1.2f);
+        gear.addPath (tooth, juce::AffineTransform::rotation (a, c.x, c.y));
+    }
+    gear.addEllipse (c.x - R, c.y - R, R * 2.0f, R * 2.0f);
+    g.setColour (highlighted ? neon : textDim);
+    g.fillPath (gear);
+    g.setColour (highlighted ? panelTop : panelBottom);
+    g.fillEllipse (c.x - R * 0.42f, c.y - R * 0.42f, R * 0.84f, R * 0.84f);
+}
+
+void ActivityMeter::push (float peak)
+{
+    const float db = juce::Decibels::gainToDecibels (std::isfinite (peak) ? peak : 0.0f, -60.0f);
+    const float next = db > shownDb ? db : juce::jmax (db, shownDb - 2.0f);
+    if (! juce::approximatelyEqual (next, shownDb))
+    {
+        shownDb = next;
+        repaint();
+    }
+}
+
+void ActivityMeter::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    constexpr int n = 8;
+    const float segW = (r.getWidth() - (float) (n - 1) * 2.0f) / (float) n;
+    const int lit = juce::roundToInt (juce::jmap (juce::jlimit (-60.0f, 0.0f, shownDb), -60.0f, 0.0f, 0.0f, (float) n));
+    for (int i = 0; i < n; ++i)
+    {
+        g.setColour (i < lit ? (i >= n - 1 ? errorRed : (i >= n - 3 ? lime : violet)) : juce::Colour (0xff1b1f2b));
+        g.fillRoundedRectangle (r.getX() + (float) i * (segW + 2.0f), r.getY(), segW, r.getHeight(), 1.5f);
+    }
+}
+
+void ClipLed::push (float peak)
+{
+    const bool was = hold > 0;
+    if (std::isfinite (peak) && peak >= 0.99f)
+        hold = 30;
+    else if (hold > 0)
+        --hold;
+    if ((hold > 0) != was)
+        repaint();
+}
+
+void ClipLed::paint (juce::Graphics& g)
+{
+    const auto r = getLocalBounds().toFloat().reduced (1.0f);
+    if (hold > 0)
+        drawGlowCircle (g, r.reduced (3.0f), errorRed, 4.0f, 0.9f);
+    g.setColour (hold > 0 ? errorRed : juce::Colour (0xff2a1d22));
+    g.fillEllipse (r.reduced (2.0f));
 }
 
 // ---- PlaygroundLookAndFeel -------------------------------------------------------------------------------------------------------------
@@ -617,8 +859,12 @@ PlaygroundLookAndFeel::PlaygroundLookAndFeel()
 
 juce::Font PlaygroundLookAndFeel::getTextButtonFont (juce::TextButton&, int h)
 {
-    return juce::Font (juce::FontOptions (juce::jlimit (11.0f, 17.0f, (float) h * 0.46f), juce::Font::bold));
+    return fontOf (juce::jlimit (11.0f, 16.0f, (float) h * 0.42f), true);
 }
+
+juce::Font PlaygroundLookAndFeel::getLabelFont (juce::Label& l) { return fontOf (l.getFont().getHeight(), l.getFont().isBold()); }
+juce::Font PlaygroundLookAndFeel::getComboBoxFont (juce::ComboBox& b) { return fontOf (juce::jlimit (12.0f, 15.0f, (float) b.getHeight() * 0.4f), false); }
+juce::Font PlaygroundLookAndFeel::getPopupMenuFont() { return fontOf (14.0f, false); }
 
 void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& bg, bool highlighted, bool down)
 {
@@ -648,6 +894,29 @@ void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
     {
         g.setColour (chrome);
         g.strokePath (makePlatePath (r.expanded (2.5f), tab), juce::PathStrokeType (1.4f));
+    }
+}
+
+void PlaygroundLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool highlighted, bool)
+{
+    const float alpha = b.isEnabled() ? 1.0f : 0.4f;
+    const bool on = b.getToggleState();
+    const auto sw = juce::Rectangle<float> (36.0f, 18.0f).withCentre ({ 22.0f, (float) b.getHeight() * 0.5f });
+    g.setColour ((on ? lime.withAlpha (0.22f) : juce::Colour (0xff05060a)).withAlpha (alpha));
+    g.fillRoundedRectangle (sw, 9.0f);
+    g.setColour ((on ? lime : (highlighted ? violet : border)).withAlpha (alpha));
+    g.drawRoundedRectangle (sw, 9.0f, 1.3f);
+    if (on)
+        drawGlowCircle (g, { sw.getRight() - 15.0f, sw.getY() + 1.0f, 14.0f, 14.0f }, lime, 5.0f, 0.5f * alpha);
+    g.setColour ((on ? lime : disabled).withAlpha (alpha));
+    g.fillEllipse (on ? sw.getRight() - 15.0f : sw.getX() + 3.0f, sw.getY() + 2.0f, 14.0f, 14.0f);
+    g.setColour ((on ? textBright : textDim).withAlpha (alpha));
+    g.setFont (fontOf (juce::jlimit (11.0f, 14.0f, (float) b.getHeight() * 0.4f), true));
+    g.drawFittedText (b.getButtonText(), b.getLocalBounds().withTrimmedLeft (48), juce::Justification::centredLeft, 1, 0.8f);
+    if (b.hasKeyboardFocus (true))
+    {
+        g.setColour (chrome);
+        g.drawRoundedRectangle (sw.expanded (2.0f), 11.0f, 1.2f);
     }
 }
 

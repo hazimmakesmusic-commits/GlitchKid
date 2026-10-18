@@ -30,6 +30,11 @@ juce_add_plugin(GlitchKid
     NEEDS_MIDI_OUTPUT FALSE
     VST3_CATEGORIES Fx)
 
+# Bundled fonts (Inter, SIL Open Font License; see Assets/Fonts/OFL.txt): compiled in so the interface looks the same on every machine.
+juce_add_binary_data(GlitchKidAssets SOURCES
+    Assets/Fonts/Inter-Regular.otf
+    Assets/Fonts/Inter-Bold.otf)
+
 target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp
     Source/DSP/Compressor.cpp
@@ -48,6 +53,7 @@ target_sources(GlitchKid PRIVATE
     Source/AutoMode/AutoMix.cpp
     Source/Macros/MacroEngine.cpp
     Source/UI/PlaygroundWidgets.cpp
+    Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
     Source/DSP/PitchCorrection/ScaleQuantizer.cpp
     Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
@@ -60,11 +66,13 @@ target_sources(GlitchKid PRIVATE
 target_compile_definitions(GlitchKid PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
-    JUCE_VST3_CAN_REPLACE_VST2=0)
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    GLITCHKID_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(GlitchKid
     PRIVATE juce::juce_audio_utils
             juce::juce_dsp
+            GlitchKidAssets
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 
@@ -115,16 +123,19 @@ if(GLITCHKID_BUILD_TESTS)
         Source/AutoMode/AutoMix.cpp
         Source/Macros/MacroEngine.cpp
         Source/UI/PlaygroundWidgets.cpp
+        Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        GLITCHKID_VERSION="${PROJECT_VERSION}"
         JUCE_MODAL_LOOPS_PERMITTED=1) # tests only: lets the editor smoke test run its timer
     target_link_libraries(GlitchKidTests
         PRIVATE juce::juce_audio_utils
                 juce::juce_dsp
+                GlitchKidAssets
         PUBLIC  juce::juce_recommended_config_flags
                 juce::juce_recommended_warning_flags)
     add_test(NAME GlitchKidProcessor COMMAND GlitchKidTests)
