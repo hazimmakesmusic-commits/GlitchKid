@@ -18,7 +18,9 @@ struct VocalAnalysis
     float activeSeconds = 0.0f;  // part of it above the activity gate (-50 dB per 100 ms frame)
     float peakDb = -120.0f;      // highest sample magnitude
     float rmsDb = -120.0f;       // RMS over the active frames
-    int clippedSamples = 0;      // samples at or above 0.999 full scale
+    float crestDb = 0.0f;        // peakDb - rmsDb: peak-to-RMS (crest factor) of the active material; a pure sine is 3 dB, speech is typically 12-20 dB, a heavily compressed take is low
+    int clippedSamples = 0;      // samples at or above 0.999 full scale (hard clipping)
+    int nearClippedSamples = 0;  // samples at or above 0.98 full scale (includes the clipped ones): "peaks pressed against the ceiling"
     int nonFiniteSamples = 0;    // NaN/Inf samples seen (ignored by the measurements)
     float dynP10Db = -120.0f, dynP50Db = -120.0f, dynP90Db = -120.0f; // percentiles of the 100 ms frame RMS over active frames
     float dynamicRangeDb = 0.0f; // dynP90 - dynP10: an indicator of how much the level moves, not a loudness-range standard
@@ -40,6 +42,10 @@ public:
     void prepare (double sampleRate);                  // allocation-free; may be called again on a rate change
     void start() { request.store (1, std::memory_order_release); }  // begin a fresh analysis at the next block
     void stop() { request.store (2, std::memory_order_release); }   // finish now with what has been heard
+
+    // Analyses a complete mono buffer in one call, on the CALLING thread (never call it from the audio thread: it takes as long as the audio is long).
+    // Same measurements as live listening; empty or null input gives status tooQuiet. For a future "drop a vocal file" path and for tests.
+    static VocalAnalysis analyzeOffline (const float* mono, int numSamples, double sampleRate);
 
     void process (const float* const* channels, int numChannels, int numSamples) noexcept; // audio thread
 
@@ -77,13 +83,13 @@ private:
     long sibilantFrames = 0;
     std::array<int, histBins> hist {};
     float peak = 0.0f;
-    int clipped = 0, nonFinite = 0;
+    int clipped = 0, nearClipped = 0, nonFinite = 0;
     bool listening = false;
 
     std::atomic<int> request { 0 };
     std::atomic<int> status { (int) VocalAnalysis::Status::idle };
     std::atomic<float> liveActive { 0.0f }, liveTotal { 0.0f };
-    static constexpr int numFields = 16;
+    static constexpr int numFields = 18;
     std::array<std::atomic<float>, numFields> fields {};
 };
 }

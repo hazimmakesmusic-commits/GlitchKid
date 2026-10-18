@@ -21,6 +21,7 @@ using RangeLookup = std::function<bool (const juce::String& id, Range& out)>; //
 struct Result
 {
     bool usable = false;          // false: the analysis was inconclusive (or intensity is 0), nothing changed
+    bool usedFallback = false;    // true: the whole proposal comes from ASTRO MODE's typical-vocal defaults, not from this recording (only when allowFallback was set)
     SoundState sound;             // the sound to apply: `current` with the AutoMode parameters replaced (every value inside its range)
     int changedCount = 0;         // how many parameters differ from `current`
     juce::StringArray notes;      // plain-English reasons, e.g. "Left the low shelf flat: the low end already looks strong"
@@ -28,5 +29,8 @@ struct Result
 };
 
 const char* profileName (Profile);
-Result compute (const analysis::VocalAnalysis&, Profile, float intensity, const SoundState& current, const RangeLookup&);
+// `allowFallback`: when the analysis is not usable (too short, too quiet, invalid, still listening), false (the default) changes nothing;
+// true proposes the curated ASTRO MODE defaults for a typical vocal instead (fixed gentle compressor, no loudness-based decisions) and says so in the notes.
+// Individual metrics that are missing or non-finite in an otherwise usable analysis are replaced by neutral typical values either way, and noted.
+Result compute (const analysis::VocalAnalysis&, Profile, float intensity, const SoundState& current, const RangeLookup&, bool allowFallback = false);
 }

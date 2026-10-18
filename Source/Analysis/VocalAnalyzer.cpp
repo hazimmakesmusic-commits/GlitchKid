@@ -8,7 +8,7 @@ namespace
 {
 constexpr double corners[4] = { 120.0, 500.0, 2000.0, 5000.0 };
 constexpr float activityGateDb = -50.0f;
-constexpr float clipLevel = 0.999f;
+constexpr float clipLevel = 0.999f, nearClipLevel = 0.98f;
 constexpr double eps = 1.0e-12;
 
 float toDb (double energyPerSample) { return (float) (10.0 * std::log10 (energyPerSample + eps)); }
@@ -48,7 +48,7 @@ void VocalAnalyzer::reset() noexcept
     activeFrames = totalSamples = sibilantFrames = 0;
     hist.fill (0);
     peak = 0.0f;
-    clipped = nonFinite = 0;
+    clipped = nearClipped = nonFinite = 0;
     for (auto& f : lp)
         f.reset();
     liveActive.store (0.0f, std::memory_order_relaxed);
@@ -87,6 +87,8 @@ void VocalAnalyzer::process (const float* const* channels, int numChannels, int 
             }
             const float mag = std::fabs (v);
             peak = std::max (peak, mag);
+            if (mag >= nearClipLevel)
+                ++nearClipped;
             if (mag >= clipLevel)
                 ++clipped;
             sum += (double) v;
@@ -139,6 +141,7 @@ void VocalAnalyzer::finish() noexcept
     a.activeSeconds = (float) ((double) activeFrames * (double) frameLength / fs);
     a.peakDb = 20.0f * std::log10 (peak + 1.0e-6f);
     a.clippedSamples = clipped;
+    a.nearClippedSamples = nearClipped;
     a.nonFiniteSamples = nonFinite;
 
     if (totalSamples > 0 && (double) nonFinite > 0.01 * (double) totalSamples)
@@ -176,6 +179,7 @@ void VocalAnalyzer::finish() noexcept
         a.dynP50Db = percentile (0.50);
         a.dynP90Db = percentile (0.90);
         a.dynamicRangeDb = a.dynP90Db - a.dynP10Db;
+        a.crestDb = a.peakDb - a.rmsDb;
     }
     publish (a);
 }
@@ -185,10 +189,28 @@ void VocalAnalyzer::publish (const VocalAnalysis& a) noexcept
 {
     const float v[numFields] = { a.totalSeconds, a.activeSeconds, a.peakDb, a.rmsDb, (float) a.clippedSamples, (float) a.nonFiniteSamples,
                                  a.dynP10Db, a.dynP50Db, a.dynP90Db, a.dynamicRangeDb, a.sibilanceIndex,
+                                 a.crestDb, (float) a.nearClippedSamples,
                                  a.bandFraction[0], a.bandFraction[1], a.bandFraction[2], a.bandFraction[3], a.bandFraction[4] };
     for (int i = 0; i < numFields; ++i)
         fields[(size_t) i].store (v[i], std::memory_order_relaxed);
     status.store ((int) a.status, std::memory_order_release);
+}
+
+VocalAnalysis VocalAnalyzer::analyzeOffline (const float* mono, int numSamples, double sampleRate)
+{
+    VocalAnalyzer an; // a private instance: nothing is shared with the plug-in's live analyzer
+    an.prepare (sampleRate);
+    an.reset();
+    an.listening = true;
+    constexpr int block = 4096;
+    for (int pos = 0; mono != nullptr && pos < numSamples && an.listening; pos += block)
+    {
+        const float* ch[1] = { mono + pos };
+        an.process (ch, 1, std::min (block, numSamples - pos));
+    }
+    if (an.listening)
+        an.finish(); // short, empty or null input: finish with whatever was heard
+    return an.fetch();
 }
 
 VocalAnalysis VocalAnalyzer::fetch() const
@@ -201,8 +223,9 @@ VocalAnalysis VocalAnalyzer::fetch() const
     a.totalSeconds = f (0); a.activeSeconds = f (1); a.peakDb = f (2); a.rmsDb = f (3);
     a.clippedSamples = (int) f (4); a.nonFiniteSamples = (int) f (5);
     a.dynP10Db = f (6); a.dynP50Db = f (7); a.dynP90Db = f (8); a.dynamicRangeDb = f (9); a.sibilanceIndex = f (10);
+    a.crestDb = f (11); a.nearClippedSamples = (int) f (12);
     for (int b = 0; b < VocalAnalysis::numBands; ++b)
-        a.bandFraction[(size_t) b] = f (11 + b);
+        a.bandFraction[(size_t) b] = f (13 + b);
     return a;
 }
 }

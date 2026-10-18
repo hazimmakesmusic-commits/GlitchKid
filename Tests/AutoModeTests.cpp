@@ -268,12 +268,20 @@ struct AutoModeTests : public juce::UnitTest
                     expectEquals (r.sound.values[i].value, current.values[i].value);
             }
             expect (! glitchkid::automode::compute (ready(), Profile::astroMode, 0.0f, current, rangesOf (p)).usable);
+            // A single missing metric no longer aborts: a typical value is assumed for it (and the compressor falls back to fixed gentle settings).
             auto nan = ready();
             nan.dynP50Db = std::numeric_limits<float>::quiet_NaN();
-            expect (! glitchkid::automode::compute (nan, Profile::astroMode, 0.8f, current, rangesOf (p)).usable);
+            const auto rn = glitchkid::automode::compute (nan, Profile::astroMode, 0.8f, current, rangesOf (p));
+            expect (rn.usable && ! rn.usedFallback && rn.notes.size() > 0);
+            expectEquals (rn.sound.get ("comp_thresh", 0.0f), -18.0f);
+            expectEquals (rn.sound.get ("comp_makeup", 9.0f), 0.0f);
             auto nanBand = ready();
             nanBand.bandFraction[2] = std::numeric_limits<float>::infinity();
-            expect (! glitchkid::automode::compute (nanBand, Profile::astroMode, 0.8f, current, rangesOf (p)).usable);
+            const auto rb = glitchkid::automode::compute (nanBand, Profile::astroMode, 0.8f, current, rangesOf (p));
+            const auto rtyp = glitchkid::automode::compute (ready(), Profile::astroMode, 0.8f, current, rangesOf (p));
+            expect (rb.usable && rb.notes.size() > 0);
+            expectWithinAbsoluteError (rb.sound.get ("eq_b2_gain", 0.0f), 0.5f * 0.8f, 0.01f); // typical balance: no tonal decision from the broken measurement
+            (void) rtyp;
             const auto weird = glitchkid::automode::compute (ready(), Profile::astroMode, std::numeric_limits<float>::quiet_NaN(), current, rangesOf (p));
             expect (! weird.usable);
             const auto big = glitchkid::automode::compute (ready(), Profile::astroMode, 50.0f, current, rangesOf (p));
@@ -323,6 +331,163 @@ struct AutoModeTests : public juce::UnitTest
             expect (run (ready(), 0.3f).get ("echo_mix", 0.0f) < run (ready(), 0.9f).get ("echo_mix", 0.0f));
             expect (run (ready(), 0.3f).get ("eq_hi_gain", 0.0f) > run (ready(), 0.9f).get ("eq_hi_gain", 0.0f));
             expectEquals (run (ready(), 0.1f).get ("tune_on", 1.0f), 0.0f); // very low intensity does not switch the creative effects on
+        }
+
+
+        beginTest ("analyzer: empty, null and silent input are handled (offline path too); results repeat exactly");
+        {
+            const float none[1] = { 0.0f };
+            const auto e1 = VocalAnalyzer::analyzeOffline (nullptr, 0, 48000.0);
+            const auto e2 = VocalAnalyzer::analyzeOffline (none, 0, 48000.0);
+            const auto e3 = VocalAnalyzer::analyzeOffline (none, -5, 48000.0);
+            const std::vector<float> zeros (48000 * 3, 0.0f);
+            const auto e4 = VocalAnalyzer::analyzeOffline (zeros.data(), (int) zeros.size(), 48000.0);
+            for (const auto& a : { e1, e2, e3, e4 })
+                expect (a.status == S::tooQuiet && finite (a), "empty/silent input is 'too quiet', never an error value");
+            const auto x = vocal (48000.0, 8.0);
+            const auto a1 = VocalAnalyzer::analyzeOffline (x.data(), (int) x.size(), 48000.0);
+            const auto a2 = VocalAnalyzer::analyzeOffline (x.data(), (int) x.size(), 48000.0);
+            expect (a1.status == S::ready);
+            expect (std::memcmp (&a1, &a2, sizeof (VocalAnalysis)) == 0, "identical input -> bit-identical analysis");
+            const auto live = analyse (x, 48000.0, 480);
+            expectWithinAbsoluteError (live.rmsDb, a1.rmsDb, 0.05f);
+            expectWithinAbsoluteError (live.crestDb, a1.crestDb, 0.05f);
+        }
+
+        beginTest ("analyzer: a steady tone has a ~3 dB crest factor and almost no level variation");
+        {
+            const auto a = analyse (tone (48000.0, 6.0, 1000.0, 0.3f), 48000.0);
+            expect (a.status == S::ready);
+            expectWithinAbsoluteError (a.crestDb, 3.0f, 0.4f);
+            expect (a.dynamicRangeDb <= 2.0f, "steady tone: " + juce::String (a.dynamicRangeDb));
+            expect (a.nearClippedSamples == 0 && a.clippedSamples == 0);
+            const auto v = analyse (vocal (48000.0, 8.0), 48000.0);
+            expect (v.crestDb > a.crestDb + 3.0f, "a vocal-like signal is far peakier than a sine: " + juce::String (v.crestDb));
+        }
+
+        beginTest ("analyzer: quiet, near-clipping, bright and widely varying signals are told apart");
+        {
+            const auto base = vocal (48000.0, 8.0);
+            const auto ref = analyse (base, 48000.0);
+
+            auto quietSig = base;
+            const float qs = std::pow (10.0f, (-45.0f - ref.rmsDb) / 20.0f);
+            for (auto& v : quietSig) v *= qs;
+            const auto q = analyse (quietSig, 48000.0);
+            expect (q.status == S::ready && q.rmsDb < -40.0f && q.rmsDb > -50.0f, "quiet vocal level " + juce::String (q.rmsDb));
+
+            auto hotSig = base;
+            float pk = 0.0f;
+            for (float v : hotSig) pk = std::max (pk, std::fabs (v));
+            for (auto& v : hotSig) v = juce::jlimit (-0.985f, 0.985f, v * (1.5f / pk)); // pressed against 0.985, below the 0.999 clip level
+            const auto h = analyse (hotSig, 48000.0);
+            expect (h.nearClippedSamples > 50 && h.clippedSamples == 0, "near " + juce::String (h.nearClippedSamples) + " hard " + juce::String (h.clippedSamples));
+            expect (h.peakDb > -0.3f);
+
+            auto bright = base;
+            const auto hf = tone (48000.0, 8.0, 7000.0, 0.08f);
+            for (size_t n = 0; n < bright.size(); ++n) bright[n] += hf[n];
+            const auto b = analyse (bright, 48000.0);
+            expect (b.bandFraction[4] > ref.bandFraction[4] + 0.1f, "top share " + juce::String (ref.bandFraction[4]) + " -> " + juce::String (b.bandFraction[4]));
+
+            const auto steady = analyse (vocal (48000.0, 8.0, 0.3f, 0.27f), 48000.0);
+            const auto varied = analyse (vocal (48000.0, 8.0, 0.3f, 0.02f), 48000.0);
+            expect (varied.dynamicRangeDb > steady.dynamicRangeDb + 6.0f, "dynamic range " + juce::String (steady.dynamicRangeDb) + " vs " + juce::String (varied.dynamicRangeDb));
+
+            // and the engine reacts the right way to each real measurement
+            GlitchKidProcessor p;
+            const auto cur = p.captureSoundState();
+            auto prop = [&] (const VocalAnalysis& a) { return glitchkid::automode::compute (a, Profile::astroMode, 1.0f, cur, rangesOf (p)).sound; };
+            expect (prop (h).get ("sat_drive", 9.0f) < 0.05f, "near-clipping take gets no saturation");
+            expect (prop (ref).get ("sat_drive", 0.0f) > 3.0f);
+            expect (prop (b).get ("sat_drive", 9.0f) <= prop (ref).get ("sat_drive", 0.0f));
+            expect (prop (q).get ("comp_ratio", 9.0f) <= 2.0f + 1.0e-3f && prop (q).get ("comp_makeup", 9.0f) < 0.05f, "quiet take: gentle compression");
+            expect (prop (varied).get ("comp_ratio", 0.0f) >= prop (steady).get ("comp_ratio", 9.0f), "more level variation: not less compression");
+        }
+
+        beginTest ("rules engine: very quiet and already-compressed takes are never squashed further");
+        {
+            GlitchKidProcessor p;
+            const auto cur = p.captureSoundState();
+            auto quiet = ready(); quiet.rmsDb = -48.0f; quiet.dynP50Db = -50.0f; quiet.dynP90Db = -44.0f; quiet.dynP10Db = -60.0f; quiet.dynamicRangeDb = 16.0f;
+            const auto rq = glitchkid::automode::compute (quiet, Profile::astroMode, 1.0f, cur, rangesOf (p));
+            expect (rq.sound.get ("comp_ratio", 9.0f) <= 2.001f);
+            expectEquals (rq.sound.get ("comp_makeup", 9.0f), 0.0f);
+            expect (rq.sound.get ("comp_thresh", 0.0f) >= -40.0f, "threshold stays inside the safe window");
+
+            auto squashed = ready(); squashed.dynamicRangeDb = 4.0f; squashed.crestDb = 7.0f; squashed.dynP10Db = -22.0f; squashed.dynP90Db = -18.0f;
+            const auto rs = glitchkid::automode::compute (squashed, Profile::astroMode, 1.0f, cur, rangesOf (p));
+            expectWithinAbsoluteError (rs.sound.get ("comp_ratio", 9.0f), 1.5f, 0.11f);
+            expectEquals (rs.sound.get ("comp_makeup", 9.0f), 0.0f);
+            bool said = false;
+            for (const auto& n : rs.notes) said |= n.contains ("already looks compressed");
+            expect (said, "the reason is reported");
+
+            auto lowDrOnly = ready(); lowDrOnly.dynamicRangeDb = 4.0f; lowDrOnly.crestDb = 16.0f; // small range but peaky: not "already compressed"
+            expect (glitchkid::automode::compute (lowDrOnly, Profile::astroMode, 1.0f, cur, rangesOf (p)).sound.get ("comp_ratio", 0.0f) > 1.9f);
+
+            auto nearClip = ready(); nearClip.nearClippedSamples = 40;
+            expectEquals (glitchkid::automode::compute (nearClip, Profile::astroMode, 1.0f, cur, rangesOf (p)).sound.get ("sat_drive", 9.0f), 0.0f);
+        }
+
+        beginTest ("fallback: with allowFallback an unusable analysis gives valid ASTRO MODE defaults and says so; without it nothing changes");
+        {
+            GlitchKidProcessor p;
+            const auto cur = p.captureSoundState();
+            for (S st : { S::idle, S::listening, S::tooShort, S::tooQuiet, S::invalid })
+            {
+                auto a = ready();
+                a.status = st;
+                const auto off = glitchkid::automode::compute (a, Profile::astroMode, 0.7f, cur, rangesOf (p));
+                expect (! off.usable && off.changedCount == 0);
+                const auto on = glitchkid::automode::compute (a, Profile::astroMode, 0.7f, cur, rangesOf (p), true);
+                expect (on.usable && on.usedFallback && on.changedCount > 5 && on.notes.size() > 0);
+                expect (on.notes[0].contains ("typical vocal"));
+                expectEquals (on.sound.get ("comp_thresh", 0.0f), -18.0f);
+                expectEquals (on.sound.get ("comp_makeup", 9.0f), 0.0f);
+                glitchkid::automode::Range rg;
+                for (const auto& e : on.sound.values)
+                    if (rangesOf (p) (e.id, rg))
+                        expect (std::isfinite (e.value) && e.value >= rg.lo && e.value <= rg.hi, e.id);
+            }
+            const auto zero = glitchkid::automode::compute (ready(), Profile::astroMode, 0.0f, cur, rangesOf (p), true);
+            expect (! zero.usable, "intensity 0 still changes nothing, even with fallback");
+        }
+
+        beginTest ("ASTRO MODE gives a valid, in-range proposal for every supported input condition (real analyses of synthetic signals)");
+        {
+            GlitchKidProcessor p;
+            const auto cur = p.captureSoundState();
+            std::vector<std::pair<juce::String, std::vector<float>>> cases;
+            cases.push_back ({ "silence", std::vector<float> (48000 * 4, 0.0f) });
+            cases.push_back ({ "tone", tone (48000.0, 6.0, 1000.0, 0.3f) });
+            cases.push_back ({ "vocal", vocal (48000.0, 8.0) });
+            cases.push_back ({ "too short", vocal (48000.0, 1.0) });
+            auto loud = vocal (48000.0, 8.0, 0.9f, 0.6f);
+            for (auto& v : loud) v = juce::jlimit (-1.0f, 1.0f, v * 8.0f);
+            cases.push_back ({ "clipped", loud });
+            auto dirty = vocal (48000.0, 8.0);
+            for (size_t n = 50; n < dirty.size(); n += 311) dirty[n] = std::numeric_limits<float>::infinity();
+            cases.push_back ({ "non-finite", dirty });
+            auto noise = std::vector<float> (48000 * 6);
+            juce::Random rng (5);
+            for (auto& v : noise) v = 0.4f * (rng.nextFloat() - 0.5f);
+            cases.push_back ({ "noise", noise });
+            for (const auto& c : cases)
+                for (float intensity : { 0.1f, 0.6f, 1.0f })
+                    for (bool fb : { false, true })
+                    {
+                        const auto a = VocalAnalyzer::analyzeOffline (c.second.data(), (int) c.second.size(), 48000.0);
+                        expect (finite (a), c.first);
+                        const auto r = glitchkid::automode::compute (a, Profile::astroMode, intensity, cur, rangesOf (p), fb);
+                        expect (r.usable == (a.status == S::ready || fb), c.first);
+                        glitchkid::automode::Range rg;
+                        for (const auto& e : r.sound.values)
+                        {
+                            expect (rangesOf (p) (e.id, rg), e.id);
+                            expect (std::isfinite (e.value) && e.value >= rg.lo && e.value <= rg.hi, c.first + " " + e.id);
+                        }
+                    }
         }
 
         beginTest ("rules engine: any analysis at all (fuzz) gives finite, in-range values");
