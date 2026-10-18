@@ -151,6 +151,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         content.addAndMakeVisible (b);
     };
     styleBarButton (presetMenuButton, juce::Colours::white, "Choose the factory default sound or one of your saved presets.");
+    styleBarButton (presetPrevButton, juce::Colours::white, "Previous preset (factory presets first, then yours). Replaces the current sound: press SET A first to keep it.");
+    styleBarButton (presetNextButton, juce::Colours::white, "Next preset (factory presets first, then yours). Replaces the current sound: press SET A first to keep it.");
     styleBarButton (presetSaveButton, lime, "Save the current sound (all controls and the Alter Ego) as a named preset. Existing presets are never replaced without asking.");
     styleBarButton (presetDeleteButton, pink, "Delete the loaded user preset (asks first). The factory default cannot be deleted.");
     styleBarButton (abSetA, violet, "Capture the current sound into slot A.");
@@ -161,6 +163,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     styleBarButton (abCopyBA, juce::Colours::lightgrey, "Copy slot B into slot A.");
     presetMenuButton.setClickingTogglesState (false);
     presetMenuButton.onClick = [this] { openPresetMenu(); };
+    for (auto* b : { &presetPrevButton, &presetNextButton })
+        b->onClick = [this, b]
+        {
+            showStatus (presets.step (b == &presetNextButton ? 1 : -1).message);
+            refreshAlterEgos();
+            shownPresetText = {};
+            refreshPresetBar();
+        };
     presetSaveButton.onClick = [this] { askSavePreset(); };
     presetDeleteButton.onClick = [this] { askDeletePreset(); };
     abSetA.onClick = [this] { glitchProcessor.captureAbSlot (0); showStatus ("Current sound captured in A."); refreshPresetBar(); };
@@ -464,7 +474,9 @@ void GlitchKidEditor::showStatus (const juce::String& text)
 void GlitchKidEditor::refreshPresetBar()
 {
     const auto name = glitchProcessor.getPresetName();
-    const auto presetText = "PRESET:  " + (name.isEmpty() ? juce::String ("(none)") : name) + (glitchProcessor.isPresetModified() ? "  *" : "") + "   v";
+    const auto kind = presets.kindOf (name);
+    const auto tag = kind == glitchkid::PresetController::Kind::factory ? "FACTORY:  " : kind == glitchkid::PresetController::Kind::user ? "USER:  " : "PRESET:  ";
+    const auto presetText = tag + (name.isEmpty() ? juce::String ("(none)") : name) + (glitchProcessor.isPresetModified() ? "  *" : "") + "   v";
     if (presetText != shownPresetText)
     {
         shownPresetText = presetText;
@@ -526,8 +538,8 @@ void GlitchKidEditor::openPresetMenu()
 void GlitchKidEditor::askSavePreset()
 {
     const auto current = glitchProcessor.getPresetName();
-    auto* w = new juce::AlertWindow ("Save preset", "Name this sound (letters, numbers and spaces work best):", juce::MessageBoxIconType::NoIcon, this);
-    w->addTextEditor ("name", glitchkid::PresetController::isFactoryName (current) ? juce::String() : current, "Name:");
+    auto* w = new juce::AlertWindow ("Save preset", "Name this sound (letters, numbers and spaces work best). Built-in presets are never changed: your version is saved as a new preset.", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", glitchkid::PresetController::variationName (current), "Name:");
     w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     juce::Component::SafePointer<GlitchKidEditor> safe (this);
@@ -759,7 +771,11 @@ void GlitchKidEditor::layoutContent()
 
     // PRESETS + A/B bar: preset menu, SAVE, DELETE and a status line on the left; A/B controls on the right.
     auto bar = r.removeFromTop (30);
-    presetMenuButton.setBounds (bar.removeFromLeft (270));
+    presetPrevButton.setBounds (bar.removeFromLeft (28));
+    bar.removeFromLeft (4);
+    presetMenuButton.setBounds (bar.removeFromLeft (290));
+    bar.removeFromLeft (4);
+    presetNextButton.setBounds (bar.removeFromLeft (28));
     bar.removeFromLeft (6);
     presetSaveButton.setBounds (bar.removeFromLeft (64));
     bar.removeFromLeft (6);

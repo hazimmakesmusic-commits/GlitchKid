@@ -154,6 +154,112 @@ struct FactoryPresetTests : public juce::UnitTest
             dir.deleteRecursively();
         }
 
+        beginTest ("browser: list order, factory/user kinds, stepping wraps in both directions and skips a damaged file");
+        {
+            GlitchKidProcessor p;
+            auto dir = tempDir();
+            PresetController c (p, glitchkid::PresetStore (dir));
+            setParam (p, "gain", -3.0f);
+            expect (c.saveAs ("Zed", false).ok);
+            expect (c.saveAs ("Alpha", false).ok);
+            const auto names = c.allPresetNames();
+            expectEquals (names.size(), 1 + count + 2);
+            expectEquals (names[0], juce::String ("Factory Default"));
+            expectEquals (names[1], juce::String (glitchkid::FactoryPresets::info (0).name));
+            expectEquals (names[1 + count], juce::String ("Alpha"));
+            expectEquals (names[2 + count], juce::String ("Zed"));
+            expect (c.kindOf ("Alpha") == PresetController::Kind::user);
+            expect (c.kindOf (names[2]) == PresetController::Kind::factory);
+            expect (c.kindOf ("Factory Default") == PresetController::Kind::factory);
+            expect (c.kindOf ("") == PresetController::Kind::none && c.kindOf ("nothing") == PresetController::Kind::none);
+
+            p.clearPresetName();
+            expect (c.step (1).ok);
+            expectEquals (p.getPresetName(), names[0]);
+            for (int i = 1; i < names.size(); ++i)
+            {
+                expect (c.step (1).ok);
+                expectEquals (p.getPresetName(), names[i]);
+            }
+            expect (c.step (1).ok);
+            expectEquals (p.getPresetName(), names[0]); // wrapped
+            expect (c.step (-1).ok);
+            expectEquals (p.getPresetName(), names[names.size() - 1]);
+            expect (p.isPresetModified() == false);
+
+            // A damaged user file is skipped in both directions.
+            dir.getChildFile ("Zed.gkpreset").replaceWithText ("not a preset");
+            c.loadFactory (count - 1);
+            c.loadByName ("Alpha");
+            expect (c.step (1).ok);
+            expectEquals (p.getPresetName(), names[0]);
+            expect (c.step (-1).ok);
+            expectEquals (p.getPresetName(), juce::String ("Alpha")); // Zed is damaged: skipped backwards too
+            dir.deleteRecursively();
+        }
+
+        beginTest ("saving your own version of a factory preset: new user preset, factory definitions unchanged, both recall correctly");
+        {
+            GlitchKidProcessor p;
+            auto dir = tempDir();
+            PresetController c (p, glitchkid::PresetStore (dir));
+            const auto def = p.factoryDefaultState();
+            std::vector<SoundState> before;
+            for (int i = 0; i < count; ++i)
+                before.push_back (glitchkid::FactoryPresets::build (i, def));
+
+            c.loadFactory (1);
+            expectEquals (PresetController::variationName (p.getPresetName()), p.getPresetName() + " My Version");
+            expectEquals (PresetController::variationName ("Factory Default"), juce::String());
+            expectEquals (PresetController::variationName ("Mine"), juce::String ("Mine"));
+            setParam (p, "sat_drive", 9.0f);
+            setParam (p, "echo_mix", 55.0f);
+            expect (p.isPresetModified());
+            const auto saved = c.saveAs (PresetController::variationName (p.getPresetName()), false);
+            expect (saved.ok);
+            expect (c.kindOf (saved.name) == PresetController::Kind::user);
+            expect (! p.isPresetModified());
+            expectEquals (p.getPresetName(), saved.name);
+
+            for (int i = 0; i < count; ++i) // definitions identical to before the save
+            {
+                const auto now = glitchkid::FactoryPresets::build (i, def);
+                expectEquals ((int) now.values.size(), (int) before[(size_t) i].values.size());
+                for (const auto& e : now.values)
+                    expectEquals (before[(size_t) i].get (e.id, -999.0f), e.value, e.id);
+            }
+            c.loadFactory (1); // the original is back, without the tweaks
+            expectWithinAbsoluteError (getParam (p, "sat_drive"), before[1].get ("sat_drive", -1.0f), 1.0e-3f);
+            expectWithinAbsoluteError (getParam (p, "echo_mix"), before[1].get ("echo_mix", -1.0f), 1.0e-3f);
+            expect (! p.isPresetModified());
+            expect (c.loadUser (saved.name).ok); // and the variation keeps them
+            expectWithinAbsoluteError (getParam (p, "sat_drive"), 9.0f, 0.1f);
+            expectWithinAbsoluteError (getParam (p, "echo_mix"), 55.0f, 0.1f);
+            expect (! c.saveAs (glitchkid::FactoryPresets::info (1).name, true).ok); // still cannot replace the original
+            dir.deleteRecursively();
+        }
+
+        beginTest ("A/B with factory presets: A and B hold different presets and recalling restores each exactly");
+        {
+            GlitchKidProcessor p;
+            auto dir = tempDir();
+            PresetController c (p, glitchkid::PresetStore (dir));
+            c.loadFactory (0);
+            p.captureAbSlot (0);
+            const auto a = capture (p);
+            c.loadFactory (2);
+            p.captureAbSlot (1);
+            const auto b = capture (p);
+            expect (p.recallAbSlot (0));
+            for (const auto& e : a.values)
+                expectWithinAbsoluteError (getParam (p, e.id.toRawUTF8()), e.value, 1.0e-3f);
+            expect (p.recallAbSlot (1));
+            for (const auto& e : b.values)
+                expectWithinAbsoluteError (getParam (p, e.id.toRawUTF8()), e.value, 1.0e-3f);
+            expect (std::abs (a.get ("formant_shift", 0.0f) - b.get ("formant_shift", 0.0f)) > 1.0f, "the two slots really differ");
+            dir.deleteRecursively();
+        }
+
         beginTest ("state save/restore keeps the preset name and every value");
         {
             GlitchKidProcessor a;

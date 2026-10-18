@@ -30,6 +30,12 @@ public:
     Outcome loadUser (const juce::String& name);
     Outcome saveAs (const juce::String& name, bool overwrite); // saves the live sound
     Outcome deleteUser (const juce::String& name);
+    enum class Kind { none, factory, user };
+    Kind kindOf (const juce::String& name) const { return name.isEmpty() ? Kind::none : isFactoryName (name) ? Kind::factory : store.exists (name) ? Kind::user : Kind::none; }
+    juce::StringArray allPresetNames() const;                  // Factory Default, the built-in presets, then user presets (A-Z): the order of the menu and of the step buttons
+    Outcome loadByName (const juce::String& name);             // any name from allPresetNames()
+    Outcome step (int direction);                              // +1 next / -1 previous, wrapping; from "no preset" next = first, previous = last
+    static juce::String variationName (const juce::String& current); // suggested name for saving your own version of `current`
     bool isUserPreset (const juce::String& name) const { return name.isNotEmpty() && store.exists (name); }
 
 private:

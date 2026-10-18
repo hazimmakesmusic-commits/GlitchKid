@@ -23,6 +23,49 @@ bool PresetController::isFactoryName (const juce::String& name)
     return n.equalsIgnoreCase (factoryDefaultName) || FactoryPresets::indexOfName (n) >= 0;
 }
 
+juce::StringArray PresetController::allPresetNames() const
+{
+    juce::StringArray names { factoryDefaultName };
+    for (int i = 0; i < FactoryPresets::count; ++i)
+        names.add (FactoryPresets::info (i).name);
+    names.addArray (store.listUserPresets());
+    return names;
+}
+
+PresetController::Outcome PresetController::loadByName (const juce::String& name)
+{
+    if (name.equalsIgnoreCase (factoryDefaultName))
+        return loadFactoryDefault();
+    const int f = FactoryPresets::indexOfName (name);
+    return f >= 0 ? loadFactory (f) : loadUser (name);
+}
+
+PresetController::Outcome PresetController::step (int direction)
+{
+    const auto names = allPresetNames();
+    const auto current = processor.getPresetName();
+    int index = -1;
+    for (int i = 0; i < names.size(); ++i)
+        if (names[i].equalsIgnoreCase (current))
+            index = i;
+    const int n = names.size();
+    const int dir = direction > 0 ? 1 : -1;
+    Outcome last { false, false, {}, "No presets found." };
+    for (int tries = 0; tries < n; ++tries) // a damaged user preset is skipped, so the step buttons never get stuck on it
+    {
+        index = index < 0 ? (dir > 0 ? 0 : n - 1) : ((index + dir) % n + n) % n;
+        last = loadByName (names[index]);
+        if (last.ok)
+            return last;
+    }
+    return last;
+}
+
+juce::String PresetController::variationName (const juce::String& current)
+{
+    return current.isEmpty() || current.equalsIgnoreCase (factoryDefaultName) ? juce::String() : (isFactoryName (current) ? current + " My Version" : current);
+}
+
 PresetController::Outcome PresetController::loadUser (const juce::String& name)
 {
     SoundState s;

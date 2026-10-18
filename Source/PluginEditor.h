@@ -104,7 +104,7 @@ private:
 
     // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes the
     // loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it, A>B / B>A copy a slot.
-    juce::TextButton presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
+    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
     juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
     juce::Label presetStatus, abLabel { {}, "A/B" };
     juce::String shownPresetText, shownAbText;
