@@ -104,6 +104,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider),
       presets (p)
 {
+    setLookAndFeel (&lookAndFeel);
+    motionOn = p.getUiFlag ("uiMotion", true);
+    labOpen = p.getUiFlag ("uiLabOpen", false);
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
     title.setJustificationType (juce::Justification::centred);
@@ -199,6 +202,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     {
         const auto result = glitchProcessor.applyAutoMode ((float) autoIntensitySlider.getValue() / 100.0f);
         showStatus (result.message);
+        if (result.usable)
+            mascot.cheer();
         autoStatus.setTooltip (result.notes.joinIntoString ("\n"));
         refreshAlterEgos();
         shownPresetText = {};
@@ -459,14 +464,107 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                                                               &inLabel, &outLabel, &grMeter, &compTitle, &grLabel })
         content.addAndMakeVisible (c);
 
-    // Everything lives in `content`, which is laid out at the design size and scaled to fit the window.
+    // ---- HOME screen -------------------------------------------------------------------------------------------------------------
+    title.setVisible (false); // the title is painted (with a gradient) by paint(); the old labels stay only so nothing else changes
+    tagline.setVisible (false);
+    struct WorldInfo { const char* title; const char* tagline; glitchkid::ui::WorldCard::Icon icon; juce::Colour colour; };
+    const WorldInfo worlds[glitchkid::FactoryPresets::count] = {
+        { "ASTRO MODE", "Dark, spacious, psychedelic", glitchkid::ui::WorldCard::Icon::planet, violet },
+        { "HEARTBREAK", "Intimate, emotional, close", glitchkid::ui::WorldCard::Icon::heart, pink },
+        { "DIGITAL ALTER EGO", "Playful, futuristic, glitchy", glitchkid::ui::WorldCard::Icon::glitch, lime } };
+    for (int i = 0; i < glitchkid::FactoryPresets::count; ++i)
+    {
+        auto* card = worldCards.add (new glitchkid::ui::WorldCard (worlds[i].title, worlds[i].tagline, worlds[i].icon, worlds[i].colour));
+        card->setLoads (glitchkid::FactoryPresets::info (i).name);
+        card->setTooltip (juce::String (glitchkid::FactoryPresets::info (i).description) + ". Loads the built-in preset; every control stays editable.");
+        card->onClick = [this, i]
+        {
+            const auto outcome = presets.loadFactory (i);
+            showStatus (outcome.message);
+            refreshAlterEgos();
+            shownPresetText = {};
+            refreshPresetBar();
+            mascot.cheer();
+        };
+        content.addAndMakeVisible (card);
+    }
+
+    const juce::Colour macroColours[glitchkid::macros::numMacros] = { violet, lime, glitchkid::ui::chrome };
+    for (int i = 0; i < glitchkid::macros::numMacros; ++i)
+    {
+        const auto m = (glitchkid::macros::Macro) i;
+        auto* dial = macroDials.add (new glitchkid::ui::MacroDial (glitchkid::macros::macroName (m), macroColours[i]));
+        dial->setTooltip (juce::String (glitchkid::macros::macroDescription (m)) + " Drag up or down (Shift = fine), mouse wheel, arrow keys; double-click resets.");
+        dial->onChange = [this, m] (float v)
+        {
+            auto s = glitchProcessor.captureSoundState();
+            glitchkid::macros::apply (m, v, s);
+            glitchProcessor.applyParameterChanges (s);
+        };
+        content.addAndMakeVisible (dial);
+    }
+    chaosDial = std::make_unique<glitchkid::ui::MacroDial> ("CHAOS", pink);
+    chaosDial->setTooltip ("How far the selected Alter Ego is pushed (the same Chaos as in the LAB). Needs an Alter Ego.");
+    chaosDial->onChange = [this] (float v) { glitchProcessor.setChaos (v); };
+    content.addAndMakeVisible (*chaosDial);
+
+    for (int i = 0; i < glitchkid::macros::numCommands; ++i)
+    {
+        const auto c = (glitchkid::macros::Command) i;
+        auto& b = commandButtons[i];
+        b.setButtonText (glitchkid::macros::commandLabel (c));
+        b.setTooltip (glitchkid::macros::commandDescription (c));
+        b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        b.onClick = [this, c]
+        {
+            auto s = glitchProcessor.captureSoundState();
+            glitchkid::macros::apply (c, s);
+            const int n = glitchProcessor.applyParameterChanges (s);
+            showStatus (juce::String (glitchkid::macros::commandLabel (c)) + ": " + (n > 0 ? juce::String (n) + " controls moved." : juce::String ("already at its limit.")));
+            mascot.cheer();
+        };
+        content.addAndMakeVisible (b);
+    }
+    talkNote.setText ("Fixed buttons, not chat: each makes one bounded change you can undo with A/B. Typed requests are not implemented yet.", juce::dontSendNotification);
+    talkNote.setFont (juce::FontOptions (11.0f));
+    talkNote.setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+    for (auto* l : { &worldsCaption, &macrosCaption, &talkCaption })
+    {
+        l->setFont (juce::FontOptions (13.0f, juce::Font::bold));
+        l->setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+    }
+    compareCaption.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    compareCaption.setJustificationType (juce::Justification::centredLeft);
+
+    styleBarButton (dryButton, juce::Colours::white, "Hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob.");
+    styleBarButton (processedButton, juce::Colours::white, "Hear the processed sound.");
+    dryButton.setColour (juce::TextButton::buttonOnColourId, pink);
+    processedButton.setColour (juce::TextButton::buttonOnColourId, lime);
+    dryButton.onClick = [this] { setBypassFromUi (true); };
+    processedButton.onClick = [this] { setBypassFromUi (false); };
+    styleBarButton (motionButton, juce::Colours::white, "Switch animations on or off. Off = a calm, static interface (meters and levels still update).");
+    motionButton.onClick = [this]
+    {
+        motionOn = ! motionOn;
+        glitchProcessor.setUiFlag ("uiMotion", motionOn);
+        shownCompareText = {};
+    };
+    styleBarButton (labButton, lime, "Show or hide the detailed controls: Alter Ego settings, EQ, compressor, Pitch Tune, Mutation, Doubler, Echo, Dimension.");
+    labButton.onClick = [this]
+    {
+        labOpen = ! labOpen;
+        glitchProcessor.setUiFlag ("uiLabOpen", labOpen);
+        applyLabState (true);
+    };
+    for (auto* c : std::initializer_list<juce::Component*> { &mascot, &scope, &statusRing, &worldsCaption, &macrosCaption, &talkCaption, &talkNote, &compareCaption })
+        content.addAndMakeVisible (c);
+
+    // Everything lives in `content`, which is laid out at the design size (the LAB part always laid out) and scaled to fit the window.
     layoutContent();
     addAndMakeVisible (content);
     setResizable (true, true);
-    setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
-    getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    setSize (designW * 62 / 100, designH * 62 / 100);
+    applyLabState (false);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -510,6 +608,87 @@ void GlitchKidEditor::refreshAlterEgos()
 
 // ---- Presets and A/B -----------------------------------------------------------------------------------------------------------------
 
+GlitchKidEditor::~GlitchKidEditor()
+{
+    stopTimer();
+    setLookAndFeel (nullptr);
+}
+
+void GlitchKidEditor::applyLabState (bool resizeWindow)
+{
+    designH = labOpen ? fullH : homeH;
+    labButton.setButtonText (labOpen ? "LAB  ^" : "LAB  v");
+    labButton.setToggleState (labOpen, juce::dontSendNotification);
+    setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
+    getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
+    const int w = resizeWindow && getWidth() > 0 ? getWidth() : designW * (labOpen ? 62 : 78) / 100;
+    setSize (w, juce::roundToInt ((double) w * designH / designW));
+    repaint();
+}
+
+void GlitchKidEditor::setBypassFromUi (bool bypassed)
+{
+    if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (glitchProcessor.apvts.getParameter (GlitchKidProcessor::bypassId)))
+    {
+        r->beginChangeGesture();
+        r->setValueNotifyingHost (bypassed ? 1.0f : 0.0f);
+        r->endChangeGesture();
+    }
+    shownCompareText = {};
+}
+
+// One 30 Hz tick of the home screen: real input level into the mascot and scope, the dials read back from the controls, the selected Sound World
+// from the loaded preset, the dry/processed switch from the Bypass parameter. Nothing here touches the audio thread.
+void GlitchKidEditor::refreshHome (float peak)
+{
+    constexpr float dt = 1.0f / 30.0f;
+    scope.push (peak);
+    mascot.setMotion (motionOn);
+    mascot.setLevel (peak);
+
+    const auto presetName = glitchProcessor.getPresetName();
+    const int world = glitchkid::FactoryPresets::indexOfName (presetName);
+    const bool edited = glitchProcessor.isPresetModified();
+    mascot.setLook (world < 0 ? 0.0f : (float) (world - 1));
+    for (int i = 0; i < worldCards.size(); ++i)
+    {
+        worldCards[i]->setMotion (motionOn);
+        worldCards[i]->setSelected (i == world, i == world && edited);
+        worldCards[i]->tick (dt);
+    }
+
+    glitchkid::SoundState small; // just the four parameters the macros read back from
+    for (const char* id : { "echo_on", "echo_mix", "sat_drive", "comp_ratio" })
+        small.set (id, glitchProcessor.apvts.getRawParameterValue (id)->load());
+    for (int i = 0; i < macroDials.size(); ++i)
+    {
+        macroDials[i]->setMotion (motionOn);
+        macroDials[i]->setValue (glitchkid::macros::read ((glitchkid::macros::Macro) i, small));
+        macroDials[i]->tick (dt);
+    }
+    const auto sel = glitchProcessor.getAlterEgoSelection();
+    chaosDial->setMotion (motionOn);
+    chaosDial->setEnabledLook (sel.ego >= 0, "CHAOS scales the selected Alter Ego. Pick one first (LAB > ALTER EGOS, or the strip below).");
+    chaosDial->setValue (sel.chaos);
+    chaosDial->tick (dt);
+
+    statusRing.setMotion (motionOn);
+    statusRing.tick (dt);
+    mascot.tick (dt);
+
+    const bool dry = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::bypassId)->load() >= 0.5f;
+    const auto compareText = juce::String (dry ? "D" : "P") + (motionOn ? "m" : "s");
+    if (compareText != shownCompareText)
+    {
+        shownCompareText = compareText;
+        dryButton.setToggleState (dry, juce::dontSendNotification);
+        processedButton.setToggleState (! dry, juce::dontSendNotification);
+        compareCaption.setText (dry ? "HEARING: DRY ORIGINAL (bypassed)" : "HEARING: PROCESSED", juce::dontSendNotification);
+        compareCaption.setColour (juce::Label::textColourId, dry ? pink : lime);
+        motionButton.setButtonText (motionOn ? "MOTION: ON" : "MOTION: OFF");
+    }
+}
+
 void GlitchKidEditor::showStatus (const juce::String& text)
 {
     presetStatus.setText (text, juce::dontSendNotification);
@@ -528,6 +707,17 @@ void GlitchKidEditor::refreshAutoMode()
     using S = glitchkid::analysis::VocalAnalysis::Status;
     juce::String text;
     bool canApply = false;
+    auto ring = glitchkid::ui::StatusRing::State::idle;
+    float ringProgress = 0.0f;
+    auto mood = glitchkid::ui::Mascot::Mood::idle;
+    if (listening)
+    {
+        ring = glitchkid::ui::StatusRing::State::working;
+        ringProgress = an.liveActiveSeconds() / glitchkid::analysis::VocalAnalyzer::maxActiveSeconds;
+        mood = glitchkid::ui::Mascot::Mood::listening;
+    }
+    else if (autoWaiting)
+        ring = glitchkid::ui::StatusRing::State::waiting;
     if (listening)
         text = "Listening... " + juce::String (an.liveActiveSeconds(), 1) + " s of vocal heard (needs 2 s, stops at 8 s). Press STOP to finish early.";
     else if (autoWaiting)
@@ -539,21 +729,25 @@ void GlitchKidEditor::refreshAutoMode()
         {
             case S::ready:
                 canApply = true;
+                ring = glitchkid::ui::StatusRing::State::ready;
+                mood = glitchkid::ui::Mascot::Mood::ready;
                 text = "Ready: " + juce::String (a.activeSeconds, 1) + " s of vocal, peak " + juce::String (a.peakDb, 1) + " dB, level " + juce::String (a.rmsDb, 1)
                        + " dB" + (a.clippedSamples >= 3 ? ", CLIPPING found" : "") + ". Set INTENSITY, then APPLY.";
                 break;
-            case S::tooShort:  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
-            case S::tooQuiet:  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
-            case S::invalid:   text = "The input contained invalid audio. Nothing changed. Try again."; break;
+            case S::tooShort: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
+            case S::tooQuiet: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
+            case S::invalid: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;   text = "The input contained invalid audio. Nothing changed. Try again."; break;
             case S::idle:
             case S::listening: text = "Press ANALYZE, then play the dry vocal for a few seconds."; break;
         }
     }
+    statusRing.setState (ring, ringProgress);
+    mascot.setMood (mood);
     if (text != shownAutoText)
     {
         shownAutoText = text;
         autoStatus.setText (text, juce::dontSendNotification);
-        autoAnalyzeButton.setButtonText (listening ? "STOP" : "ANALYZE");
+        autoAnalyzeButton.setButtonText (listening ? "STOP" : "ANALYZE VOCAL");
         autoApplyButton.setEnabled (canApply);
     }
 }
@@ -688,7 +882,9 @@ void GlitchKidEditor::timerCallback()
     refreshAutoMode();
     if (statusTicks > 0 && --statusTicks == 0)
         presetStatus.setText ({}, juce::dontSendNotification);
-    inMeter.pushPeak (glitchProcessor.consumeInputPeak());
+    const float inPeak = glitchProcessor.consumeInputPeak();
+    inMeter.pushPeak (inPeak);
+    refreshHome (inPeak);
     outMeter.pushPeak (glitchProcessor.consumeOutputPeak());
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
 
@@ -766,16 +962,45 @@ void GlitchKidEditor::timerCallback()
 
 void GlitchKidEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour (0xff121214)); // obsidian
+    g.fillAll (glitchkid::ui::obsidian);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
-    g.setColour (juce::Colour (0xff2a2a30));
-    g.drawLine (270.0f, 90.0f, 270.0f, (float) tuneDividerY - 8.0f);
-    g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) tuneDividerY - 8.0f);
-    g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
-    g.drawLine (16.0f, (float) mutDividerY, (float) designW - 16.0f, (float) mutDividerY);
-    g.drawLine (16.0f, (float) dhDividerY, (float) designW - 16.0f, (float) dhDividerY);
-    g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
-    g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
+
+    // atmosphere: a violet haze top-left, a pink one bottom-right (cheap radial gradients, painted once per repaint)
+    juce::ColourGradient haze (glitchkid::ui::violet.withAlpha (0.22f), 120.0f, 40.0f, glitchkid::ui::violet.withAlpha (0.0f), 760.0f, 420.0f, true);
+    g.setGradientFill (haze);
+    g.fillRect (0, 0, designW, designH);
+    juce::ColourGradient haze2 (glitchkid::ui::pink.withAlpha (0.10f), (float) designW, (float) homeH, glitchkid::ui::pink.withAlpha (0.0f), (float) designW - 520.0f, (float) homeH - 260.0f, true);
+    g.setGradientFill (haze2);
+    g.fillRect (0, 0, designW, designH);
+
+    // title: liquid-chrome gradient lettering
+    juce::ColourGradient letters (glitchkid::ui::lime, 130.0f, 18.0f, glitchkid::ui::pink, 520.0f, 80.0f, false);
+    letters.addColour (0.5, glitchkid::ui::chrome);
+    g.setGradientFill (letters);
+    g.setFont (juce::FontOptions (50.0f, juce::Font::bold));
+    g.drawText ("GLITCHKID", 128, 10, 430, 58, juce::Justification::centredLeft);
+    g.setColour (glitchkid::ui::textDim);
+    g.setFont (juce::FontOptions (15.0f));
+    g.drawText ("A playground for your voice.", 132, 66, 420, 22, juce::Justification::centredLeft);
+
+    // thin section rules on the home screen
+    g.setColour (juce::Colour (0xff2a2a36));
+    g.drawLine (16.0f, 152.0f, (float) designW - 16.0f, 152.0f);
+    g.drawLine (16.0f, 358.0f, (float) designW - 16.0f, 358.0f);
+    g.drawLine (16.0f, 600.0f, (float) designW - 16.0f, 600.0f);
+    g.drawLine ((float) (16 + 4 * 180 + 6), 366.0f, (float) (16 + 4 * 180 + 6), 552.0f);
+
+    if (labOpen)
+    {
+        g.setColour (juce::Colour (0xff2a2a36));
+        g.drawLine (270.0f, (float) labTopY, 270.0f, (float) tuneDividerY - 8.0f);
+        g.drawLine ((float) compDividerX, (float) labTopY, (float) compDividerX, (float) tuneDividerY - 8.0f);
+        g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
+        g.drawLine (16.0f, (float) mutDividerY, (float) designW - 16.0f, (float) mutDividerY);
+        g.drawLine (16.0f, (float) dhDividerY, (float) designW - 16.0f, (float) dhDividerY);
+        g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
+        g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
+    }
 }
 
 void GlitchKidEditor::resized()
@@ -788,7 +1013,7 @@ void GlitchKidEditor::resized()
 
 void GlitchKidEditor::layoutContent()
 {
-    auto r = juce::Rectangle<int> (0, 0, designW, designH).reduced (16);
+    auto r = juce::Rectangle<int> (0, 0, designW, fullH).reduced (16); // the LAB part is always laid out; designH only decides how much is shown
 
     // Bottom strips: Dimension (lowest), then Liquid Echo above it.
     auto dimArea = r.removeFromBottom (132);
@@ -853,12 +1078,13 @@ void GlitchKidEditor::layoutContent()
     for (auto* k : echoKnobs)
         k->setBounds (echoArea.removeFromLeft (cellW).reduced (8, 0));
 
-    title.setBounds (r.removeFromTop (44));
-    tagline.setBounds (r.removeFromTop (20));
-    r.removeFromTop (8);
+    // ---- HOME screen (absolute design coordinates; the LAB starts at y = homeH) ----
+    constexpr int x0 = 16, hw = designW - 32;
+    mascot.setBounds (x0, 8, 100, 100);
+    scope.setBounds (x0 + 560, 26, hw - 560, 64);
 
     // PRESETS + A/B bar: preset menu, SAVE, DELETE and a status line on the left; A/B controls on the right.
-    auto bar = r.removeFromTop (30);
+    juce::Rectangle<int> bar (x0, 116, hw, 30);
     presetPrevButton.setBounds (bar.removeFromLeft (28));
     bar.removeFromLeft (4);
     presetMenuButton.setBounds (bar.removeFromLeft (290));
@@ -883,22 +1109,35 @@ void GlitchKidEditor::layoutContent()
     bar.removeFromRight (8);
     abLabel.setBounds (bar.removeFromRight (38));
     presetStatus.setBounds (bar);
-    r.removeFromTop (6);
 
-    auto autoRow = r.removeFromTop (30); // AUTOMODE: ANALYZE, APPLY, style, intensity, status
-    autoAnalyzeButton.setBounds (autoRow.removeFromLeft (90));
-    autoRow.removeFromLeft (6);
-    autoApplyButton.setBounds (autoRow.removeFromLeft (70));
-    autoRow.removeFromLeft (12);
-    autoStyleLabel.setBounds (autoRow.removeFromLeft (170));
-    autoIntensityLabel.setBounds (autoRow.removeFromLeft (70));
-    autoIntensitySlider.setBounds (autoRow.removeFromLeft (190));
-    autoRow.removeFromLeft (12);
-    autoStatus.setBounds (autoRow);
-    r.removeFromTop (6);
+    // SOUND WORLDS
+    worldsCaption.setBounds (x0, 154, 300, 18);
+    const int cardW = (hw - 2 * 8) / 3;
+    for (int i = 0; i < worldCards.size(); ++i)
+        worldCards[i]->setBounds (x0 + i * (cardW + 8), 172, cardW, 112);
 
-    // ALTER EGOS strip: title, five buttons, a one-line description; below it the Mood Engine: Chaos, Blend, Surprise Me.
-    auto egoRow = r.removeFromTop (34);
+    // Main action: status ring, ANALYZE VOCAL, APPLY SOUND, style + intensity, status text
+    statusRing.setBounds (x0, 294, 56, 56);
+    autoAnalyzeButton.setBounds (x0 + 66, 300, 200, 44);
+    autoApplyButton.setBounds (x0 + 276, 300, 180, 44);
+    autoStyleLabel.setBounds (x0 + 474, 294, 260, 18);
+    autoIntensityLabel.setBounds (x0 + 474, 316, 70, 28);
+    autoIntensitySlider.setBounds (x0 + 546, 316, 210, 28);
+    autoStatus.setBounds (x0 + 766, 292, hw - 766, 56);
+
+    // MACROS and TALK TO THE KID
+    macrosCaption.setBounds (x0, 360, 300, 18);
+    for (int i = 0; i < macroDials.size(); ++i)
+        macroDials[i]->setBounds (x0 + i * 180, 380, 176, 172);
+    chaosDial->setBounds (x0 + macroDials.size() * 180, 380, 176, 172);
+    const int talkX = x0 + 4 * 180 + 14;
+    talkCaption.setBounds (talkX, 360, 300, 18);
+    for (int i = 0; i < glitchkid::macros::numCommands; ++i)
+        commandButtons[i].setBounds (talkX + (i % 2) * 150, 388 + (i / 2) * 56, 142, 46);
+    talkNote.setBounds (talkX, 502, designW - 16 - talkX, 48);
+
+    // ALTER EGOS strip
+    juce::Rectangle<int> egoRow (x0, 560, hw, 34);
     egoTitle.setBounds (egoRow.removeFromLeft (92));
     for (auto& b : egoButtons)
     {
@@ -907,6 +1146,15 @@ void GlitchKidEditor::layoutContent()
     }
     egoRow.removeFromLeft (10);
     egoInfo.setBounds (egoRow);
+
+    // Dry / processed + LAB / MOTION
+    dryButton.setBounds (x0, 606, 130, 42);
+    processedButton.setBounds (x0 + 130, 606, 170, 42);
+    compareCaption.setBounds (x0 + 316, 606, 400, 42);
+    motionButton.setBounds (designW - 16 - 128 - 8 - 112, 606, 128, 42);
+    labButton.setBounds (designW - 16 - 112, 606, 112, 42);
+
+    r.removeFromTop (homeH - r.getY()); // the LAB starts here
 
     auto engineRow = r.removeFromTop (34);
     engineRow.removeFromLeft (92);
@@ -918,6 +1166,7 @@ void GlitchKidEditor::layoutContent()
     engineRow.removeFromLeft (24);
     surpriseButton.setBounds (engineRow.removeFromLeft (130).withSizeKeepingCentre (130, 28));
     r.removeFromTop (6);
+    labTopY = r.getY();
 
     // Left: meters either side of the output-gain knob, Bypass underneath.
     auto left = r.removeFromLeft (240);

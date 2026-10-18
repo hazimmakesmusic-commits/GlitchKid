@@ -1,6 +1,8 @@
 #pragma once
 #include "PluginProcessor.h"
 #include "Presets/PresetController.h"
+#include "Macros/MacroEngine.h"
+#include "UI/PlaygroundWidgets.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -46,15 +48,38 @@ class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     explicit GlitchKidEditor (GlitchKidProcessor&);
+    ~GlitchKidEditor() override;
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 1316; // layout size; the window scales it to fit
-    juce::Component content; // declared first so it outlives the controls inside it
+    // Layout size; the window scales it to fit. The HOME screen is the top homeH; the detailed controls (LAB) follow below it.
+    // Closed: the window shows the home screen only (designH = homeH). Open: everything (designH = fullH).
+    static constexpr int designW = 1060, homeH = 660, fullH = homeH + 1156;
+    int designH = homeH;
+    bool labOpen = false, motionOn = true;
+    int labTopY = homeH;
+    glitchkid::ui::PlaygroundLookAndFeel lookAndFeel; // declared first: it must outlive every control that uses it
+    juce::Component content; // declared before the controls so it outlives them
     float scaleFactor = 1.0f;
     void layoutContent();
+    void applyLabState (bool resizeWindow);
     void timerCallback() override;
+    void refreshHome (float peak);
+    void setBypassFromUi (bool bypassed);
+    juce::TooltipWindow tooltipWindow { this, 500 }; // the controls' tooltips need one to be shown at all
+
+    // HOME screen: mascot + live input scope, Sound Worlds, the main AutoMode action, macros, quick commands, dry/processed switch.
+    glitchkid::ui::Mascot mascot;
+    glitchkid::ui::ScopeStrip scope;
+    glitchkid::ui::StatusRing statusRing;
+    juce::OwnedArray<glitchkid::ui::WorldCard> worldCards;
+    juce::OwnedArray<glitchkid::ui::MacroDial> macroDials; // SPACE, CHARACTER, PUNCH
+    std::unique_ptr<glitchkid::ui::MacroDial> chaosDial;    // the Alter Ego CHAOS amount (needs an Alter Ego)
+    juce::TextButton commandButtons[glitchkid::macros::numCommands];
+    juce::Label worldsCaption { {}, "SOUND WORLDS" }, macrosCaption { {}, "MACROS" }, talkCaption { {}, "TALK TO THE KID" }, talkNote, compareCaption;
+    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" }, motionButton, labButton;
+    juce::String shownCompareText;
 
     GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
@@ -110,8 +135,8 @@ private:
     juce::String shownPresetText, shownAbText;
 
     // AUTOMODE row: ANALYZE listens to the vocal, APPLY commits the analysis once. See PluginProcessor.h.
-    juce::TextButton autoAnalyzeButton { "ANALYZE" }, autoApplyButton { "APPLY" };
-    juce::Label autoStyleLabel { {}, "AUTOMODE: ASTRO MODE" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
+    juce::TextButton autoAnalyzeButton { "ANALYZE VOCAL" }, autoApplyButton { "APPLY SOUND" };
+    juce::Label autoStyleLabel { {}, "AUTO-MIX: ASTRO MODE" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
     juce::Slider autoIntensitySlider;
     bool autoWaiting = false, autoSawListening = false;
     juce::String shownAutoText;

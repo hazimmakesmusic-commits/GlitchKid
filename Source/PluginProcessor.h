@@ -142,6 +142,12 @@ public:
     // parameter calls (host gestures, each effect's own smoothing), so every intermediate state is a legal sound and nothing clicks.
     glitchkid::SoundState captureSoundState() const;
     int applySoundState (const glitchkid::SoundState&);   // parameters missing from the state get their default; returns how many were set
+    // Sets only the parameters whose value in `s` differs from the live one (beyond one step), each with a host gesture. For drags and quick
+    // commands, so a macro does not re-send all 54 parameters on every mouse move. Returns how many were set. Message thread only.
+    int applyParameterChanges (const glitchkid::SoundState& s);
+    // Small UI preferences kept in the session (never part of a sound, a preset or A/B): motion on/off, the detailed LAB panel open/closed.
+    bool getUiFlag (const char* key, bool fallback) const;
+    void setUiFlag (const char* key, bool value);
     glitchkid::SoundState factoryDefaultState() const;    // every parameter at its default, no Alter Ego
     bool matchesSoundState (const glitchkid::SoundState&) const; // true if every parameter in it equals the live value (within one step)
 

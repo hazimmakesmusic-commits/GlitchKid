@@ -410,6 +410,35 @@ glitchkid::SoundState GlitchKidProcessor::factoryDefaultState() const
     return s;
 }
 
+int GlitchKidProcessor::applyParameterChanges (const glitchkid::SoundState& s)
+{
+    int set = 0;
+    for (const auto& e : s.values)
+    {
+        auto* r = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (e.id));
+        if (r == nullptr || ! glitchkid::SoundState::isSoundParameter (r->paramID) || ! std::isfinite (e.value))
+            continue;
+        if (std::abs (r->convertFrom0to1 (r->getValue()) - e.value) <= toolerance (*r))
+            continue;
+        r->beginChangeGesture();
+        r->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, r->convertTo0to1 (e.value)));
+        r->endChangeGesture();
+        ++set;
+    }
+    return set;
+}
+
+bool GlitchKidProcessor::getUiFlag (const char* key, bool fallback) const
+{
+    const auto v = apvts.state.getProperty (key);
+    return v.isVoid() ? fallback : (bool) v;
+}
+
+void GlitchKidProcessor::setUiFlag (const char* key, bool value)
+{
+    apvts.state.setProperty (key, value, nullptr);
+}
+
 int GlitchKidProcessor::applySoundState (const glitchkid::SoundState& s)
 {
     int set = 0;
