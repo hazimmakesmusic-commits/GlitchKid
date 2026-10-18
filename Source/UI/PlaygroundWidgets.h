@@ -16,6 +16,10 @@ const juce::Colour obsidian (0xff0b0b10), panelTop (0xff1d1d27), panelBottom (0x
 void drawGlow (juce::Graphics&, juce::Rectangle<float> r, juce::Colour c, float radius, float strength);
 void drawGlowCircle (juce::Graphics&, juce::Rectangle<float> r, juce::Colour c, float radius, float strength); // the same halo around an ellipse
 
+// The GlitchKid dial: a ring of 27 LED segments (lit up to `pos`, 0..1) around a dark knurled metal cap with a glowing needle and a small lens.
+// `start`/`end` are JUCE rotary angles (radians from 12 o'clock). Used by every rotary control, so all knobs look alike.
+void drawLedDial (juce::Graphics&, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, float hover, bool focus);
+
 // The creature. It reacts to real state: mood (from the AutoMode state), input level (the real input peak) and the selected Sound World.
 class Mascot : public juce::Component
 {
@@ -36,7 +40,7 @@ private:
     bool motion = true;
 };
 
-// A Sound World: a big card. Click (or Enter/Space when focused) selects it.
+// A Sound World: a hull pod with a status light. Click (or Enter/Space when focused) loads it.
 class WorldCard : public juce::Component, public juce::SettableTooltipClient
 {
 public:
@@ -110,21 +114,28 @@ private:
     int head = 0;
 };
 
-// A status ring for the main action: idle / waiting for audio / working (real progress) / ready / error.
-class StatusRing : public juce::Component
+// What the main action is doing. Shown by the reactor button's ring; every state comes from the real analyzer state (nothing is simulated).
+enum class AutoState { idle, waiting, working, ready, error };
+
+// The big ANALYZE VOCAL button: a lime "core" inside a ring of 24 segments. idle = dim ring; waiting for audio = a bright chase around the ring;
+// working = segments light up with the real progress; ready = full lime ring; error = pink ring. It is an ordinary TextButton (text, clicks, focus).
+class ReactorButton : public juce::TextButton
 {
 public:
-    enum class State { idle, waiting, working, ready, error };
-    void setState (State, float progress01);
+    ReactorButton() : juce::TextButton ("ANALYZE VOCAL") {}
+    void setState (AutoState, float progress01);
     void setMotion (bool on) { motion = on; }
     void tick (float dtSeconds);
-    void paint (juce::Graphics&) override;
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
-    State state = State::idle;
+    AutoState state = AutoState::idle;
     float progress = 0.0f, spin = 0.0f;
     bool motion = true;
 };
+
+// A hull plate outline: chamfered corners (shape "plate") or a slanted tab (shape "tab"). Buttons pick the shape with the component property "shape".
+juce::Path makePlatePath (juce::Rectangle<float> r, bool tab);
 
 // One look for every existing control too: glossy rounded buttons, chrome-capped rotary knobs with a coloured arc, and slim linear sliders.
 // Colours come from each control's own colour ids, so every knob keeps its meaning (lime / violet / pink).

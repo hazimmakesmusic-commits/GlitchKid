@@ -148,6 +148,8 @@ public:
     // Small UI preferences kept in the session (never part of a sound, a preset or A/B): motion on/off, the detailed LAB panel open/closed.
     bool getUiFlag (const char* key, bool fallback) const;
     void setUiFlag (const char* key, bool value);
+    int getUiInt (const char* key, int fallback) const;
+    void setUiInt (const char* key, int value);
     glitchkid::SoundState factoryDefaultState() const;    // every parameter at its default, no Alter Ego
     bool matchesSoundState (const glitchkid::SoundState&) const; // true if every parameter in it equals the live value (within one step)
 

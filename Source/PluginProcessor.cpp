@@ -439,6 +439,17 @@ void GlitchKidProcessor::setUiFlag (const char* key, bool value)
     apvts.state.setProperty (key, value, nullptr);
 }
 
+int GlitchKidProcessor::getUiInt (const char* key, int fallback) const
+{
+    const auto v = apvts.state.getProperty (key);
+    return v.isVoid() ? fallback : (int) v;
+}
+
+void GlitchKidProcessor::setUiInt (const char* key, int value)
+{
+    apvts.state.setProperty (key, value, nullptr);
+}
+
 int GlitchKidProcessor::applySoundState (const glitchkid::SoundState& s)
 {
     int set = 0;

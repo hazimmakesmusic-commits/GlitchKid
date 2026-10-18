@@ -37,6 +37,7 @@ public:
     void addTo (juce::Component& parent);
     void setBounds (juce::Rectangle<int> r);
     void setEnabled (bool);
+    void setVisible (bool);
 
 private:
     juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::TextBoxBelow };
@@ -53,17 +54,23 @@ public:
     void resized() override;
 
 private:
-    // Layout size; the window scales it to fit. The HOME screen is the top homeH; the detailed controls (LAB) follow below it.
-    // Closed: the window shows the home screen only (designH = homeH). Open: everything (designH = fullH).
-    static constexpr int designW = 1060, homeH = 660, fullH = homeH + 1156;
-    int designH = homeH;
-    bool labOpen = false, motionOn = true;
-    int labTopY = homeH;
+    // Layout size; the window scales it to fit. The interface is three steps, one page each: TUNE (key + scale), AUTO (sound + analysis), MODIFY (advanced,
+    // one category at a time). A header (brand, step buttons, mascot) and the preset bar are always shown; everything else belongs to exactly one page.
+    static constexpr int designW = 1060, designH = 700;
+    enum class Page { tune = 0, autoMix = 1, modify = 2 };
+    enum class Category { pitch = 0, tone, dynamics, space, character };
+    static constexpr int numCategories = 5;
+    Page page = Page::tune;
+    int category = 0;
+    bool motionOn = true;
     glitchkid::ui::PlaygroundLookAndFeel lookAndFeel; // declared first: it must outlive every control that uses it
     juce::Component content; // declared before the controls so it outlives them
     float scaleFactor = 1.0f;
     void layoutContent();
-    void applyLabState (bool resizeWindow);
+    void showPage (Page, bool remember);
+    void showCategory (int, bool remember);
+    void buildPageControls();
+    std::vector<juce::Rectangle<int>> panelRects;
     void timerCallback() override;
     void refreshHome (float peak);
     void setBypassFromUi (bool bypassed);
@@ -72,20 +79,35 @@ private:
     // HOME screen: mascot + live input scope, Sound Worlds, the main AutoMode action, macros, quick commands, dry/processed switch.
     glitchkid::ui::Mascot mascot;
     glitchkid::ui::ScopeStrip scope;
-    glitchkid::ui::StatusRing statusRing;
     juce::OwnedArray<glitchkid::ui::WorldCard> worldCards;
     juce::OwnedArray<glitchkid::ui::MacroDial> macroDials; // SPACE, CHARACTER, PUNCH
     std::unique_ptr<glitchkid::ui::MacroDial> chaosDial;    // the Alter Ego CHAOS amount (needs an Alter Ego)
     juce::TextButton commandButtons[glitchkid::macros::numCommands];
-    juce::Label worldsCaption { {}, "SOUND WORLDS" }, macrosCaption { {}, "MACROS" }, talkCaption { {}, "TALK TO THE KID" }, talkNote, compareCaption;
-    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" }, motionButton, labButton;
+    juce::Label talkCaption { {}, "QUICK TWEAKS" }, talkNote, compareCaption;
+    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" }, motionButton;
+
+    // Navigation and page controls
+    juce::TextButton navButtons[3], categoryButtons[numCategories], nextButton { "NEXT  >" }, modifyButton { "MODIFY  >" },
+                     backButton { "<  BACK TO AUTO" }, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" },
+                     styleButtons[glitchkid::macros::numTuneStyles];
+    juce::Label tuneSubline, tuneSummary, tuneOnCaption { {}, "TUNING" }, styleCaption { {}, "TUNING STYLE" };
+
+    // The glass screen: its title is painted (not a label) so it can scramble and glitch. Glitch bursts are short (about a third of a second), happen
+    // at random moments and on every click, and are skipped when MOTION is off.
+    juce::Rectangle<int> screenRect, mascotBase;
+    juce::String titleTarget, titleShown;
+    int scrambleFrames = 0, glitchFrames = 0, nextBurstIn = 70;
+    unsigned glitchSeed = 1;
+    juce::Random glitchRng { 7 };
+    juce::String currentTitle() const;
+    void startBurst();
+    void mouseDown (const juce::MouseEvent&) override;
     juce::String shownCompareText;
 
     GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
     GainReductionMeter grMeter;
     juce::Label compTitle { {}, "COMPRESSOR" }, grLabel { {}, "GR" };
-    int compDividerX = 0;
     juce::Label title { {}, "GLITCHKID" };
     juce::Label tagline { {}, "A playground for your sound." };
     juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
@@ -103,14 +125,12 @@ private:
     juce::ComboBox tuneKeyBox, tuneScaleBox;
     juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed, formant
     juce::String shownTuneText;
-    int tuneDividerY = 0;
 
     // Vocal Mutation row: ON, a read-out of what the settings do (type + shift in Hz), MUTATION, CHARACTER, BLEND.
     juce::Label mutTitle { {}, "VOCAL MUTATION" }, mutReadout;
     juce::ToggleButton mutOnButton { "ON" };
     juce::OwnedArray<ParamKnob> mutKnobs; // mutation, character, blend
     juce::String shownMutText;
-    int mutDividerY = 0;
 
     // DOUBLE / HARMONY row: the Vocal Doubler (DOUBLE ON, DOUBLE amount, WIDTH, DETUNE, TIMING) and the fixed-interval Harmony voice (HARMONY ON, INTERVAL, LEVEL).
     juce::Label dhTitle { {}, "DOUBLE / HARMONY" }, harmIntervalLabel { {}, "INTERVAL" }, harmNote;
@@ -118,14 +138,12 @@ private:
     juce::ComboBox harmIntervalBox;
     juce::OwnedArray<ParamKnob> dhKnobs; // double, width, detune, timing, harmony level
     juce::String shownHarmNote;
-    int dhDividerY = 0;
 
     // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
     juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
     juce::ToggleButton echoOnButton { "ON" }, echoSyncButton { "SYNC" };
     juce::ComboBox echoDivBox;
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
-    int echoDividerY = 0;
 
     // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes the
     // loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it, A>B / B>A copy a slot.
@@ -135,7 +153,8 @@ private:
     juce::String shownPresetText, shownAbText;
 
     // AUTOMODE row: ANALYZE listens to the vocal, APPLY commits the analysis once. See PluginProcessor.h.
-    juce::TextButton autoAnalyzeButton { "ANALYZE VOCAL" }, autoApplyButton { "APPLY SOUND" };
+    glitchkid::ui::ReactorButton autoAnalyzeButton;
+    juce::TextButton autoApplyButton { "APPLY SOUND" };
     juce::Label autoStyleLabel { {}, "AUTO-MIX: ASTRO MODE" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
     juce::Slider autoIntensitySlider;
     bool autoWaiting = false, autoSawListening = false;
@@ -165,7 +184,6 @@ private:
     juce::Label dimTitle { {}, "DIMENSION" };
     juce::ToggleButton dimOnButton { "ON" };
     juce::OwnedArray<ParamKnob> dimKnobs;
-    int dimDividerY = 0;
 
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> driveKnob;

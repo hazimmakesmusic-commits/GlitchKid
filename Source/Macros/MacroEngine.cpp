@@ -116,4 +116,46 @@ void apply (Command c, SoundState& s)
             break;
     }
 }
+
+namespace
+{
+struct StyleValues { float strength, speed; };
+constexpr StyleValues styleValues[numTuneStyles] = { { 50.0f, 80.0f }, { 75.0f, 35.0f }, { 100.0f, 0.0f } };
+}
+
+const char* tuneStyleLabel (TuneStyle s)
+{
+    switch (s) { case TuneStyle::natural: return "NATURAL"; case TuneStyle::light: return "LIGHT"; case TuneStyle::hard: return "HARD"; }
+    return "";
+}
+
+const char* tuneStyleDescription (TuneStyle s)
+{
+    switch (s)
+    {
+        case TuneStyle::natural: return "Natural: gentle correction (strength 50 %, speed 80 ms). Switches Pitch Tune on.";
+        case TuneStyle::light:   return "Light: firm but smooth correction (strength 75 %, speed 35 ms). Switches Pitch Tune on.";
+        case TuneStyle::hard:    return "Hard: every note snaps instantly to the scale (strength 100 %, speed 0 ms). Switches Pitch Tune on.";
+    }
+    return "";
+}
+
+void apply (TuneStyle s, SoundState& st)
+{
+    const auto v = styleValues[(int) s];
+    st.set ("tune_on", 1.0f);
+    st.set ("tune_strength", v.strength);
+    st.set ("tune_speed", v.speed);
+}
+
+int readTuneStyle (const SoundState& s)
+{
+    if (s.get ("tune_on", 0.0f) < 0.5f)
+        return -1;
+    const float strength = s.get ("tune_strength", -100.0f), speed = s.get ("tune_speed", -100.0f);
+    for (int i = 0; i < numTuneStyles; ++i)
+        if (std::fabs (strength - styleValues[i].strength) <= 3.0f && std::fabs (speed - styleValues[i].speed) <= 5.0f)
+            return i;
+    return -1;
+}
 }

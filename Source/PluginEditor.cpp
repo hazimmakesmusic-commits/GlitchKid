@@ -78,6 +78,12 @@ void ParamKnob::setEnabled (bool shouldBeEnabled)
     label.setAlpha (shouldBeEnabled ? 1.0f : 0.4f);
 }
 
+void ParamKnob::setVisible (bool shouldBeVisible)
+{
+    slider.setVisible (shouldBeVisible);
+    label.setVisible (shouldBeVisible);
+}
+
 void ParamKnob::setBounds (juce::Rectangle<int> r)
 {
     label.setBounds (r.removeFromTop (14));
@@ -106,7 +112,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 {
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
-    labOpen = p.getUiFlag ("uiLabOpen", false);
+    page = (Page) juce::jlimit (0, 2, p.getUiInt ("uiPage", 0)); // first launch: TUNE
+    category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     title.setFont (juce::FontOptions (32.0f, juce::Font::bold));
     title.setColour (juce::Label::textColourId, lime);
     title.setJustificationType (juce::Justification::centred);
@@ -222,7 +229,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     autoIntensitySlider.setColour (juce::Slider::trackColourId, violet);
     autoIntensitySlider.setTooltip ("How strongly AUTOMODE moves the controls when you press APPLY.");
     autoIntensitySlider.onValueChange = [this] { glitchProcessor.setAutoIntensity ((float) autoIntensitySlider.getValue() / 100.0f); };
-    autoStatus.setFont (juce::FontOptions (11.0f));
+    autoStatus.setFont (juce::FontOptions (12.5f));
     autoStatus.setJustificationType (juce::Justification::centredLeft);
     autoStatus.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
     autoStatus.setMinimumHorizontalScale (0.8f);
@@ -528,11 +535,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     talkNote.setText ("Fixed buttons, not chat: each makes one bounded change you can undo with A/B. Typed requests are not implemented yet.", juce::dontSendNotification);
     talkNote.setFont (juce::FontOptions (11.0f));
     talkNote.setColour (juce::Label::textColourId, glitchkid::ui::textDim);
-    for (auto* l : { &worldsCaption, &macrosCaption, &talkCaption })
-    {
-        l->setFont (juce::FontOptions (13.0f, juce::Font::bold));
-        l->setColour (juce::Label::textColourId, glitchkid::ui::textDim);
-    }
+    talkCaption.setFont (juce::FontOptions (13.0f, juce::Font::bold));
+    talkCaption.setColour (juce::Label::textColourId, glitchkid::ui::textDim);
     compareCaption.setFont (juce::FontOptions (14.0f, juce::Font::bold));
     compareCaption.setJustificationType (juce::Justification::centredLeft);
 
@@ -549,22 +553,19 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         glitchProcessor.setUiFlag ("uiMotion", motionOn);
         shownCompareText = {};
     };
-    styleBarButton (labButton, lime, "Show or hide the detailed controls: Alter Ego settings, EQ, compressor, Pitch Tune, Mutation, Doubler, Echo, Dimension.");
-    labButton.onClick = [this]
-    {
-        labOpen = ! labOpen;
-        glitchProcessor.setUiFlag ("uiLabOpen", labOpen);
-        applyLabState (true);
-    };
-    for (auto* c : std::initializer_list<juce::Component*> { &mascot, &scope, &statusRing, &worldsCaption, &macrosCaption, &talkCaption, &talkNote, &compareCaption })
+    buildPageControls();
+    for (auto* c : std::initializer_list<juce::Component*> { &mascot, &scope, &talkCaption, &talkNote, &compareCaption })
         content.addAndMakeVisible (c);
 
-    // Everything lives in `content`, which is laid out at the design size (the LAB part always laid out) and scaled to fit the window.
-    layoutContent();
+    // Everything lives in `content`, which is laid out at the design size and scaled to fit the window.
     addAndMakeVisible (content);
+    addMouseListener (this, true); // any click anywhere fires a glitch burst (mouseDown)
     setResizable (true, true);
+    setResizeLimits (designW * 3 / 5, designH * 3 / 5, designW * 3 / 2, designH * 3 / 2); // below ~60 % the text is too small to read
+    getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    applyLabState (false);
+    setSize (designW * 84 / 100, designH * 84 / 100);
+    showPage (page, false);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -614,15 +615,122 @@ GlitchKidEditor::~GlitchKidEditor()
     setLookAndFeel (nullptr);
 }
 
-void GlitchKidEditor::applyLabState (bool resizeWindow)
+void GlitchKidEditor::buildPageControls()
 {
-    designH = labOpen ? fullH : homeH;
-    labButton.setButtonText (labOpen ? "LAB  ^" : "LAB  v");
-    labButton.setToggleState (labOpen, juce::dontSendNotification);
-    setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
-    getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
-    const int w = resizeWindow && getWidth() > 0 ? getWidth() : designW * (labOpen ? 62 : 78) / 100;
-    setSize (w, juce::roundToInt ((double) w * designH / designW));
+    auto style = [this] (juce::TextButton& b, const juce::String& tip)
+    {
+        b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1c1c26));
+        b.setColour (juce::TextButton::buttonOnColourId, lime);
+        b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+        b.setColour (juce::TextButton::textColourOnId, glitchkid::ui::obsidian);
+        b.setTooltip (tip);
+        content.addAndMakeVisible (b);
+    };
+    auto primary = [this, &style] (juce::TextButton& b, const juce::String& tip)
+    {
+        style (b, tip);
+        b.setColour (juce::TextButton::buttonColourId, lime.darker (0.15f));
+        b.setColour (juce::TextButton::textColourOffId, glitchkid::ui::obsidian);
+    };
+
+    static const char* navText[3] = { "1  TUNE", "2  AUTO", "3  MODIFY" };
+    static const char* navTip[3] = { "Step 1: tell GlitchKid the key and scale of your beat.", "Step 2: choose a sound world and let AutoMode set up the effects.",
+                                     "Step 3: fine-tune one category at a time." };
+    for (int i = 0; i < 3; ++i)
+    {
+        navButtons[i].setButtonText (navText[i]);
+        style (navButtons[i], navTip[i]);
+        navButtons[i].getProperties().set ("shape", "tab");
+        navButtons[i].onClick = [this, i] { showPage ((Page) i, true); };
+    }
+    static const char* catText[numCategories] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE", "CHARACTER" };
+    static const char* catTip[numCategories] = { "Pitch Tune, key, scale, tuning style and FORMANT.", "EQ and saturation.", "Compressor, output gain and level meters.",
+                                                 "Echo, Dimension, Doubler and Harmony.", "Alter Egos, Chaos, Vocal Mutation and Glitch Stutter." };
+    for (int i = 0; i < numCategories; ++i)
+    {
+        categoryButtons[i].setButtonText (catText[i]);
+        style (categoryButtons[i], catTip[i]);
+        categoryButtons[i].onClick = [this, i] { showCategory (i, true); };
+    }
+
+    primary (nextButton, "Continue to step 2: choose a sound world.");
+    nextButton.onClick = [this] { showPage (Page::autoMix, true); };
+    primary (modifyButton, "Go to step 3: fine-tune the sound, one category at a time.");
+    modifyButton.onClick = [this] { showPage (Page::modify, true); };
+    style (backButton, "Back to the sound worlds and AutoMode.");
+    backButton.onClick = [this] { showPage (Page::autoMix, true); };
+    style (resetButton, "Set every control back to its default (Factory Default). Asks first. Your A/B snapshots are kept.");
+    resetButton.setColour (juce::TextButton::textColourOffId, pink);
+    resetButton.onClick = [this]
+    {
+        juce::Component::SafePointer<GlitchKidEditor> safe (this);
+        askYesNo ("Reset everything?", "This sets every control to its default (the Factory Default sound). Press SET A first if you want to be able to come back to the current sound.",
+                  "Reset", [safe]
+                  {
+                      if (safe == nullptr)
+                          return;
+                      safe->showStatus (safe->presets.loadFactoryDefault().message);
+                      safe->refreshAlterEgos();
+                      safe->shownPresetText = {};
+                      safe->refreshPresetBar();
+                  });
+    };
+    style (savePresetButton, "Save the current sound as your own preset. Existing presets are never replaced without asking.");
+    savePresetButton.setColour (juce::TextButton::textColourOffId, lime);
+    savePresetButton.onClick = [this] { askSavePreset(); };
+
+    for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
+    {
+        const auto s = (glitchkid::macros::TuneStyle) i;
+        styleButtons[i].setButtonText (glitchkid::macros::tuneStyleLabel (s));
+        style (styleButtons[i], glitchkid::macros::tuneStyleDescription (s));
+        styleButtons[i].onClick = [this, s]
+        {
+            auto st = glitchProcessor.captureSoundState();
+            glitchkid::macros::apply (s, st);
+            glitchProcessor.applyParameterChanges (st);
+            mascot.cheer();
+        };
+    }
+
+    tuneSubline.setText ("GlitchKid does not detect your key. Choose the key and scale of your beat, and Pitch Tune pulls your voice toward those notes.", juce::dontSendNotification);
+    tuneSubline.setFont (juce::FontOptions (16.0f));
+    tuneSubline.setJustificationType (juce::Justification::centredTop);
+    tuneSubline.setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+    tuneSummary.setFont (juce::FontOptions (20.0f, juce::Font::bold));
+    tuneSummary.setJustificationType (juce::Justification::centred);
+    tuneSummary.setColour (juce::Label::textColourId, lime);
+    for (auto* l : { &tuneOnCaption, &styleCaption })
+    {
+        l->setFont (juce::FontOptions (12.0f, juce::Font::bold));
+        l->setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+    }
+    for (auto* l : { &echoTitle, &dimTitle, &dhTitle, &mutTitle, &stutterTitle, &compTitle })
+        l->setJustificationType (juce::Justification::centredLeft);
+    tuneReadout.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+    tuneReadout.setJustificationType (juce::Justification::centred);
+
+    for (auto* c : std::initializer_list<juce::Component*> { &tuneSubline, &tuneSummary, &tuneOnCaption, &styleCaption })
+        content.addAndMakeVisible (c);
+}
+
+void GlitchKidEditor::showPage (Page p, bool remember)
+{
+    page = p;
+    if (remember)
+        glitchProcessor.setUiInt ("uiPage", (int) page);
+    for (int i = 0; i < 3; ++i)
+        navButtons[i].setToggleState (i == (int) page, juce::dontSendNotification);
+    layoutContent();
+    repaint();
+}
+
+void GlitchKidEditor::showCategory (int c, bool remember)
+{
+    category = juce::jlimit (0, numCategories - 1, c);
+    if (remember)
+        glitchProcessor.setUiInt ("uiCategory", category);
+    layoutContent();
     repaint();
 }
 
@@ -635,6 +743,32 @@ void GlitchKidEditor::setBypassFromUi (bool bypassed)
         r->endChangeGesture();
     }
     shownCompareText = {};
+}
+
+juce::String GlitchKidEditor::currentTitle() const
+{
+    static const char* worldNames[] = { "ASTRO MODE", "HEARTBREAK", "DIGITAL ALTER EGO" };
+    static const char* categoryNames[] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE", "CHARACTER" };
+    if (page == Page::tune)
+        return "SET YOUR KEY";
+    if (page == Page::modify)
+        return categoryNames[juce::jlimit (0, numCategories - 1, category)];
+    const int world = glitchkid::FactoryPresets::indexOfName (glitchProcessor.getPresetName());
+    return world >= 0 ? worldNames[world] : "PICK A SOUND";
+}
+
+void GlitchKidEditor::startBurst()
+{
+    if (motionOn)
+    {
+        glitchFrames = 10;
+        glitchSeed = (unsigned) glitchRng.nextInt();
+    }
+}
+
+void GlitchKidEditor::mouseDown (const juce::MouseEvent&)
+{
+    startBurst();
 }
 
 // One 30 Hz tick of the home screen: real input level into the mascot and scope, the dials read back from the controls, the selected Sound World
@@ -668,13 +802,78 @@ void GlitchKidEditor::refreshHome (float peak)
     }
     const auto sel = glitchProcessor.getAlterEgoSelection();
     chaosDial->setMotion (motionOn);
-    chaosDial->setEnabledLook (sel.ego >= 0, "CHAOS scales the selected Alter Ego. Pick one first (LAB > ALTER EGOS, or the strip below).");
+    chaosDial->setEnabledLook (sel.ego >= 0, "CHAOS scales the selected Alter Ego. Pick one first: step 3 > CHARACTER > ALTER EGOS.");
     chaosDial->setValue (sel.chaos);
     chaosDial->tick (dt);
 
-    statusRing.setMotion (motionOn);
-    statusRing.tick (dt);
+    autoAnalyzeButton.setMotion (motionOn);
+    autoAnalyzeButton.tick (dt);
     mascot.tick (dt);
+
+    // TUNE: the key summary and the selected tuning style are read from the real parameters (no detection is claimed)
+    {
+        glitchkid::SoundState tune;
+        for (const char* id : { "tune_on", "tune_strength", "tune_speed" })
+            tune.set (id, glitchProcessor.apvts.getRawParameterValue (id)->load());
+        const int style = glitchkid::macros::readTuneStyle (tune);
+        for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
+            styleButtons[i].setToggleState (i == style, juce::dontSendNotification);
+        juce::String key, scale;
+        if (auto* k = dynamic_cast<juce::AudioParameterChoice*> (glitchProcessor.apvts.getParameter (GlitchKidProcessor::tuneKeyId)))
+            key = k->getCurrentChoiceName();
+        if (auto* s = dynamic_cast<juce::AudioParameterChoice*> (glitchProcessor.apvts.getParameter (GlitchKidProcessor::tuneScaleId)))
+            scale = s->getCurrentChoiceName();
+        const bool on = tune.get ("tune_on", 0.0f) >= 0.5f;
+        const auto summary = on ? "YOUR KEY: " + key + " " + scale + "  |  STYLE: " + (style >= 0 ? juce::String (glitchkid::macros::tuneStyleLabel ((glitchkid::macros::TuneStyle) style)) : juce::String ("CUSTOM"))
+                                : juce::String ("TUNING IS OFF: your voice is not being pulled to any key");
+        if (summary != tuneSummary.getText())
+            tuneSummary.setText (summary, juce::dontSendNotification);
+    }
+
+    // the glass screen: the title scrambles into place when it changes; glitch bursts come at random moments (and on clicks, see mouseDown)
+    {
+        const auto target = currentTitle();
+        if (target != titleTarget)
+        {
+            titleTarget = target;
+            scrambleFrames = motionOn ? 8 : 0;
+            if (scrambleFrames == 0)
+                titleShown = target;
+            repaint();
+        }
+        if (scrambleFrames > 0)
+        {
+            --scrambleFrames;
+            static const juce::String glyphs ("#%&@$01<>/");
+            juce::String out;
+            for (auto ch : titleTarget)
+                out += (ch == ' ' || glitchRng.nextFloat() < (float) (8 - scrambleFrames) / 9.0f) ? ch : glyphs[glitchRng.nextInt (glyphs.length())];
+            titleShown = scrambleFrames == 0 ? titleTarget : out;
+            repaint();
+        }
+        if (motionOn)
+        {
+            if (--nextBurstIn <= 0)
+            {
+                startBurst();
+                nextBurstIn = 55 + glitchRng.nextInt (110);
+            }
+        }
+        else
+            glitchFrames = 0;
+        if (glitchFrames > 0)
+        {
+            --glitchFrames;
+            ++glitchSeed;
+            mascot.setBounds (mascotBase.translated (glitchRng.nextInt (13) - 6, 0));
+            repaint();
+        }
+        else if (mascot.getBounds() != mascotBase)
+        {
+            mascot.setBounds (mascotBase);
+            repaint();
+        }
+    }
 
     const bool dry = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::bypassId)->load() >= 0.5f;
     const auto compareText = juce::String (dry ? "D" : "P") + (motionOn ? "m" : "s");
@@ -683,7 +882,7 @@ void GlitchKidEditor::refreshHome (float peak)
         shownCompareText = compareText;
         dryButton.setToggleState (dry, juce::dontSendNotification);
         processedButton.setToggleState (! dry, juce::dontSendNotification);
-        compareCaption.setText (dry ? "HEARING: DRY ORIGINAL (bypassed)" : "HEARING: PROCESSED", juce::dontSendNotification);
+        compareCaption.setText (dry ? "HEARING: DRY ORIGINAL" : "HEARING: PROCESSED", juce::dontSendNotification);
         compareCaption.setColour (juce::Label::textColourId, dry ? pink : lime);
         motionButton.setButtonText (motionOn ? "MOTION: ON" : "MOTION: OFF");
     }
@@ -707,17 +906,17 @@ void GlitchKidEditor::refreshAutoMode()
     using S = glitchkid::analysis::VocalAnalysis::Status;
     juce::String text;
     bool canApply = false;
-    auto ring = glitchkid::ui::StatusRing::State::idle;
+    auto ring = glitchkid::ui::AutoState::idle;
     float ringProgress = 0.0f;
     auto mood = glitchkid::ui::Mascot::Mood::idle;
     if (listening)
     {
-        ring = glitchkid::ui::StatusRing::State::working;
+        ring = glitchkid::ui::AutoState::working;
         ringProgress = an.liveActiveSeconds() / glitchkid::analysis::VocalAnalyzer::maxActiveSeconds;
         mood = glitchkid::ui::Mascot::Mood::listening;
     }
     else if (autoWaiting)
-        ring = glitchkid::ui::StatusRing::State::waiting;
+        ring = glitchkid::ui::AutoState::waiting;
     if (listening)
         text = "Listening... " + juce::String (an.liveActiveSeconds(), 1) + " s of vocal heard (needs 2 s, stops at 8 s). Press STOP to finish early.";
     else if (autoWaiting)
@@ -729,19 +928,19 @@ void GlitchKidEditor::refreshAutoMode()
         {
             case S::ready:
                 canApply = true;
-                ring = glitchkid::ui::StatusRing::State::ready;
+                ring = glitchkid::ui::AutoState::ready;
                 mood = glitchkid::ui::Mascot::Mood::ready;
                 text = "Ready: " + juce::String (a.activeSeconds, 1) + " s of vocal, peak " + juce::String (a.peakDb, 1) + " dB, level " + juce::String (a.rmsDb, 1)
                        + " dB" + (a.clippedSamples >= 3 ? ", CLIPPING found" : "") + ". Set INTENSITY, then APPLY.";
                 break;
-            case S::tooShort: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
-            case S::tooQuiet: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
-            case S::invalid: ring = glitchkid::ui::StatusRing::State::error; mood = glitchkid::ui::Mascot::Mood::error;   text = "The input contained invalid audio. Nothing changed. Try again."; break;
+            case S::tooShort: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
+            case S::tooQuiet: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
+            case S::invalid: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;   text = "The input contained invalid audio. Nothing changed. Try again."; break;
             case S::idle:
             case S::listening: text = "Press ANALYZE, then play the dry vocal for a few seconds."; break;
         }
     }
-    statusRing.setState (ring, ringProgress);
+    autoAnalyzeButton.setState (ring, ringProgress);
     mascot.setMood (mood);
     if (text != shownAutoText)
     {
@@ -962,44 +1161,125 @@ void GlitchKidEditor::timerCallback()
 
 void GlitchKidEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (glitchkid::ui::obsidian);
+    namespace ui = glitchkid::ui;
+    constexpr float W = (float) designW, H = (float) designH;
+    g.fillAll (ui::obsidian);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
-    // atmosphere: a violet haze top-left, a pink one bottom-right (cheap radial gradients, painted once per repaint)
-    juce::ColourGradient haze (glitchkid::ui::violet.withAlpha (0.22f), 120.0f, 40.0f, glitchkid::ui::violet.withAlpha (0.0f), 760.0f, 420.0f, true);
+    // atmosphere behind the hull
+    juce::ColourGradient haze (ui::violet.withAlpha (0.26f), 140.0f, 30.0f, ui::violet.withAlpha (0.0f), 800.0f, 420.0f, true);
     g.setGradientFill (haze);
     g.fillRect (0, 0, designW, designH);
-    juce::ColourGradient haze2 (glitchkid::ui::pink.withAlpha (0.10f), (float) designW, (float) homeH, glitchkid::ui::pink.withAlpha (0.0f), (float) designW - 520.0f, (float) homeH - 260.0f, true);
-    g.setGradientFill (haze2);
-    g.fillRect (0, 0, designW, designH);
 
-    // title: liquid-chrome gradient lettering
-    juce::ColourGradient letters (glitchkid::ui::lime, 130.0f, 18.0f, glitchkid::ui::pink, 520.0f, 80.0f, false);
-    letters.addColour (0.5, glitchkid::ui::chrome);
-    g.setGradientFill (letters);
-    g.setFont (juce::FontOptions (50.0f, juce::Font::bold));
-    g.drawText ("GLITCHKID", 128, 10, 430, 58, juce::Justification::centredLeft);
-    g.setColour (glitchkid::ui::textDim);
-    g.setFont (juce::FontOptions (15.0f));
-    g.drawText ("A playground for your voice.", 132, 66, 420, 22, juce::Justification::centredLeft);
-
-    // thin section rules on the home screen
-    g.setColour (juce::Colour (0xff2a2a36));
-    g.drawLine (16.0f, 152.0f, (float) designW - 16.0f, 152.0f);
-    g.drawLine (16.0f, 358.0f, (float) designW - 16.0f, 358.0f);
-    g.drawLine (16.0f, 600.0f, (float) designW - 16.0f, 600.0f);
-    g.drawLine ((float) (16 + 4 * 180 + 6), 366.0f, (float) (16 + 4 * 180 + 6), 552.0f);
-
-    if (labOpen)
+    // the hull: a dark body with violet edge lighting, bolts and a light strip along the top
+    const juce::Rectangle<float> body (6.0f, 6.0f, W - 12.0f, H - 12.0f);
+    juce::ColourGradient bodyFill (ui::panelTop, 0.0f, body.getY(), ui::panelBottom.darker (0.3f), 0.0f, body.getBottom(), false);
+    g.setGradientFill (bodyFill);
+    g.fillRoundedRectangle (body, 40.0f);
+    g.setColour (ui::violet.withAlpha (0.6f));
+    g.drawRoundedRectangle (body.reduced (0.5f), 40.0f, 2.0f);
+    juce::ColourGradient edge (ui::violet.withAlpha (0.0f), 60.0f, 0.0f, ui::violet.withAlpha (0.0f), W - 60.0f, 0.0f, false);
+    edge.addColour (0.3, ui::violet);
+    edge.addColour (0.5, ui::pink);
+    edge.addColour (0.7, ui::violet);
+    g.setGradientFill (edge);
+    g.fillRect (60.0f, 9.0f, W - 120.0f, 2.0f);
+    for (const auto& c : { juce::Point<float> (26.0f, 26.0f), { W - 26.0f, 26.0f }, { 26.0f, H - 26.0f }, { W - 26.0f, H - 26.0f } })
     {
-        g.setColour (juce::Colour (0xff2a2a36));
-        g.drawLine (270.0f, (float) labTopY, 270.0f, (float) tuneDividerY - 8.0f);
-        g.drawLine ((float) compDividerX, (float) labTopY, (float) compDividerX, (float) tuneDividerY - 8.0f);
-        g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
-        g.drawLine (16.0f, (float) mutDividerY, (float) designW - 16.0f, (float) mutDividerY);
-        g.drawLine (16.0f, (float) dhDividerY, (float) designW - 16.0f, (float) dhDividerY);
-        g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
-        g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
+        juce::ColourGradient bolt (juce::Colour (0xffcfd8ea), c.x - 2.0f, c.y - 2.0f, juce::Colour (0xff4b5468), c.x + 5.0f, c.y + 5.0f, false);
+        g.setGradientFill (bolt);
+        g.fillEllipse (c.x - 6.0f, c.y - 6.0f, 12.0f, 12.0f);
+    }
+
+    // the glass screen: deep violet glass, scanlines, a soft vignette and a bezel
+    const auto s = screenRect.toFloat();
+    juce::ColourGradient glass (juce::Colour (0xff2a0d3a), s.getCentreX(), s.getY(), juce::Colour (0xff0c0710), s.getCentreX(), s.getBottom(), false);
+    g.setGradientFill (glass);
+    g.fillRoundedRectangle (s, 28.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.22f));
+    for (float y = s.getY() + 3.0f; y < s.getBottom() - 3.0f; y += 3.0f)
+        g.fillRect (s.getX() + 8.0f, y, s.getWidth() - 16.0f, 1.0f);
+    juce::ColourGradient vignette (juce::Colours::transparentBlack, s.getCentreX(), s.getCentreY(), juce::Colours::black.withAlpha (0.55f), s.getX(), s.getY(), true);
+    g.setGradientFill (vignette);
+    g.fillRoundedRectangle (s, 28.0f);
+    g.setColour (juce::Colour (0xff20202c));
+    g.drawRoundedRectangle (s.expanded (3.0f), 31.0f, 3.0f);
+    g.setColour (juce::Colour (0xff3a3a4c));
+    g.drawRoundedRectangle (s, 28.0f, 1.5f);
+
+    // the title, painted so it can split and glitch
+    const bool tall = page != Page::modify;
+    const juce::Rectangle<float> titleRect (screenRect.getX() + 24.0f, screenRect.getY() + (tall ? 52.0f : 54.0f), 720.0f, tall ? 74.0f : 40.0f);
+    const float titleSize = tall ? (titleTarget.length() > 14 ? 46.0f : 64.0f) : 34.0f;
+    auto drawTitle = [&] (juce::Rectangle<float> r, juce::Colour c)
+    {
+        g.setColour (c);
+        g.setFont (juce::FontOptions (titleSize, juce::Font::bold));
+        g.drawText (titleShown, r, juce::Justification::centredLeft, false);
+    };
+    drawTitle (titleRect.translated (3.0f, 3.0f), ui::pink.withAlpha (0.55f));
+    for (const auto& o : { juce::Point<float> (-1.5f, 0.0f), { 1.5f, 0.0f }, { 0.0f, -1.5f }, { 0.0f, 1.5f } })
+        drawTitle (titleRect.translated (o.x, o.y), ui::lime.withAlpha (0.20f));
+    drawTitle (titleRect, juce::Colour (0xfff6ffd0));
+
+    if (glitchFrames > 0)
+    {
+        juce::Random r ((int) glitchSeed);
+        for (int i = 0; i < 3; ++i)
+        {
+            const int y0 = (int) (titleRect.getY() + r.nextFloat() * titleRect.getHeight() * 0.8f), hh = 5 + (int) (r.nextFloat() * 14.0f);
+            const float dx = (r.nextFloat() - 0.5f) * 24.0f;
+            const juce::Graphics::ScopedSaveState state (g);
+            g.reduceClipRegion (juce::Rectangle<int> ((int) titleRect.getX() - 30, y0, (int) titleRect.getWidth() + 60, hh));
+            drawTitle (titleRect.translated (dx, 0.0f), ui::pink.withAlpha (0.95f));
+            drawTitle (titleRect.translated (-dx * 0.7f, 0.0f), juce::Colour (0xff3d7bff).withAlpha (0.9f));
+        }
+        for (int i = 0; i < 3; ++i) // tear bars
+        {
+            const float y = s.getY() + 10.0f + r.nextFloat() * (s.getHeight() - 30.0f), hh = 4.0f + r.nextFloat() * 16.0f, dx = (r.nextFloat() - 0.5f) * 80.0f;
+            juce::ColourGradient bandFill (ui::lime.withAlpha (0.0f), s.getX() + dx, y, ui::lime.withAlpha (0.0f), s.getRight() + dx, y, false);
+            bandFill.addColour (0.4, ui::lime.withAlpha (0.28f));
+            bandFill.addColour (0.7, ui::pink.withAlpha (0.28f));
+            g.setGradientFill (bandFill);
+            g.fillRect (s.getX() + 8.0f, y, s.getWidth() - 16.0f, hh);
+        }
+    }
+
+    // the brand plate across the lower edge of the tall screen, flanked by vents
+    if (tall)
+    {
+        const juce::Rectangle<float> plate (W * 0.5f - 120.0f, s.getBottom() - 10.0f, 240.0f, 36.0f);
+        juce::ColourGradient rim (ui::violet, plate.getX(), plate.getY(), ui::pink, plate.getRight(), plate.getBottom(), false);
+        g.setGradientFill (rim);
+        g.fillPath (ui::makePlatePath (plate, false));
+        juce::ColourGradient inner (juce::Colour (0xff23232f), 0.0f, plate.getY(), juce::Colour (0xff10101a), 0.0f, plate.getBottom(), false);
+        g.setGradientFill (inner);
+        g.fillPath (ui::makePlatePath (plate.reduced (2.0f), false));
+        juce::ColourGradient letters (ui::lime, plate.getX(), 0.0f, ui::pink, plate.getRight(), 0.0f, false);
+        letters.addColour (0.55, ui::chrome);
+        g.setGradientFill (letters);
+        g.setFont (juce::FontOptions (24.0f, juce::Font::bold));
+        g.drawText ("GLITCHKID", plate, juce::Justification::centred, false);
+        for (int side = 0; side < 2; ++side)
+        {
+            const float vx = side == 0 ? plate.getX() - 120.0f : plate.getRight() + 50.0f;
+            g.setColour (juce::Colour (0xff05050a));
+            g.fillRoundedRectangle (vx, plate.getY() + 8.0f, 70.0f, 20.0f, 4.0f);
+            g.setColour (juce::Colour (0xff2b2b3a));
+            for (int i = 0; i < 9; ++i)
+                g.drawLine (vx + 4.0f + (float) i * 7.5f, plate.getY() + 26.0f, vx + 12.0f + (float) i * 7.5f, plate.getY() + 10.0f, 2.0f);
+        }
+    }
+
+    // the rounded panel(s) behind the current page's controls
+    for (const auto& r : panelRects)
+    {
+        const auto f = r.toFloat();
+        juce::ColourGradient fill (ui::panelTop.withAlpha (0.92f), f.getX(), f.getY(), ui::panelBottom.withAlpha (0.92f), f.getX(), f.getBottom(), false);
+        g.setGradientFill (fill);
+        g.fillRoundedRectangle (f, 18.0f);
+        g.setColour (ui::violet.withAlpha (0.45f));
+        g.drawRoundedRectangle (f.reduced (0.5f), 18.0f, 1.2f);
     }
 }
 
@@ -1013,210 +1293,208 @@ void GlitchKidEditor::resized()
 
 void GlitchKidEditor::layoutContent()
 {
-    auto r = juce::Rectangle<int> (0, 0, designW, fullH).reduced (16); // the LAB part is always laid out; designH only decides how much is shown
+    using Rect = juce::Rectangle<int>;
+    auto show = [] (juce::Component& c, Rect r) { c.setBounds (r); c.setVisible (true); };
+    auto showK = [] (ParamKnob& k, Rect r) { k.setBounds (r); k.setVisible (true); };
 
-    // Bottom strips: Dimension (lowest), then Liquid Echo above it.
-    auto dimArea = r.removeFromBottom (132);
-    dimDividerY = dimArea.getY() - 4;
-    dimTitle.setBounds (dimArea.removeFromTop (20));
-    const int dimCell = dimArea.getWidth() / 7;
-    dimOnButton.setBounds (dimArea.removeFromLeft (dimCell).reduced (8, 0).removeFromTop (40).withSizeKeepingCentre (70, 28));
-    dimArea.removeFromLeft (dimCell); // keeps the knobs aligned with the Liquid Echo row above
-    for (auto* k : dimKnobs)
-        k->setBounds (dimArea.removeFromLeft (dimCell).reduced (8, 0));
+    // Hide every control that is not part of the always-visible screen frame and preset bar; the current page then shows what it needs.
+    const std::vector<juce::Component*> persistent = { &mascot, &motionButton, &navButtons[0], &navButtons[1], &navButtons[2], &presetPrevButton, &presetMenuButton,
+                                                       &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB, &abRecallA, &abRecallB,
+                                                       &abCopyAB, &abCopyBA, &abLabel, &presetStatus };
+    for (auto* child : content.getChildren())
+        if (std::find (persistent.begin(), persistent.end(), child) == persistent.end())
+            child->setVisible (false);
+    panelRects.clear();
 
-    auto echoArea = r.removeFromBottom (132);
-    echoDividerY = echoArea.getY() - 4;
-    auto dhArea = r.removeFromBottom (132); // DOUBLE / HARMONY sits between Vocal Mutation and Liquid Echo
-    dhDividerY = dhArea.getY() - 4;
-    dhTitle.setBounds (dhArea.removeFromTop (20));
-    const int dhCell = dhArea.getWidth() * 2 / 17; // 8.5 cells: switch, 4 knobs, switch, interval (1.5), level knob
-    auto dblSwitch = dhArea.removeFromLeft (dhCell).reduced (4, 0);
-    dblOnButton.setBounds (dblSwitch.removeFromTop (40).withSizeKeepingCentre (dblSwitch.getWidth(), 28));
-    for (int k = 0; k < 4; ++k)
-        dhKnobs[k]->setBounds (dhArea.removeFromLeft (dhCell).reduced (8, 0));
-    auto harmSwitch = dhArea.removeFromLeft (dhCell).reduced (4, 0);
-    harmOnButton.setBounds (harmSwitch.removeFromTop (40).withSizeKeepingCentre (harmSwitch.getWidth(), 28));
-    harmNote.setBounds (harmSwitch.removeFromTop (30));
-    auto intervalCell = dhArea.removeFromLeft (dhCell + dhCell / 2).reduced (8, 0);
-    harmIntervalLabel.setBounds (intervalCell.removeFromTop (14));
-    harmIntervalBox.setBounds (intervalCell.removeFromTop (40).withSizeKeepingCentre (intervalCell.getWidth(), 26));
-    dhKnobs[4]->setBounds (dhArea.removeFromLeft (dhCell).reduced (8, 0));
-    auto mutArea = r.removeFromBottom (132); // Vocal Mutation sits between Pitch Tune / FORMANT and the EQ in the signal path; its row is shown above Liquid Echo
-    mutDividerY = mutArea.getY() - 4;
-    mutTitle.setBounds (mutArea.removeFromTop (20));
-    const int mutCell = mutArea.getWidth() / 7;
-    auto mutSwitch = mutArea.removeFromLeft (mutCell).reduced (8, 0);
-    mutOnButton.setBounds (mutSwitch.removeFromTop (40).withSizeKeepingCentre (70, 28));
-    mutReadout.setBounds (mutSwitch.removeFromTop (40));
-    for (auto* k : mutKnobs)
-        k->setBounds (mutArea.removeFromLeft (mutCell).reduced (8, 0));
-    auto tuneArea = r.removeFromBottom (132); // above Liquid Echo, as it comes first in the signal path
-    tuneDividerY = tuneArea.getY() - 4;
-    tuneTitle.setBounds (tuneArea.removeFromTop (20));
-    const int tuneCell = tuneArea.getWidth() / 7;
-    auto tuneSwitch = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
-    tuneOnButton.setBounds (tuneSwitch.removeFromTop (40).withSizeKeepingCentre (70, 28));
-    tuneReadout.setBounds (tuneSwitch.removeFromTop (40));
-    auto keyCell = tuneArea.removeFromLeft (tuneCell).reduced (8, 0);
-    tuneKeyLabel.setBounds (keyCell.removeFromTop (14));
-    tuneKeyBox.setBounds (keyCell.removeFromTop (40).withSizeKeepingCentre (76, 26));
-    auto scaleCell = tuneArea.removeFromLeft (tuneCell * 3 / 2).reduced (8, 0);
-    tuneScaleLabel.setBounds (scaleCell.removeFromTop (14));
-    tuneScaleBox.setBounds (scaleCell.removeFromTop (40).withSizeKeepingCentre (150, 26));
-    for (auto* k : tuneKnobs)
-        k->setBounds (tuneArea.removeFromLeft (tuneCell).reduced (8, 0));
-    // (the read-out sits under the ON switch, in the space the FORMANT knob took)
-    echoTitle.setBounds (echoArea.removeFromTop (20));
-    const int cellW = echoArea.getWidth() / 7;
-    auto switches = echoArea.removeFromLeft (cellW).reduced (8, 0);
-    echoOnButton.setBounds (switches.removeFromTop (40).withSizeKeepingCentre (70, 28));
-    echoSyncButton.setBounds (switches.removeFromTop (40).withSizeKeepingCentre (70, 28));
-    auto divCell = echoArea.removeFromLeft (cellW).reduced (8, 0);
-    echoDivLabel.setBounds (divCell.removeFromTop (14));
-    echoDivBox.setBounds (divCell.removeFromTop (40).withSizeKeepingCentre (110, 26));
-    for (auto* k : echoKnobs)
-        k->setBounds (echoArea.removeFromLeft (cellW).reduced (8, 0));
+    // ---- the glass screen (tall on TUNE and AUTO, a short title strip on MODIFY), with the step tabs and the mascot ----
+    const bool tall = page != Page::modify;
+    screenRect = tall ? Rect (40, 26, 980, 316) : Rect (40, 26, 980, 104);
+    for (int i = 0; i < 3; ++i)
+        show (navButtons[i], { screenRect.getX() + 18 + i * 150, screenRect.getY() + 14, 144, 38 });
+    show (motionButton, { tall ? screenRect.getRight() - 150 : screenRect.getRight() - 290, screenRect.getY() + 16, 120, 30 });
+    mascotBase = tall ? Rect (786, 108, 196, 196) : Rect (894, 30, 98, 98);
+    show (mascot, mascotBase);
 
-    // ---- HOME screen (absolute design coordinates; the LAB starts at y = homeH) ----
-    constexpr int x0 = 16, hw = designW - 32;
-    mascot.setBounds (x0, 8, 100, 100);
-    scope.setBounds (x0 + 560, 26, hw - 560, 64);
-
-    // PRESETS + A/B bar: preset menu, SAVE, DELETE and a status line on the left; A/B controls on the right.
-    juce::Rectangle<int> bar (x0, 116, hw, 30);
-    presetPrevButton.setBounds (bar.removeFromLeft (28));
+    // ---- bottom bar: presets and A/B (always available) ----
+    Rect bar (16, 662, designW - 32, 30);
+    show (presetPrevButton, bar.removeFromLeft (28));
     bar.removeFromLeft (4);
-    presetMenuButton.setBounds (bar.removeFromLeft (290));
+    show (presetMenuButton, bar.removeFromLeft (290));
     bar.removeFromLeft (4);
-    presetNextButton.setBounds (bar.removeFromLeft (28));
+    show (presetNextButton, bar.removeFromLeft (28));
     bar.removeFromLeft (6);
-    presetSaveButton.setBounds (bar.removeFromLeft (64));
+    show (presetSaveButton, bar.removeFromLeft (64));
     bar.removeFromLeft (6);
-    presetDeleteButton.setBounds (bar.removeFromLeft (76));
+    show (presetDeleteButton, bar.removeFromLeft (76));
     bar.removeFromLeft (12);
-    abCopyBA.setBounds (bar.removeFromRight (54));
+    show (abCopyBA, bar.removeFromRight (54));
     bar.removeFromRight (6);
-    abCopyAB.setBounds (bar.removeFromRight (54));
+    show (abCopyAB, bar.removeFromRight (54));
     bar.removeFromRight (10);
-    abRecallB.setBounds (bar.removeFromRight (46));
+    show (abRecallB, bar.removeFromRight (46));
     bar.removeFromRight (6);
-    abRecallA.setBounds (bar.removeFromRight (46));
+    show (abRecallA, bar.removeFromRight (46));
     bar.removeFromRight (10);
-    abSetB.setBounds (bar.removeFromRight (62));
+    show (abSetB, bar.removeFromRight (62));
     bar.removeFromRight (6);
-    abSetA.setBounds (bar.removeFromRight (62));
+    show (abSetA, bar.removeFromRight (62));
     bar.removeFromRight (8);
-    abLabel.setBounds (bar.removeFromRight (38));
-    presetStatus.setBounds (bar);
+    show (abLabel, bar.removeFromRight (38));
+    show (presetStatus, bar);
 
-    // SOUND WORLDS
-    worldsCaption.setBounds (x0, 154, 300, 18);
-    const int cardW = (hw - 2 * 8) / 3;
-    for (int i = 0; i < worldCards.size(); ++i)
-        worldCards[i]->setBounds (x0 + i * (cardW + 8), 172, cardW, 112);
-
-    // Main action: status ring, ANALYZE VOCAL, APPLY SOUND, style + intensity, status text
-    statusRing.setBounds (x0, 294, 56, 56);
-    autoAnalyzeButton.setBounds (x0 + 66, 300, 200, 44);
-    autoApplyButton.setBounds (x0 + 276, 300, 180, 44);
-    autoStyleLabel.setBounds (x0 + 474, 294, 260, 18);
-    autoIntensityLabel.setBounds (x0 + 474, 316, 70, 28);
-    autoIntensitySlider.setBounds (x0 + 546, 316, 210, 28);
-    autoStatus.setBounds (x0 + 766, 292, hw - 766, 56);
-
-    // MACROS and TALK TO THE KID
-    macrosCaption.setBounds (x0, 360, 300, 18);
-    for (int i = 0; i < macroDials.size(); ++i)
-        macroDials[i]->setBounds (x0 + i * 180, 380, 176, 172);
-    chaosDial->setBounds (x0 + macroDials.size() * 180, 380, 176, 172);
-    const int talkX = x0 + 4 * 180 + 14;
-    talkCaption.setBounds (talkX, 360, 300, 18);
-    for (int i = 0; i < glitchkid::macros::numCommands; ++i)
-        commandButtons[i].setBounds (talkX + (i % 2) * 150, 388 + (i / 2) * 56, 142, 46);
-    talkNote.setBounds (talkX, 502, designW - 16 - talkX, 48);
-
-    // ALTER EGOS strip
-    juce::Rectangle<int> egoRow (x0, 560, hw, 34);
-    egoTitle.setBounds (egoRow.removeFromLeft (92));
-    for (auto& b : egoButtons)
+    // ---- step 1: TUNE (the key controls sit on the glass; NEXT is on the deck) ----
+    if (page == Page::tune)
     {
-        b.setBounds (egoRow.removeFromLeft (122).withSizeKeepingCentre (122, 28));
-        egoRow.removeFromLeft (6);
-    }
-    egoRow.removeFromLeft (10);
-    egoInfo.setBounds (egoRow);
-
-    // Dry / processed + LAB / MOTION
-    dryButton.setBounds (x0, 606, 130, 42);
-    processedButton.setBounds (x0 + 130, 606, 170, 42);
-    compareCaption.setBounds (x0 + 316, 606, 400, 42);
-    motionButton.setBounds (designW - 16 - 128 - 8 - 112, 606, 128, 42);
-    labButton.setBounds (designW - 16 - 112, 606, 112, 42);
-
-    r.removeFromTop (homeH - r.getY()); // the LAB starts here
-
-    auto engineRow = r.removeFromTop (34);
-    engineRow.removeFromLeft (92);
-    chaosLabel.setBounds (engineRow.removeFromLeft (50));
-    chaosSlider.setBounds (engineRow.removeFromLeft (290).withSizeKeepingCentre (290, 24));
-    engineRow.removeFromLeft (24);
-    blendLabel.setBounds (engineRow.removeFromLeft (50));
-    blendSlider.setBounds (engineRow.removeFromLeft (290).withSizeKeepingCentre (290, 24));
-    engineRow.removeFromLeft (24);
-    surpriseButton.setBounds (engineRow.removeFromLeft (130).withSizeKeepingCentre (130, 28));
-    r.removeFromTop (6);
-    labTopY = r.getY();
-
-    // Left: meters either side of the output-gain knob, Bypass underneath.
-    auto left = r.removeFromLeft (240);
-    r.removeFromLeft (20);
-    bypassButton.setBounds (left.removeFromBottom (32));
-    auto inCol = left.removeFromLeft (28), outCol = left.removeFromRight (28);
-    inLabel.setBounds (inCol.removeFromBottom (16));
-    outLabel.setBounds (outCol.removeFromBottom (16));
-    inMeter.setBounds (inCol.reduced (6, 0));
-    outMeter.setBounds (outCol.reduced (6, 0));
-    auto knobs = left.withSizeKeepingCentre (left.getWidth(), 280); // (the main Mix is now the BLEND slider above)
-    driveKnob[0]->setBounds (knobs.removeFromTop (140).withTrimmedBottom (6));
-    gainKnob[0]->setBounds (knobs.removeFromTop (140).withTrimmedBottom (6));
-
-    // Middle: four EQ columns, each with its own FREQ / GAIN (/ Q) knobs.
-    auto eqArea = r.removeFromLeft (400);
-    const int colW = eqArea.getWidth() / ParametricEq::numBands;
-    for (int b = 0; b < ParametricEq::numBands; ++b)
-    {
-        auto col = eqArea.removeFromLeft (colW);
-        bandNames[b].setBounds (col.removeFromTop (20));
-        for (auto* k : eqKnobs[b])
-            k->setBounds (col.removeFromTop (108).reduced (8, 0));
+        const int sx = screenRect.getX() + 24, sy = screenRect.getY();
+        show (tuneSubline, { sx, sy + 118, 660, 36 });
+        show (tuneKeyLabel, { sx, sy + 158, 150, 16 });
+        show (tuneKeyBox, { sx, sy + 176, 170, 38 });
+        show (tuneScaleLabel, { sx + 190, sy + 158, 160, 16 });
+        show (tuneScaleBox, { sx + 190, sy + 176, 250, 38 });
+        show (tuneOnCaption, { sx + 460, sy + 158, 100, 16 });
+        show (tuneOnButton, { sx + 460, sy + 176, 110, 38 });
+        show (styleCaption, { sx, sy + 220, 200, 16 });
+        for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
+            show (styleButtons[i], { sx + i * 160, sy + 238, 150, 38 });
+        show (tuneSummary, { sx, sy + 282, 700, 20 });
+        show (scope, { 150, 392, 760, 44 });
+        show (tuneReadout, { 150, 442, 760, 34 });
+        show (nextButton, { 380, 496, 300, 64 });
     }
 
-    // Right: compressor knobs (2 rows x 3) and the gain-reduction meter.
-    r.removeFromLeft (10);
-    compDividerX = r.getX();
-    r.removeFromLeft (10);
-    compTitle.setBounds (r.removeFromTop (20));
-    auto grCol = r.removeFromRight (28);
-    grLabel.setBounds (grCol.removeFromBottom (16));
-    grMeter.setBounds (grCol.reduced (6, 0));
-    const int knobW = r.getWidth() / 3;
-    for (int row = 0; row < 2; ++row)
+    // ---- step 2: AUTO (the console: reactor, macro dials, audition plates, sound-world pods) ----
+    else if (page == Page::autoMix)
     {
-        auto line = r.removeFromTop (108);
-        for (int col = 0; col < 3; ++col)
-            compKnobs[row * 3 + col]->setBounds (line.removeFromLeft (knobW).reduced (8, 0));
+        const int sx = screenRect.getX() + 24, sy = screenRect.getY();
+        show (autoStatus, { sx, sy + 126, 660, 64 });
+        show (scope, { sx, sy + 198, 560, 40 });
+        show (tuneSummary, { sx, sy + 282, 700, 20 });
+
+        show (autoAnalyzeButton, { 54, 380, 134, 134 });
+        show (autoStyleLabel, { 36, 516, 206, 14 });
+        show (autoIntensitySlider, { 36, 532, 206, 24 });
+        show (autoApplyButton, { 36, 554, 206, 30 });
+        for (int i = 0; i < macroDials.size(); ++i)
+            show (*macroDials[i], { 262 + i * 140, 380, 132, 170 });
+        show (*chaosDial, { 262 + 3 * 140, 380, 132, 170 });
+        show (dryButton, { 830, 388, 180, 40 });
+        show (processedButton, { 830, 432, 180, 40 });
+        show (compareCaption, { 830, 476, 180, 20 });
+        show (modifyButton, { 830, 504, 180, 52 });
+        for (int i = 0; i < worldCards.size(); ++i)
+            show (*worldCards[i], { 40 + i * 332, 588, 316, 68 });
     }
 
-    // Glitch Stutter row: ON + tempo source | RATE | MIX
-    r.removeFromTop (6);
-    stutterTitle.setBounds (r.removeFromTop (20));
-    auto stutterRow = r.removeFromTop (108);
-    auto onCell = stutterRow.removeFromLeft (knobW).reduced (8, 0);
-    stutterOnButton.setBounds (onCell.removeFromTop (36).withSizeKeepingCentre (70, 28));
-    tempoLabel.setBounds (onCell.removeFromTop (44));
-    auto rateCell = stutterRow.removeFromLeft (knobW).reduced (8, 0);
-    stutterRateLabel.setBounds (rateCell.removeFromTop (14));
-    stutterRateBox.setBounds (rateCell.removeFromTop (40).withSizeKeepingCentre (76, 26));
-    stutterMixKnob[0]->setBounds (stutterRow.reduced (8, 0));
+    // ---- step 3: MODIFY (one category at a time) ----
+    else
+    {
+        constexpr int oy = 16; // the category layouts below were drawn for a panel starting at y = 164
+        const int catW = (designW - 80 - 4 * 8) / numCategories;
+        for (int i = 0; i < numCategories; ++i)
+        {
+            show (categoryButtons[i], { 40 + i * (catW + 8), 138, catW, 38 });
+            categoryButtons[i].setToggleState (i == category, juce::dontSendNotification);
+        }
+        panelRects.push_back ({ 16, 184, designW - 32, 372 });
+
+        // quick tweaks + footer
+        show (talkCaption, { 24, 560, 150, 36 });
+        for (int i = 0; i < glitchkid::macros::numCommands; ++i)
+            show (commandButtons[i], { 172 + i * 156, 560, 148, 36 });
+        show (talkNote, { 800, 556, 244, 44 });
+        show (backButton, { 16, 606, 200, 44 });
+        show (resetButton, { 226, 606, 110, 44 });
+        show (savePresetButton, { 346, 606, 160, 44 });
+        show (dryButton, { 560, 606, 120, 44 });
+        show (processedButton, { 680, 606, 150, 44 });
+        show (compareCaption, { 840, 606, 204, 44 });
+
+        switch ((Category) category)
+        {
+            case Category::pitch:
+                show (tuneOnCaption, { 30, 178 + oy, 100, 16 });
+                show (tuneOnButton, { 30, 196 + oy, 100, 38 });
+                show (tuneKeyLabel, { 152, 178 + oy, 120, 16 });
+                show (tuneKeyBox, { 152, 196 + oy, 140, 38 });
+                show (tuneScaleLabel, { 312, 178 + oy, 150, 16 });
+                show (tuneScaleBox, { 312, 196 + oy, 220, 38 });
+                show (styleCaption, { 556, 178 + oy, 200, 16 });
+                for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
+                    show (styleButtons[i], { 556 + i * 156, 196 + oy, 148, 38 });
+                for (int i = 0; i < tuneKnobs.size(); ++i)
+                    showK (*tuneKnobs[i], { 30 + i * 180, 262 + oy, 170, 210 });
+                show (tuneSummary, { 580, 282 + oy, 440, 36 });
+                show (tuneReadout, { 580, 326 + oy, 440, 50 });
+                break;
+
+            case Category::tone:
+                for (int b = 0; b < ParametricEq::numBands; ++b)
+                {
+                    show (bandNames[b], { 30 + b * 200, 176 + oy, 190, 18 });
+                    for (int k = 0; k < eqKnobs[b].size(); ++k)
+                        showK (*eqKnobs[b][k], { 30 + b * 200 + 10, 198 + k * 112 + oy, 170, 108 });
+                }
+                showK (*driveKnob[0], { 850, 220 + oy, 180, 220 });
+                break;
+
+            case Category::dynamics:
+                show (compTitle, { 30, 176 + oy, 520, 18 });
+                for (int i = 0; i < compKnobs.size(); ++i)
+                    showK (*compKnobs[i], { 30 + (i % 3) * 180, 200 + (i / 3) * 168 + oy, 170, 160 });
+                show (grMeter, { 580, 200 + oy, 28, 300 });
+                show (grLabel, { 574, 504 + oy, 40, 16 });
+                showK (*gainKnob[0], { 650, 220 + oy, 200, 220 });
+                show (inMeter, { 890, 200 + oy, 28, 300 });
+                show (outMeter, { 940, 200 + oy, 28, 300 });
+                show (inLabel, { 884, 504 + oy, 40, 16 });
+                show (outLabel, { 934, 504 + oy, 40, 16 });
+                break;
+
+            case Category::space:
+                show (echoTitle, { 30, 174 + oy, 140, 18 });
+                show (echoOnButton, { 30, 196 + oy, 100, 30 });
+                show (echoSyncButton, { 30, 234 + oy, 100, 30 });
+                show (echoDivLabel, { 150, 196 + oy, 120, 14 });
+                show (echoDivBox, { 150, 214 + oy, 130, 32 });
+                for (int i = 0; i < echoKnobs.size(); ++i)
+                    showK (*echoKnobs[i], { 300 + i * 148, 192 + oy, 140, 98 });
+                show (dimTitle, { 30, 292 + oy, 140, 18 });
+                show (dimOnButton, { 30, 316 + oy, 100, 30 });
+                for (int i = 0; i < dimKnobs.size(); ++i)
+                    showK (*dimKnobs[i], { 300 + i * 148, 310 + oy, 140, 96 });
+                show (dhTitle, { 30, 408 + oy, 200, 18 });
+                show (dblOnButton, { 30, 432 + oy, 150, 30 });
+                show (harmOnButton, { 30, 470 + oy, 150, 30 });
+                for (int i = 0; i < 4; ++i)
+                    showK (*dhKnobs[i], { 190 + i * 128, 428 + oy, 120, 96 });
+                show (harmIntervalLabel, { 716, 430 + oy, 150, 14 });
+                show (harmIntervalBox, { 716, 448 + oy, 170, 32 });
+                show (harmNote, { 716, 484 + oy, 170, 36 });
+                showK (*dhKnobs[4], { 896, 428 + oy, 130, 96 });
+                break;
+
+            case Category::character:
+                show (egoTitle, { 30, 178 + oy, 92, 28 });
+                for (int i = 0; i < AlterEgos::count; ++i)
+                    show (egoButtons[i], { 126 + i * 128, 178 + oy, 122, 30 });
+                show (egoInfo, { 126, 212 + oy, 900, 34 });
+                show (chaosLabel, { 30, 250 + oy, 60, 28 });
+                show (chaosSlider, { 94, 250 + oy, 300, 28 });
+                show (blendLabel, { 420, 250 + oy, 56, 28 });
+                show (blendSlider, { 480, 250 + oy, 300, 28 });
+                show (surpriseButton, { 810, 249 + oy, 170, 30 });
+                show (mutTitle, { 30, 292 + oy, 200, 18 });
+                show (mutOnButton, { 30, 316 + oy, 100, 30 });
+                show (mutReadout, { 30, 352 + oy, 150, 40 });
+                for (int i = 0; i < mutKnobs.size(); ++i)
+                    showK (*mutKnobs[i], { 200 + i * 170, 312 + oy, 160, 98 });
+                show (stutterTitle, { 30, 418 + oy, 200, 18 });
+                show (stutterOnButton, { 30, 442 + oy, 100, 30 });
+                show (tempoLabel, { 30, 478 + oy, 180, 40 });
+                show (stutterRateLabel, { 230, 440 + oy, 100, 14 });
+                show (stutterRateBox, { 230, 458 + oy, 110, 30 });
+                showK (*stutterMixKnob[0], { 400, 436 + oy, 170, 98 });
+                break;
+        }
+    }
 }

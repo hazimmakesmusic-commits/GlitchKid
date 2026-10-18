@@ -32,6 +32,78 @@ void drawGlowCircle (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c
     }
 }
 
+void drawLedDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, float hover, bool focus)
+{
+    constexpr int numSegments = 27;
+    const float d = juce::jmin (dial.getWidth(), dial.getHeight());
+    dial = juce::Rectangle<float> (d, d).withCentre (dial.getCentre());
+    const auto c = dial.getCentre();
+    const float segLen = d * 0.085f, segW = d * 0.036f, outer = d * 0.5f;
+    const int lit = juce::roundToInt (juce::jlimit (0.0f, 1.0f, pos) * (float) numSegments);
+
+    juce::Path seg;
+    seg.addRoundedRectangle (c.x - segW * 0.5f, c.y - outer, segW, segLen, segW * 0.4f);
+    for (int i = 0; i < numSegments; ++i)
+    {
+        const float ang = start + (end - start) * (float) i / (float) (numSegments - 1);
+        const auto rot = juce::AffineTransform::rotation (ang, c.x, c.y);
+        if (i < lit)
+        {
+            juce::Path glow;
+            glow.addRoundedRectangle (c.x - segW * 1.05f, c.y - outer - segW * 0.4f, segW * 2.1f, segLen + segW * 0.8f, segW * 0.8f);
+            g.setColour (accent.withAlpha (0.20f * alpha));
+            g.fillPath (glow, rot);
+            g.setColour (accent.withAlpha (alpha));
+        }
+        else
+            g.setColour (juce::Colour (0xff232433).withAlpha (alpha));
+        g.fillPath (seg, rot);
+    }
+
+    // bezel and cap
+    const float bezelR = d * 0.345f, capR = d * 0.31f, faceR = d * 0.235f;
+    g.setColour (juce::Colour (0xff0a0a11).withAlpha (alpha));
+    g.fillEllipse (c.x - bezelR, c.y - bezelR, bezelR * 2.0f, bezelR * 2.0f);
+    g.setColour (juce::Colour (0xff34374a).withAlpha (alpha));
+    g.drawEllipse (c.x - bezelR, c.y - bezelR, bezelR * 2.0f, bezelR * 2.0f, 1.2f);
+
+    juce::ColourGradient capFill (juce::Colour (0xff4b5268).withAlpha (alpha), c.x, c.y - capR, juce::Colour (0xff14161f).withAlpha (alpha), c.x, c.y + capR, false);
+    g.setGradientFill (capFill);
+    g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
+    g.setColour ((hover > 0.5f ? accent : juce::Colour (0xff6a7390)).withAlpha (alpha));
+    g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.2f);
+
+    g.setColour (juce::Colour (0xff0a0b12).withAlpha (0.75f * alpha)); // knurl
+    for (int i = 0; i < 30; ++i)
+    {
+        const float a = (float) i * 2.0f * pi / 30.0f;
+        g.drawLine (c.x + std::sin (a) * capR * 0.82f, c.y - std::cos (a) * capR * 0.82f, c.x + std::sin (a) * capR * 0.96f, c.y - std::cos (a) * capR * 0.96f, 1.4f);
+    }
+    juce::ColourGradient face (juce::Colour (0xff323648).withAlpha (alpha), c.x - faceR * 0.3f, c.y - faceR * 0.5f, juce::Colour (0xff0d0e15).withAlpha (alpha), c.x + faceR, c.y + faceR, true);
+    g.setGradientFill (face);
+    g.fillEllipse (c.x - faceR, c.y - faceR, faceR * 2.0f, faceR * 2.0f);
+
+    const float ang = start + (end - start) * juce::jlimit (0.0f, 1.0f, pos);
+    const juce::Point<float> n0 (c.x + std::sin (ang) * faceR * 0.34f, c.y - std::cos (ang) * faceR * 0.34f),
+                             n1 (c.x + std::sin (ang) * faceR * 0.86f, c.y - std::cos (ang) * faceR * 0.86f);
+    g.setColour (accent.withAlpha (0.3f * alpha));
+    g.drawLine (n0.x, n0.y, n1.x, n1.y, juce::jmax (4.0f, d * 0.06f));
+    g.setColour (accent.withAlpha (alpha));
+    g.drawLine (n0.x, n0.y, n1.x, n1.y, juce::jmax (2.0f, d * 0.03f));
+    const float lensR = d * 0.05f;
+    g.setColour (juce::Colour (0xff05060a).withAlpha (alpha));
+    g.fillEllipse (c.x - lensR, c.y - lensR, lensR * 2.0f, lensR * 2.0f);
+    g.setColour (accent.withAlpha (alpha));
+    g.drawEllipse (c.x - lensR, c.y - lensR, lensR * 2.0f, lensR * 2.0f, 1.2f);
+    g.setColour (juce::Colours::white.withAlpha (0.08f * alpha));
+    g.fillEllipse (c.x - capR * 0.75f, c.y - capR * 0.85f, capR * 1.0f, capR * 0.45f);
+    if (focus)
+    {
+        g.setColour (chrome);
+        g.drawEllipse (dial.reduced (0.5f), 1.2f);
+    }
+}
+
 // ---- Mascot ----------------------------------------------------------------------------------------------------------------------------
 
 void Mascot::setMood (Mood m) { if (m != mood) { mood = m; repaint(); } }
@@ -62,81 +134,114 @@ void Mascot::tick (float dt)
 
 void Mascot::paint (juce::Graphics& g)
 {
-    auto b = getLocalBounds().toFloat().reduced (2.0f);
+    const auto b = getLocalBounds().toFloat();
+    const float w = b.getWidth(), h = b.getHeight(), cx = w * 0.5f;
     const auto accent = mood == Mood::error ? pink : (mood == Mood::idle ? violet : lime);
-    const float hop = motion ? -14.0f * bounce * std::abs (std::sin (bounceTime * pi * 3.0f)) : 0.0f;
-    const float squash = 1.0f + (motion ? 0.10f * bounce * std::sin (bounceTime * pi * 6.0f) : 0.0f);
+    const float hop = motion ? -9.0f * bounce * std::abs (std::sin (bounceTime * pi * 3.0f)) : 0.0f;
+    const float bob = motion ? std::sin (clock * 2.0f) * 2.0f : 0.0f;
+    const float lean = motion && bounce > 0.0f ? 0.05f * std::sin (bounceTime * pi * 5.0f) : 0.0f;
+    const juce::Graphics::ScopedSaveState state (g);
+    g.addTransform (juce::AffineTransform::rotation (lean, cx, h * 0.7f).translated (0.0f, hop + bob));
 
-    auto body = juce::Rectangle<float> (b.getWidth() * 0.82f, b.getHeight() * 0.66f).withCentre ({ b.getCentreX(), b.getBottom() - b.getHeight() * 0.36f + hop });
-    body = body.withSizeKeepingCentre (body.getWidth() / squash, body.getHeight() * squash);
+    // glow under the saucer, brighter with the real input level
+    drawGlowCircle (g, { w * 0.18f, h * 0.88f, w * 0.64f, h * 0.06f }, accent, 8.0f, 0.5f + 0.9f * shownLevel);
 
-    drawGlowCircle (g, body, accent, 16.0f, 0.5f + 0.8f * shownLevel + (mood == Mood::ready ? 0.4f : 0.0f));
-
-    // antennae (two), swaying a little
-    const float sway = motion ? std::sin (clock * 2.2f) * 3.0f : 0.0f;
+    // the alien (inside the dome): two antennae, a lime head, big slanted eyes, a small mouth
+    const auto head = juce::Rectangle<float> (w * 0.38f, h * 0.40f).withCentre ({ cx, h * 0.47f });
+    const float sway = motion ? std::sin (clock * 2.4f) * 1.6f : 0.0f;
     for (int i = 0; i < 2; ++i)
     {
         const float dir = i == 0 ? -1.0f : 1.0f;
-        const juce::Point<float> root (body.getCentreX() + dir * body.getWidth() * 0.22f, body.getY() + 4.0f);
-        const juce::Point<float> tip (root.x + dir * 9.0f + sway * dir, root.y - 17.0f - 4.0f * shownLevel);
-        g.setColour (chromeDark);
-        g.drawLine (root.x, root.y, tip.x, tip.y, 2.0f);
-        g.setColour (accent.withAlpha (0.35f + 0.65f * (mood == Mood::idle ? 0.5f : 1.0f)));
-        g.fillEllipse (tip.x - 4.5f, tip.y - 4.5f, 9.0f, 9.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.7f));
-        g.fillEllipse (tip.x - 2.5f, tip.y - 3.0f, 3.0f, 3.0f);
+        const juce::Point<float> root (cx + dir * w * 0.07f, head.getY() + h * 0.04f), tip (cx + dir * (w * 0.15f + sway), h * 0.20f - 3.0f * shownLevel);
+        g.setColour (juce::Colour (0xff9be000));
+        g.drawLine (root.x, root.y, tip.x, tip.y, 1.6f);
+        g.setColour (pink);
+        g.fillEllipse (tip.x - w * 0.03f, tip.y - w * 0.03f, w * 0.06f, w * 0.06f);
     }
+    juce::ColourGradient skin (juce::Colour (0xffeaff9e), head.getX() + head.getWidth() * 0.3f, head.getY(), juce::Colour (0xff3a6200), head.getRight(), head.getBottom(), false);
+    skin.addColour (0.45, juce::Colour (0xff9be000));
+    g.setGradientFill (skin);
+    g.fillEllipse (head);
+    g.setColour (juce::Colour (0xff2a4700));
+    g.drawEllipse (head, 1.2f);
 
-    // liquid-chrome body
-    juce::ColourGradient grad (chrome, body.getX(), body.getY(), obsidian, body.getRight(), body.getBottom(), false);
-    grad.addColour (0.35, violet.brighter (0.2f));
-    grad.addColour (0.7, violet.darker (0.8f));
-    g.setGradientFill (grad);
-    g.fillEllipse (body);
-    g.setColour (accent.withAlpha (0.9f));
-    g.drawEllipse (body, 2.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.28f));
-    g.fillEllipse (body.getX() + body.getWidth() * 0.14f, body.getY() + body.getHeight() * 0.08f, body.getWidth() * 0.34f, body.getHeight() * 0.2f);
-
-    // eyes: pupils grow with the real input level and look toward the selected world
-    const float eyeR = body.getWidth() * 0.15f;
-    const float eyeY = body.getY() + body.getHeight() * 0.42f;
-    const float open = mood == Mood::ready && bounce > 0.0f ? 0.35f : 1.0f - blink * 0.9f;
+    const float open = mood == Mood::ready && bounce > 0.0f ? 0.4f : 1.0f - blink * 0.9f;
     for (int i = 0; i < 2; ++i)
     {
-        const float ex = body.getCentreX() + (i == 0 ? -1.0f : 1.0f) * body.getWidth() * 0.2f;
-        auto eye = juce::Rectangle<float> (eyeR * 2.0f, eyeR * 2.0f * open).withCentre ({ ex, eyeY });
-        g.setColour (juce::Colours::white);
-        g.fillEllipse (eye);
-        const float pr = eyeR * (0.42f + 0.38f * shownLevel);
-        g.setColour (mood == Mood::error ? pink.darker (0.6f) : obsidian);
-        g.fillEllipse (ex + shownLook * eyeR * 0.45f - pr, eyeY - pr * open, pr * 2.0f, pr * 2.0f * open);
+        const float side = i == 0 ? -1.0f : 1.0f;
+        const float ex = cx + side * head.getWidth() * 0.25f, ey = head.getY() + head.getHeight() * 0.50f;
+        const float ew = head.getWidth() * 0.36f, eh = ew * 0.62f * open;
+        juce::Path eye;
+        eye.addEllipse (ex - ew * 0.5f, ey - eh * 0.5f, ew, eh);
+        eye.applyTransform (juce::AffineTransform::rotation (-side * 0.35f, ex, ey));
+        g.setColour (juce::Colour (0xff05020a));
+        g.fillPath (eye);
+        const float pr = ew * (0.16f + 0.10f * shownLevel);
+        g.setColour (mood == Mood::error ? pink : juce::Colour (0xffb56bff));
+        g.fillEllipse (ex + shownLook * ew * 0.12f - pr, ey - pr * open, pr * 2.0f, pr * 2.0f * open);
+        g.setColour (juce::Colours::white.withAlpha (0.9f * open));
+        g.fillEllipse (ex + shownLook * ew * 0.12f - pr * 0.8f, ey - pr * 0.9f * open, pr * 0.6f, pr * 0.6f * open);
     }
-
-    // mouth
-    const float mx = body.getCentreX(), my = body.getY() + body.getHeight() * 0.72f, mw = body.getWidth() * 0.2f;
-    g.setColour (obsidian);
+    const float my = head.getY() + head.getHeight() * 0.80f, mw = head.getWidth() * 0.20f;
+    g.setColour (juce::Colour (0xff1d3300));
     if (mood == Mood::listening)
     {
-        const float h = 4.0f + 10.0f * shownLevel;
-        g.fillEllipse (mx - mw * 0.5f, my - h * 0.5f, mw, h);
+        const float mh = 3.0f + 6.0f * shownLevel;
+        g.fillEllipse (cx - mw * 0.5f, my - mh * 0.5f, mw, mh);
     }
     else
     {
         juce::Path mouth;
         if (mood == Mood::error)
         {
-            mouth.startNewSubPath (mx - mw, my + 2.0f);
+            mouth.startNewSubPath (cx - mw, my + 1.0f);
             for (int i = 1; i <= 4; ++i)
-                mouth.lineTo (mx - mw + mw * 0.5f * (float) i, my + (i % 2 ? -3.0f : 3.0f));
+                mouth.lineTo (cx - mw + mw * 0.5f * (float) i, my + (i % 2 ? -2.5f : 2.5f));
         }
         else
         {
-            const float smile = mood == Mood::ready ? 9.0f : 4.0f;
-            mouth.startNewSubPath (mx - mw, my - 1.0f);
-            mouth.quadraticTo (mx, my + smile * 2.0f, mx + mw, my - 1.0f);
+            mouth.startNewSubPath (cx - mw, my - 1.0f);
+            mouth.quadraticTo (cx, my + (mood == Mood::ready ? 9.0f : 5.0f), cx + mw, my - 1.0f);
         }
-        g.strokePath (mouth, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (mouth, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // glass dome
+    juce::Path dome;
+    dome.addCentredArc (cx, h * 0.68f, w * 0.40f, h * 0.52f, 0.0f, -pi * 0.5f, pi * 0.5f, true);
+    dome.closeSubPath();
+    juce::ColourGradient glass (juce::Colour (0xffd9c2ff).withAlpha (0.38f), cx, h * 0.16f, violet.withAlpha (0.10f), cx, h * 0.68f, false);
+    g.setGradientFill (glass);
+    g.fillPath (dome);
+    g.setColour (juce::Colour (0xffcfd8ea).withAlpha (0.65f));
+    g.strokePath (dome, juce::PathStrokeType (1.4f));
+    juce::Path shine;
+    shine.addCentredArc (cx, h * 0.68f, w * 0.33f, h * 0.44f, 0.0f, -pi * 0.42f, -pi * 0.12f, true);
+    g.setColour (juce::Colours::white.withAlpha (0.55f));
+    g.strokePath (shine, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // saucer hull with six blinking lights (all lime when ready, all pink on error)
+    const auto hull = juce::Rectangle<float> (w * 0.96f, h * 0.32f).withCentre ({ cx, h * 0.74f });
+    juce::ColourGradient hullFill (juce::Colour (0xffe6ecf6), cx, hull.getY(), juce::Colour (0xff252a38), cx, hull.getBottom(), false);
+    hullFill.addColour (0.4, juce::Colour (0xff8a94aa));
+    g.setGradientFill (hullFill);
+    g.fillEllipse (hull);
+    g.setColour (juce::Colour (0xff10121a));
+    g.drawEllipse (hull, 1.2f);
+    g.setColour (juce::Colour (0xff0b0d14).withAlpha (0.5f));
+    g.fillEllipse (hull.getX() + w * 0.02f, hull.getY() + h * 0.01f, hull.getWidth() - w * 0.04f, h * 0.07f);
+    static const juce::Colour cycle[3] = { lime, pink, violet.brighter (0.5f) };
+    for (int i = 0; i < 6; ++i)
+    {
+        const float t = (float) i / 5.0f;
+        const float lx = hull.getX() + hull.getWidth() * (0.14f + 0.72f * t);
+        const float ly = hull.getCentreY() + h * 0.045f + std::sin (t * pi) * h * 0.04f;
+        const auto col = mood == Mood::ready ? lime : (mood == Mood::error ? pink : cycle[i % 3]);
+        const float on = motion ? 0.55f + 0.45f * std::sin (clock * 5.0f + (float) i * 1.1f) : 1.0f;
+        g.setColour (col.withAlpha (0.35f * on));
+        g.fillEllipse (lx - w * 0.04f, ly - w * 0.04f, w * 0.08f, w * 0.08f);
+        g.setColour (col.withAlpha (0.55f + 0.45f * on));
+        g.fillEllipse (lx - w * 0.022f, ly - w * 0.022f, w * 0.044f, w * 0.044f);
     }
 }
 
@@ -189,64 +294,81 @@ bool WorldCard::keyPressed (const juce::KeyPress& k)
 
 void WorldCard::paint (juce::Graphics& g)
 {
-    auto r = getLocalBounds().toFloat().reduced (6.0f);
+    auto r = getLocalBounds().toFloat().reduced (4.0f);
     if (pressed)
         r = r.reduced (2.0f);
-    drawGlow (g, r, accent, 14.0f, 0.9f * glow + 0.5f * hover);
+    const auto plate = makePlatePath (r, false);
 
-    juce::ColourGradient fill (accent.withMultipliedBrightness (0.38f + 0.18f * hover + 0.15f * glow), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false);
+    drawGlow (g, r.reduced (3.0f), accent, 12.0f, 0.9f * glow + 0.45f * hover);
+    juce::ColourGradient fill (accent.withMultipliedBrightness (0.55f + 0.2f * hover + 0.15f * glow), r.getX(), r.getY(), accent.withMultipliedBrightness (0.18f), r.getX(), r.getBottom(), false);
     g.setGradientFill (fill);
-    g.fillRoundedRectangle (r, 16.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.07f));
-    g.fillRoundedRectangle (r.withHeight (r.getHeight() * 0.42f).reduced (3.0f, 2.0f), 13.0f); // gloss
-    g.setColour (accent.withAlpha (0.45f + 0.55f * juce::jmax (glow, hover)));
-    g.drawRoundedRectangle (r, 16.0f, selected ? 3.0f : 1.6f);
+    g.fillPath (plate);
+    {
+        const juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (plate, {});
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.fillRect (r.withHeight (r.getHeight() * 0.42f));
+    }
+    g.setColour ((selected ? lime : accent.brighter (0.2f)).withAlpha (selected ? 1.0f : 0.55f + 0.4f * hover));
+    g.strokePath (plate, juce::PathStrokeType (selected ? 2.6f : 1.4f));
     if (hasKeyboardFocus (true))
     {
         g.setColour (chrome);
-        g.drawRoundedRectangle (r.expanded (3.0f), 18.0f, 1.6f);
+        g.strokePath (makePlatePath (r.expanded (3.0f), false), juce::PathStrokeType (1.4f));
     }
 
-    // icon (original, drawn): planet / heart / glitch blocks
-    auto ic = juce::Rectangle<float> (46.0f, 46.0f).withCentre ({ r.getRight() - 46.0f, r.getY() + 44.0f });
-    g.setColour (accent.brighter (0.4f));
+    // status light: lit lime when this pod is loaded
+    const juce::Point<float> led (r.getRight() - 22.0f, r.getY() + 20.0f);
+    if (selected)
+    {
+        drawGlowCircle (g, { led.x - 5.0f, led.y - 5.0f, 10.0f, 10.0f }, lime, 8.0f, 0.9f);
+        g.setColour (lime);
+    }
+    else
+        g.setColour (juce::Colour (0xff0b0b10));
+    g.fillEllipse (led.x - 5.0f, led.y - 5.0f, 10.0f, 10.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.25f));
+    g.drawEllipse (led.x - 5.0f, led.y - 5.0f, 10.0f, 10.0f, 1.2f);
+
+    // icon (original, drawn): planet / broken heart / glitch blocks, at the left
+    auto ic = juce::Rectangle<float> (34.0f, 34.0f).withCentre ({ r.getX() + 36.0f, r.getCentreY() });
+    g.setColour (accent.brighter (0.5f));
     if (icon == Icon::planet)
     {
-        g.fillEllipse (ic.reduced (8.0f));
+        g.fillEllipse (ic.reduced (6.0f));
         g.setColour (chrome.withAlpha (0.9f));
         juce::Path ring;
-        ring.addEllipse (ic.getX() - 2.0f, ic.getCentreY() - 6.0f, ic.getWidth() + 4.0f, 12.0f);
-        g.strokePath (ring, juce::PathStrokeType (2.0f), juce::AffineTransform::rotation (-0.45f, ic.getCentreX(), ic.getCentreY()));
+        ring.addEllipse (ic.getX() - 2.0f, ic.getCentreY() - 4.5f, ic.getWidth() + 4.0f, 9.0f);
+        g.strokePath (ring, juce::PathStrokeType (1.6f), juce::AffineTransform::rotation (-0.45f, ic.getCentreX(), ic.getCentreY()));
     }
     else if (icon == Icon::heart)
     {
         juce::Path h;
         const auto c = ic.getCentre();
-        h.startNewSubPath (c.x, c.y + 17.0f);
-        h.cubicTo (c.x - 30.0f, c.y - 4.0f, c.x - 14.0f, c.y - 26.0f, c.x, c.y - 10.0f);
-        h.cubicTo (c.x + 14.0f, c.y - 26.0f, c.x + 30.0f, c.y - 4.0f, c.x, c.y + 17.0f);
+        h.startNewSubPath (c.x, c.y + 13.0f);
+        h.cubicTo (c.x - 22.0f, c.y - 3.0f, c.x - 10.0f, c.y - 19.0f, c.x, c.y - 7.0f);
+        h.cubicTo (c.x + 10.0f, c.y - 19.0f, c.x + 22.0f, c.y - 3.0f, c.x, c.y + 13.0f);
         g.fillPath (h);
         g.setColour (obsidian);
-        g.drawLine (c.x - 3.0f, c.y - 8.0f, c.x + 2.0f, c.y, 2.0f);   // a crack: it's a broken heart
-        g.drawLine (c.x + 2.0f, c.y, c.x - 2.0f, c.y + 9.0f, 2.0f);
+        g.drawLine (c.x - 2.0f, c.y - 6.0f, c.x + 1.5f, c.y, 1.6f);
+        g.drawLine (c.x + 1.5f, c.y, c.x - 1.5f, c.y + 7.0f, 1.6f);
     }
     else
-    {
         for (int i = 0; i < 3; ++i)
             for (int j = 0; j < 3; ++j)
                 if ((i + j) % 2 == 0)
-                    g.fillRect (ic.getX() + (float) i * 15.0f + (j == 1 ? 3.0f : 0.0f), ic.getY() + (float) j * 15.0f, 13.0f, 13.0f);
-    }
+                    g.fillRect (ic.getX() + (float) i * 11.5f + (j == 1 ? 2.0f : 0.0f), ic.getY() + (float) j * 11.5f, 10.0f, 10.0f);
 
+    const float tx = r.getX() + 66.0f, tw = r.getWidth() - 66.0f - 40.0f;
     g.setColour (textBright);
-    g.setFont (juce::FontOptions (22.0f, juce::Font::bold));
-    g.drawText (title, r.getX() + 16.0f, r.getY() + 14.0f, r.getWidth() - 80.0f, 28.0f, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (17.0f, juce::Font::bold));
+    g.drawText (title, tx, r.getY() + 5.0f, tw, 22.0f, juce::Justification::centredLeft);
     g.setColour (textBright.withAlpha (0.82f));
-    g.setFont (juce::FontOptions (14.0f));
-    g.drawText (tagline, r.getX() + 16.0f, r.getY() + 46.0f, r.getWidth() - 32.0f, 20.0f, juce::Justification::centredLeft);
-    g.setColour (accent.brighter (0.5f).withAlpha (0.9f));
-    g.setFont (juce::FontOptions (12.0f, juce::Font::bold));
-    g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "TAP TO LOAD: " + loads, r.getX() + 16.0f, r.getBottom() - 28.0f, r.getWidth() - 32.0f, 18.0f, juce::Justification::centredLeft);
+    g.setFont (juce::FontOptions (12.0f));
+    g.drawText (tagline, tx, r.getY() + 26.0f, tw + 30.0f, 16.0f, juce::Justification::centredLeft);
+    g.setColour (accent.brighter (0.6f).withAlpha (0.95f));
+    g.setFont (juce::FontOptions (10.5f, juce::Font::bold));
+    g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "LOADS: " + loads, tx, r.getY() + 43.0f, tw + 30.0f, 14.0f, juce::Justification::centredLeft);
 }
 
 // ---- MacroDial -------------------------------------------------------------------------------------------------------------------------
@@ -336,44 +458,11 @@ void MacroDial::paint (juce::Graphics& g)
     g.drawText (name, r.removeFromTop (22.0f), juce::Justification::centred);
 
     auto valueArea = r.removeFromBottom (24.0f);
-    const float d = juce::jmin (r.getWidth(), r.getHeight()) - 10.0f;
-    auto dial = juce::Rectangle<float> (d, d).withCentre (r.getCentre());
-    drawGlowCircle (g, dial.reduced (d * 0.1f), accent, 14.0f, alpha * (0.35f + 0.7f * hover + 0.5f * shown));
-
-    const float a0 = pi * 1.25f, a1 = pi * 2.75f; // 270 degrees, gap at the bottom
-    juce::Path track, fillArc;
-    track.addCentredArc (dial.getCentreX(), dial.getCentreY(), d * 0.5f - 6.0f, d * 0.5f - 6.0f, 0.0f, a0, a1, true);
-    g.setColour (juce::Colour (0xff2a2a36).withAlpha (alpha));
-    g.strokePath (track, juce::PathStrokeType (9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    if (shown > 0.005f)
-    {
-        fillArc.addCentredArc (dial.getCentreX(), dial.getCentreY(), d * 0.5f - 6.0f, d * 0.5f - 6.0f, 0.0f, a0, a0 + (a1 - a0) * shown, true);
-        g.setColour (accent.withAlpha (alpha));
-        g.strokePath (fillArc, juce::PathStrokeType (9.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-
-    // chrome cap with a pointer
-    auto cap = dial.reduced (d * 0.2f);
-    juce::ColourGradient grad (chrome.withAlpha (alpha), cap.getX(), cap.getY(), chromeDark.darker (0.6f).withAlpha (alpha), cap.getRight(), cap.getBottom(), false);
-    g.setGradientFill (grad);
-    g.fillEllipse (cap);
-    g.setColour (juce::Colours::black.withAlpha (0.5f * alpha));
-    g.drawEllipse (cap, 1.5f);
-    const float ang = a0 + (a1 - a0) * shown;
-    const juce::Point<float> c = cap.getCentre();
-    const float rr = cap.getWidth() * 0.5f;
-    g.setColour (obsidian.withAlpha (alpha));
-    g.drawLine (c.x + std::cos (ang - pi * 0.5f) * rr * 0.35f, c.y + std::sin (ang - pi * 0.5f) * rr * 0.35f,
-                c.x + std::cos (ang - pi * 0.5f) * rr * 0.85f, c.y + std::sin (ang - pi * 0.5f) * rr * 0.85f, 4.0f);
-    if (hasKeyboardFocus (false))
-    {
-        g.setColour (chrome);
-        g.drawEllipse (dial.reduced (1.0f), 1.5f);
-    }
+    drawLedDial (g, r.reduced (2.0f), pi * 1.25f, pi * 2.75f, shown, accent, alpha, hover, hasKeyboardFocus (false));
 
     g.setColour (accent.brighter (0.3f).withAlpha (alpha));
     g.setFont (juce::FontOptions (15.0f, juce::Font::bold));
-    g.drawText (isEnabled() ? juce::String (juce::roundToInt (shown * 100.0f)) + " %" : juce::String ("PICK AN ALTER EGO"), valueArea, juce::Justification::centred);
+    g.drawText (isEnabled() ? juce::String (juce::roundToInt (shown * 100.0f)) + " %" : juce::String ("NEEDS ALTER EGO"), valueArea, juce::Justification::centred);
 }
 
 // ---- ScopeStrip ------------------------------------------------------------------------------------------------------------------------
@@ -401,9 +490,35 @@ void ScopeStrip::paint (juce::Graphics& g)
     }
 }
 
-// ---- StatusRing ------------------------------------------------------------------------------------------------------------------------
+// ---- plates and the reactor button -----------------------------------------------------------------------------------------------------
 
-void StatusRing::setState (State s, float p)
+juce::Path makePlatePath (juce::Rectangle<float> r, bool tab)
+{
+    const float c = juce::jmin (9.0f, r.getHeight() * 0.3f);
+    juce::Path p;
+    if (tab)
+    {
+        p.startNewSubPath (r.getX() + c, r.getY());
+        p.lineTo (r.getRight(), r.getY());
+        p.lineTo (r.getRight() - c, r.getBottom());
+        p.lineTo (r.getX(), r.getBottom());
+    }
+    else
+    {
+        p.startNewSubPath (r.getX() + c, r.getY());
+        p.lineTo (r.getRight() - c, r.getY());
+        p.lineTo (r.getRight(), r.getY() + c);
+        p.lineTo (r.getRight(), r.getBottom() - c);
+        p.lineTo (r.getRight() - c, r.getBottom());
+        p.lineTo (r.getX() + c, r.getBottom());
+        p.lineTo (r.getX(), r.getBottom() - c);
+        p.lineTo (r.getX(), r.getY() + c);
+    }
+    p.closeSubPath();
+    return p;
+}
+
+void ReactorButton::setState (AutoState s, float p)
 {
     p = juce::jlimit (0.0f, 1.0f, std::isfinite (p) ? p : 0.0f);
     if (s != state || ! settled (p, progress))
@@ -414,64 +529,68 @@ void StatusRing::setState (State s, float p)
     }
 }
 
-void StatusRing::tick (float dt)
+void ReactorButton::tick (float dt)
 {
-    if (motion && state == State::waiting)
+    if (motion && state == AutoState::waiting)
     {
-        spin += dt * 4.0f;
+        spin += dt * 9.0f;
         repaint();
     }
 }
 
-void StatusRing::paint (juce::Graphics& g)
+void ReactorButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    auto r = getLocalBounds().toFloat().reduced (6.0f);
-    const auto c = r.getCentre();
-    const float rad = r.getWidth() * 0.5f;
-    const auto col = state == State::error ? pink : (state == State::idle ? chromeDark : (state == State::ready ? lime : violet));
-    juce::Path ring;
-    ring.addCentredArc (c.x, c.y, rad, rad, 0.0f, 0.0f, 2.0f * pi, true);
-    g.setColour (juce::Colour (0xff2a2a36));
-    g.strokePath (ring, juce::PathStrokeType (6.0f));
+    const float alpha = isEnabled() ? 1.0f : 0.45f;
+    const auto area = getLocalBounds().toFloat();
+    const float d = juce::jmin (area.getWidth(), area.getHeight());
+    const auto c = area.getCentre();
+    const float outer = d * 0.5f - 2.0f, segLen = d * 0.085f, segW = d * 0.052f;
+    constexpr int numSegments = 24;
+    const auto ringColour = state == AutoState::error ? pink : lime;
 
-    juce::Path arc;
-    switch (state)
+    juce::Path seg;
+    seg.addRoundedRectangle (c.x - segW * 0.5f, c.y - outer, segW, segLen, segW * 0.35f);
+    for (int i = 0; i < numSegments; ++i)
     {
-        case State::idle:
-            g.setColour (chromeDark);
-            g.fillEllipse (c.x - 4.0f, c.y - 4.0f, 8.0f, 8.0f);
-            break;
-        case State::waiting:
-            arc.addCentredArc (c.x, c.y, rad, rad, 0.0f, spin, spin + 1.2f, true);
-            g.setColour (col);
-            g.strokePath (arc, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            break;
-        case State::working:
-            if (progress > 0.01f)
-            {
-                arc.addCentredArc (c.x, c.y, rad, rad, 0.0f, 0.0f, 2.0f * pi * progress, true);
-                g.setColour (col);
-                g.strokePath (arc, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            }
-            break;
-        case State::ready:
+        float level = 0.30f; // dim
+        switch (state)
         {
-            g.setColour (col);
-            g.strokePath (ring, juce::PathStrokeType (6.0f));
-            juce::Path tick2;
-            tick2.startNewSubPath (c.x - rad * 0.4f, c.y);
-            tick2.lineTo (c.x - rad * 0.1f, c.y + rad * 0.32f);
-            tick2.lineTo (c.x + rad * 0.45f, c.y - rad * 0.32f);
-            g.strokePath (tick2, juce::PathStrokeType (5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-            break;
+            case AutoState::idle:    level = 0.30f; break;
+            case AutoState::waiting: { const float head = std::fmod (spin, (float) numSegments); float dist = head - (float) i; if (dist < 0.0f) dist += (float) numSegments; level = dist < 6.0f ? 1.0f - dist / 7.0f : 0.20f; if (! motion) level = i < 6 ? 0.9f : 0.2f; break; }
+            case AutoState::working: level = (float) (i + 1) / (float) numSegments <= progress + 0.001f ? 1.0f : 0.20f; break;
+            case AutoState::ready:   level = 1.0f; break;
+            case AutoState::error:   level = 1.0f; break;
         }
-        case State::error:
-            g.setColour (col);
-            g.strokePath (ring, juce::PathStrokeType (6.0f));
-            g.drawLine (c.x - rad * 0.35f, c.y - rad * 0.35f, c.x + rad * 0.35f, c.y + rad * 0.35f, 5.0f);
-            g.drawLine (c.x + rad * 0.35f, c.y - rad * 0.35f, c.x - rad * 0.35f, c.y + rad * 0.35f, 5.0f);
-            break;
+        const auto rot = juce::AffineTransform::rotation (2.0f * pi * (float) i / (float) numSegments, c.x, c.y);
+        if (level > 0.6f)
+        {
+            juce::Path glow;
+            glow.addRoundedRectangle (c.x - segW, c.y - outer - segW * 0.4f, segW * 2.0f, segLen + segW * 0.8f, segW * 0.8f);
+            g.setColour (ringColour.withAlpha (0.22f * alpha * level));
+            g.fillPath (glow, rot);
+        }
+        g.setColour ((level > 0.25f ? ringColour : juce::Colour (0xff1c2412)).withAlpha (alpha * juce::jlimit (0.25f, 1.0f, level)));
+        g.fillPath (seg, rot);
     }
+
+    // the core: a lime sphere that sinks when pressed
+    const float coreR = d * 0.5f - segLen - d * 0.09f;
+    const float lift = down ? 2.0f : 7.0f;
+    g.setColour (juce::Colour (0xff3f5b00).withAlpha (alpha));
+    g.fillEllipse (c.x - coreR, c.y - coreR + lift, coreR * 2.0f, coreR * 2.0f);
+    const float oy = down ? 5.0f : 0.0f;
+    juce::ColourGradient core (juce::Colour (0xfff1ffb8).withAlpha (alpha), c.x - coreR * 0.3f, c.y - coreR * 0.5f + oy, juce::Colour (0xff5f8a00).withAlpha (alpha), c.x + coreR, c.y + coreR + oy, true);
+    core.addColour (0.45, lime.withAlpha (alpha));
+    g.setGradientFill (core);
+    g.fillEllipse (c.x - coreR, c.y - coreR + oy, coreR * 2.0f, coreR * 2.0f);
+    if (highlighted || hasKeyboardFocus (false))
+    {
+        g.setColour (hasKeyboardFocus (false) ? chrome : juce::Colours::white.withAlpha (0.5f));
+        g.drawEllipse (c.x - coreR - 2.0f, c.y - coreR - 2.0f + oy, coreR * 2.0f + 4.0f, coreR * 2.0f + 4.0f, 1.4f);
+    }
+    g.setColour (juce::Colour (0xff0b1400).withAlpha (alpha));
+    g.setFont (juce::FontOptions (juce::jlimit (11.0f, 17.0f, d * 0.115f), juce::Font::bold));
+    g.drawFittedText (getButtonText().replaceFirstOccurrenceOf (" ", "\n"), juce::Rectangle<int> ((int) (c.x - coreR), (int) (c.y - coreR * 0.5f + oy), (int) (coreR * 2.0f), (int) coreR), juce::Justification::centred, 2);
 }
 
 // ---- PlaygroundLookAndFeel -------------------------------------------------------------------------------------------------------------
@@ -503,66 +622,39 @@ juce::Font PlaygroundLookAndFeel::getTextButtonFont (juce::TextButton&, int h)
 
 void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& bg, bool highlighted, bool down)
 {
-    auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+    auto r = b.getLocalBounds().toFloat().reduced (1.0f);
     const bool on = b.getToggleState();
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
     const auto base = on ? b.findColour (juce::TextButton::buttonOnColourId) : bg;
+    const bool tab = b.getProperties().getWithDefault ("shape", "plate").toString() == "tab";
     if (on || highlighted)
-        drawGlow (g, r.reduced (2.0f), base, 6.0f, (on ? 0.8f : 0.4f) * alpha);
+        drawGlow (g, r.reduced (3.0f), base, 6.0f, (on ? 0.7f : 0.35f) * alpha);
     if (down)
         r = r.reduced (1.5f);
+    const auto plate = makePlatePath (r, tab);
     juce::ColourGradient grad (base.brighter (highlighted ? 0.35f : 0.18f).withAlpha (alpha), r.getX(), r.getY(),
                                base.darker (down ? 0.5f : 0.25f).withAlpha (alpha), r.getX(), r.getBottom(), false);
     g.setGradientFill (grad);
-    g.fillRoundedRectangle (r, 9.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.08f * alpha));
-    g.fillRoundedRectangle (r.withHeight (r.getHeight() * 0.45f).reduced (2.0f, 1.0f), 7.0f);
+    g.fillPath (plate);
+    {
+        const juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (plate, {});
+        g.setColour (juce::Colours::white.withAlpha (0.08f * alpha));
+        g.fillRect (r.withHeight (r.getHeight() * 0.45f));
+    }
     g.setColour ((on ? base.brighter (0.4f) : chromeDark).withAlpha (alpha));
-    g.drawRoundedRectangle (r, 9.0f, 1.3f);
+    g.strokePath (plate, juce::PathStrokeType (1.4f));
     if (b.hasKeyboardFocus (true))
     {
         g.setColour (chrome);
-        g.drawRoundedRectangle (r.expanded (2.0f), 10.0f, 1.4f);
+        g.strokePath (makePlatePath (r.expanded (2.5f), tab), juce::PathStrokeType (1.4f));
     }
 }
 
 void PlaygroundLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider& s)
 {
-    const auto accent = s.findColour (juce::Slider::rotarySliderFillColourId);
-    const float alpha = s.isEnabled() ? 1.0f : 0.4f;
-    auto area = juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (3.0f);
-    const float d = juce::jmin (area.getWidth(), area.getHeight());
-    auto dial = juce::Rectangle<float> (d, d).withCentre (area.getCentre());
-    const float thick = juce::jmax (3.0f, d * 0.09f), rad = d * 0.5f - thick;
-    const auto c = dial.getCentre();
-    juce::Path track, value;
-    track.addCentredArc (c.x, c.y, rad, rad, 0.0f, startAngle, endAngle, true);
-    g.setColour (juce::Colour (0xff2a2a36).withAlpha (alpha));
-    g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    const float ang = startAngle + (endAngle - startAngle) * pos;
-    if (pos > 0.003f)
-    {
-        value.addCentredArc (c.x, c.y, rad, rad, 0.0f, startAngle, ang, true);
-        g.setColour (accent.withAlpha (alpha * 0.25f));
-        g.strokePath (value, juce::PathStrokeType (thick + 4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        g.setColour (accent.withAlpha (alpha));
-        g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    auto cap = dial.reduced (d * 0.22f);
-    juce::ColourGradient grad (chrome.withAlpha (alpha), cap.getX(), cap.getY(), chromeDark.darker (0.7f).withAlpha (alpha), cap.getRight(), cap.getBottom(), false);
-    g.setGradientFill (grad);
-    g.fillEllipse (cap);
-    g.setColour (juce::Colours::black.withAlpha (0.45f * alpha));
-    g.drawEllipse (cap, 1.2f);
-    const float r2 = cap.getWidth() * 0.5f;
-    g.setColour (obsidian.withAlpha (alpha));
-    g.drawLine (c.x + std::cos (ang - pi * 0.5f) * r2 * 0.3f, c.y + std::sin (ang - pi * 0.5f) * r2 * 0.3f,
-                c.x + std::cos (ang - pi * 0.5f) * r2 * 0.88f, c.y + std::sin (ang - pi * 0.5f) * r2 * 0.88f, juce::jmax (2.0f, d * 0.045f));
-    if (s.hasKeyboardFocus (false))
-    {
-        g.setColour (chrome);
-        g.drawEllipse (dial.reduced (0.5f), 1.2f);
-    }
+    drawLedDial (g, juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h).reduced (2.0f), startAngle, endAngle, pos,
+                 s.findColour (juce::Slider::rotarySliderFillColourId), s.isEnabled() ? 1.0f : 0.4f, s.isMouseOverOrDragging() ? 1.0f : 0.0f, s.hasKeyboardFocus (false));
 }
 
 void PlaygroundLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float minPos, float maxPos, juce::Slider::SliderStyle style, juce::Slider& s)

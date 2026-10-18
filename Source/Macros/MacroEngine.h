@@ -34,4 +34,17 @@ void apply (Command, SoundState&);
 // MORE SPACE  SPACE macro +15 points
 // HARDER TUNE tune_on, tune_strength +10 % (max 100), tune_speed -8 ms (min 0). Switching Pitch Tune on adds ~31 ms of reported latency.
 // WEIRDER     mut_on, mut_amount +15 %, mut_character +10 % (max 100): more Vocal Mutation
+
+// Tuning styles for the TUNE page: three fixed settings of Pitch Tune's own STRENGTH and SPEED. They never touch key or scale (those are the user's).
+//   NATURAL  tune_strength 50 %, tune_speed 80 ms   (gentle, slow glide)
+//   LIGHT    tune_strength 75 %, tune_speed 35 ms   (firm, still smooth)
+//   HARD     tune_strength 100 %, tune_speed 0 ms   (instant snap, the "hard tune" sound)
+// Applying one switches Pitch Tune on (which adds ~31 ms of reported latency). The style is READ BACK from the two values (+-3 % and +-5 ms), so
+// moving the knobs by hand correctly shows no style selected (-1).
+enum class TuneStyle { natural, light, hard };
+constexpr int numTuneStyles = 3;
+const char* tuneStyleLabel (TuneStyle);
+const char* tuneStyleDescription (TuneStyle);
+void apply (TuneStyle, SoundState&);
+int readTuneStyle (const SoundState&); // 0..2, or -1 when Pitch Tune is off or the values match no style
 }

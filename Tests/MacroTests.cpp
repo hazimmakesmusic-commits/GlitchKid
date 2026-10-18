@@ -186,21 +186,50 @@ struct MacroTests : public juce::UnitTest
         beginTest ("UI preferences: saved with the session, default when absent, not part of a sound, preset or A/B");
         {
             GlitchKidProcessor a;
-            expect (a.getUiFlag ("uiMotion", true) && ! a.getUiFlag ("uiLabOpen", false));
+            expect (a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiPage", 0) == 0 && a.getUiInt ("uiCategory", 0) == 0);
             const auto before = a.captureSoundState();
             a.setUiFlag ("uiMotion", false);
-            a.setUiFlag ("uiLabOpen", true);
+            a.setUiInt ("uiPage", 2);
+            a.setUiInt ("uiCategory", 3);
             expectEquals ((int) a.captureSoundState().values.size(), (int) before.values.size());
             juce::MemoryBlock mb;
             a.getStateInformation (mb);
             GlitchKidProcessor b;
             b.setStateInformation (mb.getData(), (int) mb.getSize());
-            expect (! b.getUiFlag ("uiMotion", true) && b.getUiFlag ("uiLabOpen", false));
+            expect (! b.getUiFlag ("uiMotion", true) && b.getUiInt ("uiPage", 0) == 2 && b.getUiInt ("uiCategory", 0) == 3);
             auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ui-" + juce::String::toHexString (juce::Random().nextInt64()));
             glitchkid::PresetController c (a, glitchkid::PresetStore (dir));
             c.loadFactory (0);
-            expect (! a.getUiFlag ("uiMotion", true) && a.getUiFlag ("uiLabOpen", false), "loading a preset leaves the UI preferences alone");
+            expect (! a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiPage", 0) == 2, "loading a preset leaves the UI preferences alone");
             dir.deleteRecursively();
+        }
+
+        beginTest ("tuning styles: fixed strength/speed, never touch key or scale, read back correctly, custom values show no style");
+        {
+            GlitchKidProcessor p;
+            const auto base = p.captureSoundState();
+            for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
+            {
+                auto s = base;
+                glitchkid::macros::apply ((glitchkid::macros::TuneStyle) i, s);
+                expect (inRange (p, s));
+                for (const auto& id : changedIds (base, s))
+                    expect (id == "tune_on" || id == "tune_strength" || id == "tune_speed", id);
+                expectEquals (glitchkid::macros::readTuneStyle (s), i);
+                p.applyParameterChanges (s);
+                expectEquals (glitchkid::macros::readTuneStyle (p.captureSoundState()), i); // survives the parameter quantisation
+            }
+            auto h = base, n = base;
+            glitchkid::macros::apply (glitchkid::macros::TuneStyle::hard, h);
+            glitchkid::macros::apply (glitchkid::macros::TuneStyle::natural, n);
+            expect (h.get ("tune_strength", 0.0f) > n.get ("tune_strength", 100.0f) && h.get ("tune_speed", 9.0f) < n.get ("tune_speed", 0.0f), "HARD is firmer and faster than NATURAL");
+            auto custom = h;
+            custom.set ("tune_strength", 90.0f);
+            expectEquals (glitchkid::macros::readTuneStyle (custom), -1);
+            custom = h;
+            custom.set ("tune_on", 0.0f);
+            expectEquals (glitchkid::macros::readTuneStyle (custom), -1);
+            expectEquals (glitchkid::macros::readTuneStyle (base), -1);
         }
 
         beginTest ("editor: builds, lays out, animates and renders at several sizes, with the LAB closed and open, in every AutoMode state");
@@ -227,65 +256,149 @@ struct MacroTests : public juce::UnitTest
                 }
             };
 
-            for (bool lab : { false, true })
+            auto vocalBlocks = [] (GlitchKidProcessor& p, double seconds)
             {
-                GlitchKidProcessor p;
-                p.setUiFlag ("uiLabOpen", lab);
-                p.prepareToPlay (48000.0, 480);
-                std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-                expect (ed != nullptr);
-                const juce::String tag = lab ? "lab" : "home";
-                snapshot (*ed, tag + "_default");
-
-                // resize: the layout keeps its aspect and must not crash at the limits
-                const int w0 = ed->getWidth(), h0 = ed->getHeight();
-                for (int w : { w0 / 2 + 10, w0, w0 * 3 / 2 - 10 })
-                {
-                    ed->setSize (w, w * h0 / w0);
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
-                }
-                ed->setSize (w0, h0);
-
-                // load a Sound World like the card does, then listen to a vocal and finish the analysis
-                auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ed-" + juce::String::toHexString (juce::Random().nextInt64()));
-                glitchkid::PresetController c (p, glitchkid::PresetStore (dir));
-                c.loadFactory (0);
-                snapshot (*ed, tag + "_astro_loaded");
-
-                p.getAnalyzer().start();
-                const auto x = vocalish (48000.0, 4.0);
+                const auto x = vocalish (48000.0, seconds);
                 juce::MidiBuffer midi;
                 for (size_t pos = 0; pos + 480 <= x.size(); pos += 480)
                 {
                     th::Buf b (2, 480);
                     for (int i = 0; i < 480; ++i) { b.setSample (0, i, x[pos + (size_t) i]); b.setSample (1, i, x[pos + (size_t) i]); }
                     p.processBlock (b, midi);
-                    if (pos == 480 * 40)
-                        snapshot (*ed, tag + "_listening");
                 }
-                p.getAnalyzer().stop();
-                th::Buf b (2, 480);
-                p.processBlock (b, midi);
-                snapshot (*ed, tag + "_ready");
-                p.applyAutoMode (0.7f);
-                snapshot (*ed, tag + "_applied");
+            };
 
-                th::setParam (p, "bypass", 1.0f);
-                snapshot (*ed, tag + "_dry");
-                th::setParam (p, "bypass", 0.0f);
+            // every page, and every MODIFY category, renders
+            for (int pg = 0; pg < 3; ++pg)
+                for (int cat = 0; cat < (pg == 2 ? 5 : 1); ++cat)
+                {
+                    GlitchKidProcessor p;
+                    p.setUiInt ("uiPage", pg);
+                    p.setUiInt ("uiCategory", cat);
+                    p.prepareToPlay (48000.0, 480);
+                    std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                    expect (ed != nullptr);
+                    snapshot (*ed, "page" + juce::String (pg) + (pg == 2 ? "_cat" + juce::String (cat) : juce::String()));
+                }
 
-                p.setUiFlag ("uiMotion", false);
-                snapshot (*ed, tag + "_still");
+            // resizing keeps the layout (and does not crash) at the limits
+            {
+                GlitchKidProcessor p;
+                p.setUiInt ("uiPage", 2);
+                p.setUiInt ("uiCategory", 3);
+                std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                const int w0 = ed->getWidth(), h0 = ed->getHeight();
+                for (int w : { w0 * 3 / 5 + 10, w0, w0 * 3 / 2 - 10 })
+                {
+                    ed->setSize (w, w * h0 / w0);
+                    snapshot (*ed, "resized_" + juce::String (w));
+                }
+            }
 
-                // an error state: too short
+            // navigation: the real buttons switch pages, and each page shows only its own controls
+            {
+                GlitchKidProcessor p;
+                p.prepareToPlay (48000.0, 480);
+                std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                auto* content = ed->getChildComponent (0);
+                expect (content != nullptr);
+
+                std::function<juce::TextButton*(juce::Component&, const juce::String&)> findButton = [&] (juce::Component& root, const juce::String& text) -> juce::TextButton*
+                {
+                    for (auto* c : root.getChildren())
+                    {
+                        if (auto* b = dynamic_cast<juce::TextButton*> (c); b != nullptr && b->getButtonText() == text)
+                            return b;
+                        if (auto* r = findButton (*c, text))
+                            return r;
+                    }
+                    return nullptr;
+                };
+                auto visible = [&] (const juce::String& text) { auto* b = findButton (*content, text); return b != nullptr && b->isVisible(); };
+                auto click = [&] (const juce::String& text)
+                {
+                    auto* b = findButton (*content, text);
+                    expect (b != nullptr && b->isVisible(), "button '" + text + "' is there to click");
+                    if (b != nullptr)
+                    {
+                        b->triggerClick(); // posts the click: let the message loop deliver it
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    }
+                };
+
+                // first launch: TUNE
+                expect (visible ("NEXT  >") && visible ("HARD") && ! visible ("ANALYZE VOCAL") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
+                expect (visible ("1  TUNE") && visible ("2  AUTO") && visible ("3  MODIFY"), "the three steps are always shown");
+                expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
+
+                click ("HARD"); // a real action: sets Pitch Tune
+                expectEquals (th::getParam (p, "tune_on"), 1.0f);
+                expectEquals (th::getParam (p, "tune_strength"), 100.0f);
+                expectEquals (th::getParam (p, "tune_speed"), 0.0f);
+
+                click ("NEXT  >");
+                expectEquals (p.getUiInt ("uiPage", -1), 1);
+                expect (visible ("ANALYZE VOCAL") && visible ("APPLY SOUND") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
+
+                click ("DRY");
+                expectEquals (th::getParam (p, "bypass"), 1.0f);
+                click ("PROCESSED");
+                expectEquals (th::getParam (p, "bypass"), 0.0f);
+
+                click ("MODIFY  >");
+                expectEquals (p.getUiInt ("uiPage", -1), 2);
+                expect (visible ("PITCH & KEY") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("ANALYZE VOCAL"));
+
+                // each category shows only its own controls (checked with the Alter Ego buttons and the DRY/PROCESSED switch as markers)
+                click ("CHARACTER");
+                expectEquals (p.getUiInt ("uiCategory", -1), 4);
+                expect (visible ("SURPRISE ME") && visible ("CELESTIAL") && ! visible ("HARD"));
+                click ("PITCH & KEY");
+                expect (visible ("HARD") && ! visible ("SURPRISE ME") && ! visible ("CELESTIAL"));
+                click ("TONE");
+                expect (! visible ("HARD") && ! visible ("SURPRISE ME") && visible ("DARKER") && visible ("RESET"), "the footer stays, the category controls change");
+
+                // a quick tweak is a real parameter change
+                const float before = th::getParam (p, "eq_hi_gain");
+                click ("DARKER");
+                expect (th::getParam (p, "eq_hi_gain") < before - 1.0f);
+
+                // reset asks first; the preset system underneath is the existing one
+                click ("<  BACK TO AUTO");
+                expect (visible ("ANALYZE VOCAL"));
+                click ("1  TUNE");
+                expect (visible ("NEXT  >"));
+            }
+
+            // the AUTO page in every AutoMode state, a loaded Sound World, the dry state and still mode
+            {
+                GlitchKidProcessor p;
+                p.setUiInt ("uiPage", 1);
+                p.prepareToPlay (48000.0, 480);
+                std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ed-" + juce::String::toHexString (juce::Random().nextInt64()));
+                glitchkid::PresetController c (p, glitchkid::PresetStore (dir));
+                c.loadFactory (0);
+                snapshot (*ed, "auto_world_loaded");
                 p.getAnalyzer().start();
+                vocalBlocks (p, 1.0);
+                snapshot (*ed, "auto_listening");
+                vocalBlocks (p, 12.0);
+                snapshot (*ed, "auto_ready");
+                p.applyAutoMode (0.7f);
+                snapshot (*ed, "auto_applied");
+                th::setParam (p, "bypass", 1.0f);
+                snapshot (*ed, "auto_dry");
+                th::setParam (p, "bypass", 0.0f);
+                p.setUiFlag ("uiMotion", false);
+                snapshot (*ed, "auto_still");
+                p.getAnalyzer().start();
+                juce::MidiBuffer midi;
                 th::Buf quiet (2, 480);
                 p.processBlock (quiet, midi);
                 p.getAnalyzer().stop();
                 p.processBlock (quiet, midi);
-                snapshot (*ed, tag + "_error");
-
-                // mono host
+                snapshot (*ed, "auto_error");
                 ed.reset();
                 dir.deleteRecursively();
             }
