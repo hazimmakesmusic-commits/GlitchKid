@@ -497,6 +497,9 @@ void GlitchKidEditor::openPresetMenu()
     juce::PopupMenu menu;
     menu.addSectionHeader ("FACTORY");
     menu.addItem (1, glitchkid::PresetController::factoryDefaultName);
+    for (int i = 0; i < glitchkid::FactoryPresets::count; ++i)
+        menu.addItem (2 + i, glitchkid::FactoryPresets::info (i).name, true,
+                      juce::String (glitchkid::FactoryPresets::info (i).name).equalsIgnoreCase (glitchProcessor.getPresetName()));
     menu.addSeparator();
     menu.addSectionHeader ("YOUR PRESETS");
     const auto names = presets.getStore().listUserPresets();
@@ -510,7 +513,9 @@ void GlitchKidEditor::openPresetMenu()
     {
         if (safe == nullptr || choice <= 0)
             return;
-        const auto outcome = choice == 1 ? safe->presets.loadFactoryDefault() : safe->presets.loadUser (names[choice - 100]);
+        const auto outcome = choice == 1 ? safe->presets.loadFactoryDefault()
+                           : choice < 100 ? safe->presets.loadFactory (choice - 2)
+                                          : safe->presets.loadUser (names[choice - 100]);
         safe->showStatus (outcome.message);
         safe->refreshAlterEgos();
         safe->shownPresetText = {};
@@ -522,7 +527,7 @@ void GlitchKidEditor::askSavePreset()
 {
     const auto current = glitchProcessor.getPresetName();
     auto* w = new juce::AlertWindow ("Save preset", "Name this sound (letters, numbers and spaces work best):", juce::MessageBoxIconType::NoIcon, this);
-    w->addTextEditor ("name", current == glitchkid::PresetController::factoryDefaultName ? juce::String() : current, "Name:");
+    w->addTextEditor ("name", glitchkid::PresetController::isFactoryName (current) ? juce::String() : current, "Name:");
     w->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
     w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
     juce::Component::SafePointer<GlitchKidEditor> safe (this);

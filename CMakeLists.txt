@@ -43,6 +43,7 @@ target_sources(GlitchKid PRIVATE
     Source/Presets/SoundState.cpp
     Source/Presets/PresetStore.cpp
     Source/Presets/PresetController.cpp
+    Source/Presets/FactoryPresets.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
     Source/DSP/PitchCorrection/ScaleQuantizer.cpp
     Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
@@ -84,6 +85,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/FormantTuneTests.cpp
         Tests/MutationTests.cpp
         Tests/PresetTests.cpp
+        Tests/FactoryPresetTests.cpp
         Tests/DoublingHarmonyTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
@@ -102,6 +104,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Presets/SoundState.cpp
         Source/Presets/PresetStore.cpp
         Source/Presets/PresetController.cpp
+        Source/Presets/FactoryPresets.cpp
         Source/AlterEgos.cpp
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)

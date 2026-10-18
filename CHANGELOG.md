@@ -3,6 +3,9 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.10: **three built-in artist-style presets** in the preset menu (FACTORY section): TRAVIS SCOTT STYLE (ASTRO MODE: dark, spacious melodic rap), JUICE WRLD STYLE (HEARTBREAK: intimate, clear, moderate effects), CHEROMANI+ STYLE (DIGITAL ALTER EGO: hard Pitch Tune, FORMANT +3 st, Mutation, bright and wide).
+  They are original starting points built only from existing controls (no new DSP, no new parameters, IDs unchanged), defined as overrides on the Factory Default sound in `Source/Presets/FactoryPresets.cpp` (names in one table), so every parameter is always set and loading is repeatable. There is no reverb in GlitchKid: Liquid Echo + Dimension + Doubler stand in for "atmosphere".
+  Loading reports the Pitch Tune delay (and FORMANT delay in the third) to the host. Built-in names are reserved: a user preset cannot be saved under them. Tests: `Tests/FactoryPresetTests.cpp`. Naming real artists in a product that is sold carries trademark / implied-endorsement risk: see the report.
 - Stage 4.8: **Vocal Doubler and Harmony voice.**
   - **Vocal Doubler** (`dbl_on`, `dbl_amount`, `dbl_width`, `dbl_detune`, `dbl_timing`): a SYNTHETIC double, not a second recorded take. Two copies of the lead, 0.85x and 1.25x TIMING (5-45 ms) behind it, each drifting on its own smooth random path (so the pitch wobbles
     by up to DETUNE cents, 0-25, and the pattern never repeats), each softened by an 8 kHz low-pass; WIDTH 100 % puts them in the stereo sides only, so the mono sum equals the dry input exactly. Zero latency, bit-exact when off, about +0.2 dB at the defaults

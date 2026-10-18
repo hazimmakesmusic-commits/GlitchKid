@@ -8,6 +8,21 @@ PresetController::Outcome PresetController::loadFactoryDefault()
     return { true, false, factoryDefaultName, "Factory default sound restored." };
 }
 
+PresetController::Outcome PresetController::loadFactory (int index)
+{
+    if (index < 0 || index >= FactoryPresets::count)
+        return { false, false, {}, "That factory preset does not exist." };
+    const juce::String name = FactoryPresets::info (index).name;
+    processor.applyPreset (name, FactoryPresets::build (index, processor.factoryDefaultState()));
+    return { true, false, name, "Loaded \"" + name + "\"." };
+}
+
+bool PresetController::isFactoryName (const juce::String& name)
+{
+    const auto n = name.trim();
+    return n.equalsIgnoreCase (factoryDefaultName) || FactoryPresets::indexOfName (n) >= 0;
+}
+
 PresetController::Outcome PresetController::loadUser (const juce::String& name)
 {
     SoundState s;
@@ -23,6 +38,8 @@ PresetController::Outcome PresetController::saveAs (const juce::String& name, bo
     const auto clean = PresetStore::sanitizeName (name);
     if (clean.isEmpty())
         return { false, false, {}, "Please type a name with letters or numbers." };
+    if (isFactoryName (clean))
+        return { false, false, clean, "\"" + clean + "\" is a built-in preset name. Please choose another name." };
     if (store.exists (clean) && ! overwrite)
         return { false, true, clean, "A preset called \"" + clean + "\" already exists." };
 

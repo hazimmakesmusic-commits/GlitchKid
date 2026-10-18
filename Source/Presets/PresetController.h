@@ -1,5 +1,6 @@
 #pragma once
 #include "PresetStore.h"
+#include "FactoryPresets.h"
 #include "../PluginProcessor.h"
 
 namespace glitchkid
@@ -24,6 +25,8 @@ public:
 
     const PresetStore& getStore() const { return store; }
     Outcome loadFactoryDefault();
+    Outcome loadFactory (int index);                            // a built-in preset (see FactoryPresets.h)
+    static bool isFactoryName (const juce::String& name);       // "Factory Default" or a built-in preset name: reserved, cannot be saved over
     Outcome loadUser (const juce::String& name);
     Outcome saveAs (const juce::String& name, bool overwrite); // saves the live sound
     Outcome deleteUser (const juce::String& name);
