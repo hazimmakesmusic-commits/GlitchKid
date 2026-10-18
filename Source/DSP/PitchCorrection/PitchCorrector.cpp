@@ -60,6 +60,7 @@ void PitchCorrector::setSettings (const Settings& n)
     s.minConfidence = std::isfinite (s.minConfidence) ? std::clamp (s.minConfidence, 0.0f, 1.0f) : 0.85f;
     if (! (s.refA4Hz > 300.0f && s.refA4Hz < 600.0f))
         s.refA4Hz = 440.0f;
+    s.fixedShiftSemitones = std::isfinite (s.fixedShiftSemitones) ? std::clamp (s.fixedShiftSemitones, -12.0f, 12.0f) : 0.0f;
 }
 
 void PitchCorrector::onNewEstimate()
@@ -91,8 +92,16 @@ void PitchCorrector::onNewEstimate()
         const float hz = (float) (sr / periodNow);
         const float midi = 69.0f + 12.0f * std::log2 (hz / s.refA4Hz);
         tel.detectedMidi = midi;
-        targetNote = ScaleQuantizer::select (midi, s.key, s.scale, targetNote);
-        targetCorrSemis = (targetNote - midi) * s.strength;
+        if (s.fixedShift)
+        {
+            targetNote = -1.0f; // no note is chased: the voice simply moves by a constant interval
+            targetCorrSemis = s.fixedShiftSemitones;
+        }
+        else
+        {
+            targetNote = ScaleQuantizer::select (midi, s.key, s.scale, targetNote);
+            targetCorrSemis = (targetNote - midi) * s.strength;
+        }
     }
     else if (samplesSinceVoiced > (long) (s.holdMs * 0.001 * sr))
     {

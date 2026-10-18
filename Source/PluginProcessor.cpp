@@ -118,6 +118,27 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mutBlendId, 1 }, "Mutation Blend",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { harmOnId, 1 }, "Harmony On", false));
+    {
+        StringArray intervals;
+        for (int i = 0; i < glitchkid::harmony::numIntervals; ++i)
+            intervals.add (glitchkid::harmony::intervalInfo (i).name);
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { harmIntervalId, 1 }, "Harmony Interval", intervals,
+                                                            glitchkid::harmony::defaultInterval));
+    }
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { harmLevelId, 1 }, "Harmony Level",
+        NormalisableRange<float> (-24.0f, 0.0f, 0.1f), -9.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { dblOnId, 1 }, "Double On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dblAmountId, 1 }, "Double",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dblWidthId, 1 }, "Double Width",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 70.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dblDetuneId, 1 }, "Double Detune",
+        NormalisableRange<float> (0.0f, VocalDoubler::maxDetuneCents, 0.1f), 8.0f, AudioParameterFloatAttributes().withLabel ("cents")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dblTimingId, 1 }, "Double Timing",
+        NormalisableRange<float> (VocalDoubler::minTimingMs, VocalDoubler::maxTimingMs, 0.1f), 18.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { dimOnId, 1 }, "Dimension On", false));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { dimWidthId, 1 }, "Dimension Width",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 60.0f, AudioParameterFloatAttributes().withLabel ("%")));
@@ -163,6 +184,12 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* dimIds[] = { dimOnId, dimWidthId, dimDetuneId, dimDepthId, dimMixId };
     for (int i = 0; i < 5; ++i)
         dimParams[i] = apvts.getRawParameterValue (dimIds[i]);
+    const char* dblIds[] = { dblOnId, dblAmountId, dblWidthId, dblDetuneId, dblTimingId };
+    for (int i = 0; i < 5; ++i)
+        dblParams[i] = apvts.getRawParameterValue (dblIds[i]);
+    const char* harmIds[] = { harmOnId, harmIntervalId, harmLevelId };
+    for (int i = 0; i < 3; ++i)
+        harmParams[i] = apvts.getRawParameterValue (harmIds[i]);
     const char* mutIds[] = { mutOnId, mutAmountId, mutCharacterId, mutBlendId };
     for (int i = 0; i < 4; ++i)
         mutParams[i] = apvts.getRawParameterValue (mutIds[i]);
@@ -194,12 +221,31 @@ glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings(
 int GlitchKidProcessor::getWantedLatencySamples() const
 {
     return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0)
-           + (formantIsOn (formantShift->load()) ? formantLatency : 0);
+           + (formantIsOn (formantShift->load()) ? formantLatency : 0) + (harmParams[0]->load() >= 0.5f ? harmonyLatency : 0);
 }
 
 void GlitchKidProcessor::updateReportedLatency()
 {
     setLatencySamples (getWantedLatencySamples());
+}
+
+DoublerSettings GlitchKidProcessor::readDoublerSettings() const
+{
+    DoublerSettings s;
+    s.on = dblParams[0]->load() >= 0.5f;
+    s.amountPct = dblParams[1]->load();
+    s.widthPct = dblParams[2]->load();
+    s.detuneCents = dblParams[3]->load();
+    s.timingMs = dblParams[4]->load();
+    return s;
+}
+
+glitchkid::harmony::HarmonyVoice::Settings GlitchKidProcessor::readHarmonySettings() const
+{
+    glitchkid::harmony::HarmonyVoice::Settings s;
+    s.semitones = glitchkid::harmony::intervalInfo ((int) std::lround (harmParams[1]->load())).semitones;
+    s.levelDb = harmParams[2]->load();
+    return s;
 }
 
 MutationSettings GlitchKidProcessor::readMutationSettings() const
@@ -547,7 +593,16 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     formantDryDelay.prepare (formantLatency);
     formantBlend.reset (sampleRate, 0.02);
     formantBlend.setCurrentAndTargetValue (formantIsOn (formantShift->load()) ? 1.0f : 0.0f);
+    harmonyLatency = glitchkid::harmony::HarmonyVoice::latencyFor (sampleRate);
+    harmony.setSettings (readHarmonySettings());
+    harmony.prepare (sampleRate);
+    harmonyDryDelay.prepare (harmonyLatency);
+    harmonyBlend.reset (sampleRate, 0.02);
+    harmonyBlend.setCurrentAndTargetValue (harmParams[0]->load() >= 0.5f ? 1.0f : 0.0f);
     updateReportedLatency();
+
+    doubler.setSettings (readDoublerSettings());
+    doubler.prepare (sampleRate);
 
     echo.setSettings (readEchoSettings());
     echo.prepare (sampleRate);
@@ -565,6 +620,8 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     dryBuffer3.setSize (2, dryBuffer.getNumSamples());
     scratchBuffer.setSize (2, dryBuffer.getNumSamples());
     formantBlendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
+    dryBuffer4.setSize (2, dryBuffer.getNumSamples());
+    harmonyBlendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
 }
 
 // Raise a peak value; only the audio thread writes, so a plain load/store is enough.
@@ -690,6 +747,29 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         }
     }
 
+    // Harmony: the same for its own latency (after the Formant step above, so with several stages on the dry path is delayed by all of them).
+    const bool harmonyOn = harmParams[0]->load() >= 0.5f;
+    harmonyBlend.setTargetValue (harmonyOn ? 1.0f : 0.0f);
+    const bool harmonyActive = harmonyOn || harmonyBlend.isSmoothing();
+    for (int ch = 0; ch < dryChannels; ++ch)
+        dryBuffer4.copyFrom (ch, 0, dry, ch, 0, numSamples);
+    juce::AudioBuffer<float> dryLate3 (dryBuffer4.getArrayOfWritePointers(), dryChannels, 0, numSamples);
+    harmonyDryDelay.process (dryLate3); // always fed, so it is valid the moment Harmony is switched on
+    if (harmonyActive)
+    {
+        for (int i = 0; i < numSamples; ++i)
+            harmonyBlendBuffer[(size_t) i] = harmonyBlend.getNextValue();
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = harmonyBlendBuffer[(size_t) i];
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float a = dry.getSample (ch, i), late = dryLate3.getSample (ch, i);
+                dry.setSample (ch, i, b >= 1.0f ? late : a + (late - a) * b);
+            }
+        }
+    }
+
     const bool bypassed = bypass->load() >= 0.5f;
     const float wetTarget = wetAmount (bypassed, mixPercent->load());
     wetMix.setTargetValue (wetTarget);
@@ -703,6 +783,8 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         echo.reset();
         dimension.reset();
         mutation.reset();
+        doubler.reset();
+        harmony.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // keep listening, so un-bypassing has no gap
         pitch.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples); // keep listening, so un-bypassing has no gap
         formantListen (buffer, numChannels, dryChannels, numSamples);
         shownDetectedMidi.store (-1.0f, std::memory_order_relaxed);
@@ -771,9 +853,38 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     else
         formantListen (buffer, numChannels, dryChannels, numSamples); // idle: keep the shifter's history, output discarded
 
+    // Harmony: one fixed-interval voice from the (tuned, formant-shifted) lead. While on it delays the lead by its latency and adds the voice; the
+    // straight-through copy crossfades it in and out like the other latency stages. While off it only listens (cheap).
+    if (harmonyActive)
+    {
+        for (int ch = 0; ch < numChannels; ++ch)
+            dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
+        for (int ch = 0; ch < dryChannels; ++ch)
+            undelayedBuffer.copyFrom (ch, 0, buffer, ch, 0, numSamples);
+        harmony.setSettings (readHarmonySettings());
+        harmony.process (buffer.getArrayOfWritePointers(), numChannels, numSamples);
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float b = harmonyBlendBuffer[(size_t) i];
+            if (b >= 1.0f)
+                continue;
+            for (int ch = 0; ch < dryChannels; ++ch)
+            {
+                const float u = undelayedBuffer.getSample (ch, i), t = buffer.getSample (ch, i);
+                buffer.setSample (ch, i, u + (t - u) * b);
+            }
+        }
+    }
+    else
+        harmony.feed (buffer.getArrayOfReadPointers(), numChannels, numSamples);
+
     // Vocal Mutation: after Pitch Tune and FORMANT (so they hear the clean voice), before the EQ and compressor (which can shape the new partials).
     mutation.setSettings (readMutationSettings());
     mutation.process (buffer);
+
+    // Vocal Doubler: zero latency; after Mutation so the EQ and compressor treat the doubles as part of the vocal.
+    doubler.setSettings (readDoublerSettings());
+    doubler.process (buffer);
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),

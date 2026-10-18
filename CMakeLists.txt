@@ -38,6 +38,8 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/LiquidEcho.cpp
     Source/DSP/Dimension.cpp
     Source/DSP/VocalMutation.cpp
+    Source/DSP/VocalDoubling/VocalDoubler.cpp
+    Source/DSP/Harmony/HarmonyVoice.cpp
     Source/Presets/SoundState.cpp
     Source/Presets/PresetStore.cpp
     Source/Presets/PresetController.cpp
@@ -82,6 +84,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/FormantTuneTests.cpp
         Tests/MutationTests.cpp
         Tests/PresetTests.cpp
+        Tests/DoublingHarmonyTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -94,6 +97,8 @@ if(GLITCHKID_BUILD_TESTS)
         Source/DSP/LiquidEcho.cpp
         Source/DSP/Dimension.cpp
         Source/DSP/VocalMutation.cpp
+        Source/DSP/VocalDoubling/VocalDoubler.cpp
+        Source/DSP/Harmony/HarmonyVoice.cpp
         Source/Presets/SoundState.cpp
         Source/Presets/PresetStore.cpp
         Source/Presets/PresetController.cpp
@@ -139,6 +144,26 @@ if(GLITCHKID_BUILD_FORMANTLAB)
         Source/DSP/FormantShifting/FormantShifter.cpp)
     target_compile_definitions(FormantLab PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
     target_link_libraries(FormantLab
+        PRIVATE juce::juce_audio_formats
+        PUBLIC  juce::juce_recommended_config_flags
+                juce::juce_recommended_warning_flags)
+endif()
+
+# DoubleLab: command-line listening harness for the Vocal Doubler and the Harmony voice (Stage 4.8).
+#   cmake -S . -B build-double -DGLITCHKID_BUILD_DOUBLELAB=ON && cmake --build build-double --target DoubleLab
+option(GLITCHKID_BUILD_DOUBLELAB "Build the DoubleLab harness" OFF)
+if(GLITCHKID_BUILD_DOUBLELAB)
+    juce_add_console_app(DoubleLab PRODUCT_NAME "DoubleLab")
+    target_sources(DoubleLab PRIVATE
+        Tools/DoubleLab/main.cpp
+        Source/DSP/VocalDoubling/VocalDoubler.cpp
+        Source/DSP/Harmony/HarmonyVoice.cpp
+        Source/DSP/PitchCorrection/YinPitchDetector.cpp
+        Source/DSP/PitchCorrection/ScaleQuantizer.cpp
+        Source/DSP/PitchCorrection/PsolaPitchShifter.cpp
+        Source/DSP/PitchCorrection/PitchCorrector.cpp)
+    target_compile_definitions(DoubleLab PUBLIC JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0)
+    target_link_libraries(DoubleLab
         PRIVATE juce::juce_audio_formats
         PUBLIC  juce::juce_recommended_config_flags
                 juce::juce_recommended_warning_flags)

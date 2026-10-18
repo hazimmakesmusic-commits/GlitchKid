@@ -96,6 +96,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       dimOnAttachment (p.apvts, GlitchKidProcessor::dimOnId, dimOnButton),
       tuneOnAttachment (p.apvts, GlitchKidProcessor::tuneOnId, tuneOnButton),
       mutOnAttachment (p.apvts, GlitchKidProcessor::mutOnId, mutOnButton),
+      dblOnAttachment (p.apvts, GlitchKidProcessor::dblOnId, dblOnButton),
+      harmOnAttachment (p.apvts, GlitchKidProcessor::harmOnId, harmOnButton),
+      harmIntervalAttachment (p.apvts, GlitchKidProcessor::harmIntervalId, harmIntervalBox),
       tuneKeyAttachment (p.apvts, GlitchKidProcessor::tuneKeyId, tuneKeyBox),
       tuneScaleAttachment (p.apvts, GlitchKidProcessor::tuneScaleId, tuneScaleBox),
       blendAttachment (p.apvts, GlitchKidProcessor::mixId, blendSlider),
@@ -317,6 +320,36 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* c : std::initializer_list<juce::Component*> { &mutTitle, &mutReadout, &mutOnButton })
         content.addAndMakeVisible (c);
 
+    // DOUBLE / HARMONY. DOUBLE: a synthetic double (two drifting, delayed copies) for thickness and width; WIDTH 100 is mono-safe; DETUNE = the largest pitch
+    // wobble of a double; TIMING = how far behind the lead the doubles sit. No latency. HARMONY: one voice at a FIXED interval (UP/DOWN is in the name); it is not
+    // scale-aware (a third is always a major or always a minor third); adds the Pitch Tune delay while on.
+    dhTitle.setJustificationType (juce::Justification::centred);
+    dhTitle.setColour (juce::Label::textColourId, violet);
+    dblOnButton.setColour (juce::ToggleButton::tickColourId, lime);
+    harmOnButton.setColour (juce::ToggleButton::tickColourId, pink);
+    dblOnButton.setTooltip ("A synthetic double of the vocal: two slightly late, slightly unsteady copies for thickness and width. Not a second recorded take. No latency.");
+    harmOnButton.setTooltip ("One extra voice at a fixed interval above or below the lead (prototype quality, not scale-aware). Adds about 31 ms of latency while on.");
+    if (auto* choice = dynamic_cast<juce::AudioParameterChoice*> (p.apvts.getParameter (GlitchKidProcessor::harmIntervalId)))
+    {
+        harmIntervalBox.addItemList (choice->choices, 1);
+        harmIntervalBox.setSelectedItemIndex (choice->getIndex(), juce::dontSendNotification);
+    }
+    harmIntervalBox.setTooltip ("How far above (UP) or below (DOWN) the lead the harmony sings, in semitones. A fixed interval: it does not know your key.");
+    harmIntervalLabel.setJustificationType (juce::Justification::centred);
+    harmIntervalLabel.setFont (juce::FontOptions (11.0f));
+    harmNote.setJustificationType (juce::Justification::centredTop);
+    harmNote.setFont (juce::FontOptions (10.0f));
+    harmNote.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    dhKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dblAmountId, "DOUBLE", " %", lime));
+    dhKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dblWidthId, "WIDTH", " %", violet));
+    dhKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dblDetuneId, "DETUNE", " cents", pink));
+    dhKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::dblTimingId, "TIMING", " ms", lime));
+    dhKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::harmLevelId, "HARMONY LEVEL", " dB", pink));
+    for (auto* k : dhKnobs)
+        k->addTo (content);
+    for (auto* c : std::initializer_list<juce::Component*> { &dhTitle, &harmIntervalLabel, &harmNote, &dblOnButton, &harmOnButton, &harmIntervalBox })
+        content.addAndMakeVisible (c);
+
     // Dimension: stereo thickening. WIDTH 0 = centred thickening, 100 = stereo spread; DETUNE = pitch swing in cents.
     dimTitle.setJustificationType (juce::Justification::centred);
     dimTitle.setColour (juce::Label::textColourId, violet);
@@ -378,7 +411,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW / 2, designH / 2, designW * 3 / 2, designH * 3 / 2);
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     refreshAlterEgos();
-    setSize (designW * 68 / 100, designH * 68 / 100);
+    setSize (designW * 62 / 100, designH * 62 / 100);
     timerCallback(); // fill the tempo line immediately
     startTimerHz (30);
 }
@@ -600,6 +633,21 @@ void GlitchKidEditor::timerCallback()
         mutReadout.setText (mutText, juce::dontSendNotification);
     }
 
+    // Harmony note: be honest about the delay it adds.
+    juce::String harmText;
+    {
+        const double sr = glitchProcessor.getSampleRate() > 0.0 ? glitchProcessor.getSampleRate() : 48000.0;
+        const double ms = 1000.0 * (double) glitchkid::harmony::HarmonyVoice::latencyFor (sr) / sr;
+        const bool on = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::harmOnId)->load() >= 0.5f;
+        const auto msText = juce::String (juce::roundToInt (ms));
+        harmText = on ? "adds " + msText + " ms delay\n(fixed interval)" : "adds " + msText + " ms\nwhen on";
+    }
+    if (harmText != shownHarmNote)
+    {
+        shownHarmNote = harmText;
+        harmNote.setText (harmText, juce::dontSendNotification);
+    }
+
     // Always say where the stutter tempo comes from: the host, or the 120 BPM fallback.
     const auto text = glitchProcessor.isStutterTempoFromHost()
                           ? "HOST TEMPO " + juce::String (glitchProcessor.getStutterTempoBpm(), 1) + " BPM"
@@ -620,6 +668,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.drawLine ((float) compDividerX, 90.0f, (float) compDividerX, (float) tuneDividerY - 8.0f);
     g.drawLine (16.0f, (float) tuneDividerY, (float) designW - 16.0f, (float) tuneDividerY);
     g.drawLine (16.0f, (float) mutDividerY, (float) designW - 16.0f, (float) mutDividerY);
+    g.drawLine (16.0f, (float) dhDividerY, (float) designW - 16.0f, (float) dhDividerY);
     g.drawLine (16.0f, (float) echoDividerY, (float) designW - 16.0f, (float) echoDividerY);
     g.drawLine (16.0f, (float) dimDividerY, (float) designW - 16.0f, (float) dimDividerY);
 }
@@ -648,6 +697,21 @@ void GlitchKidEditor::layoutContent()
 
     auto echoArea = r.removeFromBottom (132);
     echoDividerY = echoArea.getY() - 4;
+    auto dhArea = r.removeFromBottom (132); // DOUBLE / HARMONY sits between Vocal Mutation and Liquid Echo
+    dhDividerY = dhArea.getY() - 4;
+    dhTitle.setBounds (dhArea.removeFromTop (20));
+    const int dhCell = dhArea.getWidth() * 2 / 17; // 8.5 cells: switch, 4 knobs, switch, interval (1.5), level knob
+    auto dblSwitch = dhArea.removeFromLeft (dhCell).reduced (4, 0);
+    dblOnButton.setBounds (dblSwitch.removeFromTop (40).withSizeKeepingCentre (dblSwitch.getWidth(), 28));
+    for (int k = 0; k < 4; ++k)
+        dhKnobs[k]->setBounds (dhArea.removeFromLeft (dhCell).reduced (8, 0));
+    auto harmSwitch = dhArea.removeFromLeft (dhCell).reduced (4, 0);
+    harmOnButton.setBounds (harmSwitch.removeFromTop (40).withSizeKeepingCentre (harmSwitch.getWidth(), 28));
+    harmNote.setBounds (harmSwitch.removeFromTop (30));
+    auto intervalCell = dhArea.removeFromLeft (dhCell + dhCell / 2).reduced (8, 0);
+    harmIntervalLabel.setBounds (intervalCell.removeFromTop (14));
+    harmIntervalBox.setBounds (intervalCell.removeFromTop (40).withSizeKeepingCentre (intervalCell.getWidth(), 26));
+    dhKnobs[4]->setBounds (dhArea.removeFromLeft (dhCell).reduced (8, 0));
     auto mutArea = r.removeFromBottom (132); // Vocal Mutation sits between Pitch Tune / FORMANT and the EQ in the signal path; its row is shown above Liquid Echo
     mutDividerY = mutArea.getY() - 4;
     mutTitle.setBounds (mutArea.removeFromTop (20));

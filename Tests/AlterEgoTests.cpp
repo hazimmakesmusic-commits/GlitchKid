@@ -95,8 +95,8 @@ const char* ownedIds[] = { "eq_lo_freq", "eq_lo_gain", "eq_b1_freq", "eq_b1_gain
                            "eq_hi_freq", "eq_hi_gain", "comp_thresh", "comp_ratio", "comp_attack", "comp_release", "comp_knee",
                            "comp_makeup", "sat_drive", "echo_on", "echo_sync", "echo_time", "echo_div", "echo_fb", "echo_tone",
                            "echo_width", "echo_mix", "dim_on", "dim_width", "dim_detune", "dim_depth", "dim_mix",
-                           "mut_on", "mut_amount", "mut_character", "mut_blend" };
-const char* switches[] = { "echo_on", "echo_sync", "echo_time", "echo_div", "dim_on", "mut_on" };
+                           "mut_on", "mut_amount", "mut_character", "mut_blend", "dbl_on", "dbl_amount", "dbl_width", "dbl_detune", "dbl_timing" };
+const char* switches[] = { "echo_on", "echo_sync", "echo_time", "echo_div", "dim_on", "mut_on", "dbl_on" };
 const char* untouched[] = { "gain", "bypass", "mix", "stutter_on", "stutter_rate", "stutter_mix" };
 
 // Every parameter ID that existed before Alter Egos. None may be renamed or removed.
@@ -177,7 +177,7 @@ struct AlterEgoTests : public juce::UnitTest
                             if (auto* c = dynamic_cast<juce::AudioParameterChoice*> (r))
                                 expect (juce::approximatelyEqual (v[i].value, std::round (v[i].value)) && (int) v[i].value < c->choices.size(), id + " choice");
                         }
-                        expect (seen == owned, "exactly the 34 owned parameters (30 effect parameters + the 4 Vocal Mutation parameters)");
+                        expect (seen == owned, "exactly the 39 owned parameters (30 effect parameters + 4 Vocal Mutation + 5 Vocal Doubler)");
                         for (auto* u : untouched)
                             expect (seen.count (u) == 0, juce::String (u) + " is never set by an Alter Ego");
                         expect (valueOf (v, "echo_fb") <= 75.0f && valueOf (v, "sat_drive") <= 16.0f && valueOf (v, "dim_detune") <= 20.0f
@@ -553,9 +553,10 @@ struct AlterEgoTests : public juce::UnitTest
             // No original parameter was renamed or removed. The only additions are the five Pitch Tune parameters (Stage 4.2) and
             // Formant Shift (Stage 4.4), which no Alter Ego may touch (checked in PitchTuneTests.cpp and FormantTuneTests.cpp), and the four
             // Vocal Mutation parameters (Stage 4.5), which Alter Egos do not touch either (checked in MutationTests.cpp).
-            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds) + 10);
+            expectEquals ((int) ids.size(), (int) std::size (allOriginalIds) + 18);
             for (auto* id : { "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed", "formant_shift",
-                              "mut_on", "mut_amount", "mut_character", "mut_blend" })
+                              "mut_on", "mut_amount", "mut_character", "mut_blend", "dbl_on", "dbl_amount", "dbl_width", "dbl_detune",
+                              "dbl_timing", "harm_on", "harm_interval", "harm_level" })
                 expect (ids.count (id) == 1, juce::String ("Pitch Tune parameter present: ") + id);
 
             CountingListener l;

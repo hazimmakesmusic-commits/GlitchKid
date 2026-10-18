@@ -22,12 +22,16 @@
 // is its detuned second voice, and a fixed-Hz shift would fight it): it only switches Mutation OFF (mut_on = 0), so a robotic setting
 // from the previous Alter Ego cannot leak into it, and it leaves MUTATION, CHARACTER and BLEND unaffected (those values are marked
 // inactive). The other four map to Mutation as documented in docs/ARCHITECTURE.md. Surprise Me does not vary Mutation.
+//
+// VOCAL DOUBLER (Stage 4.8): the same rules for the five dbl_* parameters. CELESTIAL (a wide, airy halo), THE CLONE (layered) and ALTERED STATE (loose and
+// unsteady) use it; VOIDWALKER and THE PARASITE only switch it OFF (dbl_on = 0) and leave the other four values alone. The Harmony voice (harm_*) is NOT
+// owned by any Alter Ego: it adds latency while on, and Alter Egos never change latency (Pitch Tune and FORMANT are not touched either).
 namespace AlterEgos
 {
-enum Effect : unsigned { eq = 1, comp = 2, sat = 4, echo = 8, dim = 16, stutter = 32, mut = 64 };
+enum Effect : unsigned { eq = 1, comp = 2, sat = 4, echo = 8, dim = 16, stutter = 32, mut = 64, dbl = 128 };
 
 // The DSP that exists in this build. An Alter Ego is only available when every effect it requires is in this set.
-constexpr unsigned implementedEffects = eq | comp | sat | echo | dim | stutter | mut;
+constexpr unsigned implementedEffects = eq | comp | sat | echo | dim | stutter | mut | dbl;
 
 // value in the parameter's own units (dB, Hz, %, ms, choice index, 0/1). `active` is false when this Alter Ego has no mapping for the parameter:
 // the value is then only a placeholder and the parameter is left exactly as it is (never applied, never compared).
@@ -43,7 +47,7 @@ struct Info
 };
 
 constexpr int count = 5;
-constexpr int numOwned = 34; // every Alter Ego lists exactly these parameters (30 effect parameters + the 4 Vocal Mutation parameters; some entries may be inactive)
+constexpr int numOwned = 39; // every Alter Ego lists exactly these parameters (30 effect parameters + 4 Vocal Mutation + 5 Vocal Doubler parameters; some entries may be inactive)
 
 const Info& info (int index);                // clamped to 0..count-1
 int indexOfId (const char* id);              // -1 if unknown

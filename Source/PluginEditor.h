@@ -50,7 +50,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 1148; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 1280; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -86,6 +86,14 @@ private:
     juce::OwnedArray<ParamKnob> mutKnobs; // mutation, character, blend
     juce::String shownMutText;
     int mutDividerY = 0;
+
+    // DOUBLE / HARMONY row: the Vocal Doubler (DOUBLE ON, DOUBLE amount, WIDTH, DETUNE, TIMING) and the fixed-interval Harmony voice (HARMONY ON, INTERVAL, LEVEL).
+    juce::Label dhTitle { {}, "DOUBLE / HARMONY" }, harmIntervalLabel { {}, "INTERVAL" }, harmNote;
+    juce::ToggleButton dblOnButton { "DOUBLE ON" }, harmOnButton { "HARMONY ON" };
+    juce::ComboBox harmIntervalBox;
+    juce::OwnedArray<ParamKnob> dhKnobs; // double, width, detune, timing, harmony level
+    juce::String shownHarmNote;
+    int dhDividerY = 0;
 
     // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
     juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
@@ -138,6 +146,8 @@ private:
     juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment tuneOnAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment mutOnAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment dblOnAttachment, harmOnAttachment;
+    juce::AudioProcessorValueTreeState::ComboBoxAttachment harmIntervalAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment tuneKeyAttachment, tuneScaleAttachment;
     juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
     glitchkid::PresetController presets;

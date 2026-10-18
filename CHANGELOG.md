@@ -3,6 +3,16 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Stage 4.8: **Vocal Doubler and Harmony voice.**
+  - **Vocal Doubler** (`dbl_on`, `dbl_amount`, `dbl_width`, `dbl_detune`, `dbl_timing`): a SYNTHETIC double, not a second recorded take. Two copies of the lead, 0.85x and 1.25x TIMING (5-45 ms) behind it, each drifting on its own smooth random path (so the pitch wobbles
+    by up to DETUNE cents, 0-25, and the pattern never repeats), each softened by an 8 kHz low-pass; WIDTH 100 % puts them in the stereo sides only, so the mono sum equals the dry input exactly. Zero latency, bit-exact when off, about +0.2 dB at the defaults
+    (never more than +0.73 dB on speech-like noise, 25-100 % amount), about 0.4-0.8 % of one core. It is not Dimension: Dimension is a fixed 9/13 ms sine-wave chorus with a high-passed wet; the Doubler's timing is yours to set, its wander is aperiodic and it keeps its low end.
+  - **Harmony voice** (`harm_on`, `harm_interval`, `harm_level`): ONE extra voice at a FIXED interval (nine choices from Octave DOWN (-12) to Octave UP (+12), direction in the name), level -24..0 dB. It reuses Pitch Tune's detector and PSOLA shifters through a new optional
+    fixed-interval mode of `PitchCorrector` (default off: Pitch Tune is unchanged, bit for bit). NOT key- or scale-aware, ONE voice, prototype quality. It is faded out while the singer is unvoiced, never feeds itself, follows Pitch Tune/FORMANT and sits before Vocal Mutation.
+    Adds the Pitch Tune delay (1383 / 1504 / 3004 samples = 31.3 ms at 44.1 / 48 / 96 kHz) only while on; reported to the host, the dry path and Mix follow. About 2-3 % of one core.
+  - **MOODS:** CELESTIAL (wide airy halo), THE CLONE (layered) and ALTERED STATE (loose, unsteady) use the Doubler; VOIDWALKER and THE PARASITE only switch it off. Alter Egos own 39 values now; they never touch Harmony (it adds latency). Levels stay within 0.68 dB of the input.
+  - **Window:** a "DOUBLE / HARMONY" row between Vocal Mutation and Liquid Echo (1060x1280, opens at 62 %). **Listening tool:** `DoubleLab` (`-DGLITCHKID_BUILD_DOUBLELAB=ON`) renders your dry vocal six ways.
+  - 54 parameters; 26 new test groups (245 in total), 24 deliberate breaks caught (one survived at first and led to a refactor and a stronger test), ASan/UBSan clean, pluginval SUCCESS. Synthetic signals only: nothing has been auditioned on a real vocal or checked in FL Studio.
 - Stage 4.6: **MOODS + Vocal Mutation, user presets and A/B comparison.**
   - **MOODS now drives Vocal Mutation.** Alter Egos own four more parameters (34 in total, `AlterEgos::numOwned`): CELESTIAL a slow UP shimmer (8-14 % MUTATION, blend 18-28 %), VOIDWALKER a DOWN shift for a hollow undertone (30-45 %, CHARACTER 8 -> 0, blend 22-38 %),
     THE PARASITE ROBOT ring modulation (45-68 %, blend 35-60 %), ALTERED STATE alien UP (25-58 %, CHARACTER 75 -> 100, blend 30-52 %). THE CLONE does not use Mutation (Dimension is its detuned second voice): it only switches Mutation OFF and leaves the other three

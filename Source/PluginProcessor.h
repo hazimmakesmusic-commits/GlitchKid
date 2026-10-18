@@ -8,12 +8,14 @@
 #include "DSP/LiquidEcho.h"
 #include "DSP/Dimension.h"
 #include "DSP/VocalMutation.h"
+#include "DSP/VocalDoubling/VocalDoubler.h"
+#include "DSP/Harmony/HarmonyVoice.h"
 #include "DSP/PitchCorrection/PitchCorrector.h"
 #include "DSP/FormantShifting/FormantShifter.h"
 #include "AlterEgos.h"
 #include "Presets/SoundState.h"
 
-// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> vocal mutation (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> harmony voice (optional, adds latency while on) -> vocal mutation (optional, zero latency) -> vocal doubler (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Pitch Tune (off by default) adds its own constant delay (PitchCorrector::latencyFor, about 31 ms)
 // only while it is switched on, and Formant (off at 0 semitones) adds its own (FormantShifter::latencyFor, about 21 ms) only while it is away from 0: for each, the dry
@@ -80,6 +82,19 @@ public:
     static constexpr const char* mutAmountId    = "mut_amount";    // percent, 0 = no change; sets the carrier / shift in Hz (0..600, squared curve)
     static constexpr const char* mutCharacterId = "mut_character"; // percent, 0 = DOWN, 50 = ROBOT (ring modulation), 100 = UP
     static constexpr const char* mutBlendId     = "mut_blend";     // percent, dry (0) to fully mutated (100)
+
+    // Vocal Doubler (a synthetic double: two drifting, delayed, slightly darker copies). Default off. Zero latency. After Vocal Mutation, before the EQ.
+    static constexpr const char* dblOnId     = "dbl_on";
+    static constexpr const char* dblAmountId = "dbl_amount"; // percent, level of the doubled voices
+    static constexpr const char* dblWidthId  = "dbl_width";  // percent, 0 = doubles in the centre, 100 = stereo spread (mono-safe)
+    static constexpr const char* dblDetuneId = "dbl_detune"; // cents, the largest pitch wobble of a double
+    static constexpr const char* dblTimingId = "dbl_timing"; // ms, how far behind the lead the doubles sit
+
+    // Harmony (ONE fixed-interval voice from the lead; prototype quality, see HarmonyVoice.h). Default off. Adds the Pitch Tune latency while on
+    // (reported to the host; dry path and Mix follow). After Pitch Tune / FORMANT (it harmonises the corrected voice), before Vocal Mutation.
+    static constexpr const char* harmOnId       = "harm_on";
+    static constexpr const char* harmIntervalId = "harm_interval"; // index into glitchkid::harmony::intervalInfo()
+    static constexpr const char* harmLevelId    = "harm_level";    // dB, level of the harmony voice relative to the lead
 
     GlitchKidProcessor();
     ~GlitchKidProcessor() override;
@@ -162,7 +177,7 @@ public:
     float getTuneDetectedMidi() const { return shownDetectedMidi.load(); }
     float getTuneTargetMidi() const { return shownTargetMidi.load(); }
 
-    // The latency this instance should report right now (6 samples, plus the Pitch Tune delay while it is on, plus the Formant delay while it is away from 0). A timer
+    // The latency this instance should report right now (6 samples, plus the Pitch Tune delay while it is on, plus the Formant delay while it is away from 0, plus the Harmony delay while it is on). A timer
     // on the message thread calls updateReportedLatency(); tests call it directly.
     int getWantedLatencySamples() const;
     void updateReportedLatency();
@@ -197,6 +212,17 @@ private:
     glitchkid::SoundState presetBaseline;  // message thread only
     bool hasPresetBaseline = false;
     std::atomic<float>* dimParams[5] {}; // on, width, detune, depth, mix
+    VocalDoubler doubler;
+    std::atomic<float>* dblParams[5] {}; // on, amount, width, detune, timing
+    DoublerSettings readDoublerSettings() const;
+    glitchkid::harmony::HarmonyVoice harmony;
+    std::atomic<float>* harmParams[3] {}; // on, interval, level
+    glitchkid::harmony::HarmonyVoice::Settings readHarmonySettings() const;
+    FixedDelay harmonyDryDelay;           // extra dry-path delay for Harmony (used while it is on)
+    juce::AudioBuffer<float> dryBuffer4;  // preallocated
+    std::vector<float> harmonyBlendBuffer;
+    juce::SmoothedValue<float> harmonyBlend { 0.0f }; // 1 = Harmony path (delayed), 0 = straight through
+    int harmonyLatency = 0;
     VocalMutation mutation;
     std::atomic<float>* mutParams[4] {}; // on, amount, character, blend
     MutationSettings readMutationSettings() const;

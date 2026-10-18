@@ -37,6 +37,10 @@ public:
         float refA4Hz = 440.0f;
         float minConfidence = 0.85f; // below this a frame counts as unvoiced
         float holdMs = 60.0f;        // keep the last correction this long after the voice drops out
+        // Fixed-interval mode (used by the Harmony voice): instead of pulling the voice to the nearest note, shift it by exactly this
+        // many semitones whenever it is voiced (strength and key/scale are then ignored). Off by default: the corrector behaves exactly as before.
+        bool fixedShift = false;
+        float fixedShiftSemitones = 0.0f; // -12 .. +12
     };
 
     // Allocates. Call from the message thread, never while processing.

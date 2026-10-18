@@ -11,7 +11,7 @@ constexpr Row K (const char* id, float v) { return { id, v, v, true }; }        
 constexpr Row M (const char* id, float a, float b) { return { id, a, b, true }; } // moves linearly with Chaos
 constexpr Row U (const char* id, float v) { return { id, v, v, false }; }        // unused by this Alter Ego: left unaffected
 
-// Every table lists the same 34 parameters in the same order: EQ, compressor, saturation, Liquid Echo, Dimension, Vocal Mutation.
+// Every table lists the same 39 parameters in the same order: EQ, compressor, saturation, Liquid Echo, Dimension, Vocal Mutation, Vocal Doubler.
 // Echo division indices: 0 1/2, 1 1/4, 2 1/4 dotted, 3 1/4 triplet, 4 1/8, 5 1/8 dotted, 6 1/8 triplet, 7 1/16, 8 1/16 dotted, 9 1/16 triplet, 10 1/32.
 // Safe limits used by every table (checked by the tests): drive <= 16 dB, echo feedback <= 75 % (the DSP itself caps at 90 %),
 // detune <= 20 cents, switches never move. comp_makeup is tuned per table from measurements so the level on speech-like noise stays
@@ -27,7 +27,8 @@ constexpr Row celestial[numOwned] = {
     M ("sat_drive", 3.0f, 6.0f),
     K ("echo_on", 1.0f), K ("echo_sync", 1.0f), K ("echo_time", 750.0f), K ("echo_div", 2.0f), M ("echo_fb", 35.0f, 50.0f), M ("echo_tone", 4500.0f, 6500.0f), M ("echo_width", 60.0f, 90.0f), M ("echo_mix", 16.0f, 30.0f),
     K ("dim_on", 1.0f), M ("dim_width", 60.0f, 85.0f), M ("dim_detune", 6.0f, 10.0f), M ("dim_depth", 40.0f, 65.0f), M ("dim_mix", 70.0f, 85.0f),
-    K ("mut_on", 1.0f), M ("mut_amount", 8.0f, 14.0f), K ("mut_character", 100.0f), M ("mut_blend", 18.0f, 28.0f) };
+    K ("mut_on", 1.0f), M ("mut_amount", 8.0f, 14.0f), K ("mut_character", 100.0f), M ("mut_blend", 18.0f, 28.0f),
+    K ("dbl_on", 1.0f), M ("dbl_amount", 22.0f, 34.0f), M ("dbl_width", 90.0f, 100.0f), M ("dbl_detune", 5.0f, 7.0f), K ("dbl_timing", 24.0f) };
 
 // THE CLONE: fuller, thicker, layered. Dimension is the defining effect (two modulated voices, centred); a short slap echo adds depth.
 constexpr Row theClone[numOwned] = {
@@ -39,7 +40,8 @@ constexpr Row theClone[numOwned] = {
     M ("sat_drive", 2.0f, 5.0f),
     K ("echo_on", 1.0f), K ("echo_sync", 1.0f), K ("echo_time", 250.0f), K ("echo_div", 4.0f), M ("echo_fb", 20.0f, 35.0f), K ("echo_tone", 3500.0f), M ("echo_width", 40.0f, 70.0f), M ("echo_mix", 6.0f, 14.0f),
     K ("dim_on", 1.0f), M ("dim_width", 55.0f, 85.0f), M ("dim_detune", 8.0f, 16.0f), M ("dim_depth", 70.0f, 100.0f), K ("dim_mix", 100.0f),
-    K ("mut_on", 0.0f), U ("mut_amount", 40.0f), U ("mut_character", 50.0f), U ("mut_blend", 100.0f) };
+    K ("mut_on", 0.0f), U ("mut_amount", 40.0f), U ("mut_character", 50.0f), U ("mut_blend", 100.0f),
+    K ("dbl_on", 1.0f), M ("dbl_amount", 40.0f, 62.0f), M ("dbl_width", 70.0f, 90.0f), M ("dbl_detune", 8.0f, 13.0f), M ("dbl_timing", 20.0f, 26.0f) };
 
 // VOIDWALKER: dark, spacious, distant, cinematic. Weight below, darker top, long dark quarter-note echo, slow wide movement.
 constexpr Row voidwalker[numOwned] = {
@@ -51,7 +53,8 @@ constexpr Row voidwalker[numOwned] = {
     M ("sat_drive", 3.0f, 6.0f),
     K ("echo_on", 1.0f), K ("echo_sync", 1.0f), K ("echo_time", 500.0f), K ("echo_div", 1.0f), M ("echo_fb", 48.0f, 65.0f), M ("echo_tone", 1600.0f, 900.0f), M ("echo_width", 70.0f, 100.0f), M ("echo_mix", 24.0f, 42.0f),
     K ("dim_on", 1.0f), M ("dim_width", 40.0f, 80.0f), M ("dim_detune", 5.0f, 9.0f), M ("dim_depth", 40.0f, 70.0f), M ("dim_mix", 60.0f, 80.0f),
-    K ("mut_on", 1.0f), M ("mut_amount", 30.0f, 45.0f), M ("mut_character", 8.0f, 0.0f), M ("mut_blend", 22.0f, 38.0f) };
+    K ("mut_on", 1.0f), M ("mut_amount", 30.0f, 45.0f), M ("mut_character", 8.0f, 0.0f), M ("mut_blend", 22.0f, 38.0f),
+    K ("dbl_on", 0.0f), U ("dbl_amount", 50.0f), U ("dbl_width", 70.0f), U ("dbl_detune", 8.0f), U ("dbl_timing", 18.0f) };
 
 // THE PARASITE: distorted, textured, unnerving. Saturation and EQ do the work (nasal mid push, thin lows, hard compression);
 // a very short, brightish echo adds a metallic flutter; Dimension adds a restless, detuned width. Glitch Stutter is not used.
@@ -64,7 +67,8 @@ constexpr Row theParasite[numOwned] = {
     M ("sat_drive", 9.0f, 16.0f),
     K ("echo_on", 1.0f), K ("echo_sync", 1.0f), K ("echo_time", 125.0f), K ("echo_div", 10.0f), M ("echo_fb", 30.0f, 60.0f), M ("echo_tone", 3000.0f, 4500.0f), M ("echo_width", 30.0f, 80.0f), M ("echo_mix", 8.0f, 22.0f),
     K ("dim_on", 1.0f), M ("dim_width", 60.0f, 100.0f), M ("dim_detune", 10.0f, 20.0f), M ("dim_depth", 50.0f, 90.0f), M ("dim_mix", 70.0f, 100.0f),
-    K ("mut_on", 1.0f), M ("mut_amount", 45.0f, 68.0f), K ("mut_character", 50.0f), M ("mut_blend", 35.0f, 60.0f) };
+    K ("mut_on", 1.0f), M ("mut_amount", 45.0f, 68.0f), K ("mut_character", 50.0f), M ("mut_blend", 35.0f, 60.0f),
+    K ("dbl_on", 0.0f), U ("dbl_amount", 50.0f), U ("dbl_width", 70.0f), U ("dbl_detune", 8.0f), U ("dbl_timing", 18.0f) };
 
 // ALTERED STATE: unusual, experimental, psychedelic. A swirling triplet echo with long feedback and wide detuned Dimension are the
 // defining sound; the EQ adds a vowel-like mid resonance; saturation glues it. Lower Chaos for something tamer.
@@ -77,19 +81,20 @@ constexpr Row alteredState[numOwned] = {
     M ("sat_drive", 5.0f, 9.0f),
     K ("echo_on", 1.0f), K ("echo_sync", 1.0f), K ("echo_time", 167.0f), K ("echo_div", 6.0f), M ("echo_fb", 55.0f, 75.0f), M ("echo_tone", 4500.0f, 7500.0f), K ("echo_width", 100.0f), M ("echo_mix", 25.0f, 42.0f),
     K ("dim_on", 1.0f), K ("dim_width", 100.0f), M ("dim_detune", 14.0f, 20.0f), M ("dim_depth", 80.0f, 100.0f), K ("dim_mix", 100.0f),
-    K ("mut_on", 1.0f), M ("mut_amount", 25.0f, 58.0f), M ("mut_character", 75.0f, 100.0f), M ("mut_blend", 30.0f, 52.0f) };
+    K ("mut_on", 1.0f), M ("mut_amount", 25.0f, 58.0f), M ("mut_character", 75.0f, 100.0f), M ("mut_blend", 30.0f, 52.0f),
+    K ("dbl_on", 1.0f), M ("dbl_amount", 35.0f, 55.0f), K ("dbl_width", 100.0f), M ("dbl_detune", 12.0f, 22.0f), M ("dbl_timing", 30.0f, 40.0f) };
 
 const Info infos[count] = {
     { "celestial",  "CELESTIAL",     "Polished, glossy and airy: lifted top, soft saturation, dotted echo, gentle thickening.",
-      eq | comp | sat | echo, dim | mut },
+      eq | comp | sat | echo, dim | mut | dbl },
     { "the_clone",  "THE CLONE",     "Fuller and layered: two detuned voices spread around a steady centre, plus a short slap.",
-      eq | comp | sat | dim, echo },
+      eq | comp | sat | dim, echo | dbl },
     { "voidwalker", "VOIDWALKER",    "Dark, distant and cinematic: weight below, closed top, long dark echo, slow wide movement.",
       eq | comp | sat | echo, dim | mut },
     { "the_parasite", "THE PARASITE", "Distorted and unnerving: hard drive, nasal push, metallic flutter, restless detuned width.",
       eq | comp | sat, echo | dim | mut },
     { "altered_state", "ALTERED STATE", "Psychedelic and strange: swirling triplet echo, wide detuned spread, vowel-like resonance.",
-      eq | comp | sat | echo | dim, mut } };
+      eq | comp | sat | echo | dim, mut | dbl } };
 
 const Row* const tables[count] = { celestial, theClone, voidwalker, theParasite, alteredState };
 

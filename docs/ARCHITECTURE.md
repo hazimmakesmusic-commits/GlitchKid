@@ -1,22 +1,24 @@
 # Architecture
 
-What exists today (Stage 4.6: presets, A/B and MOODS + Vocal Mutation, on top of Stage 4.5: Vocal Mutation, on top of Formant, Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
+What exists today (Stage 4.8: Vocal Doubler and Harmony voice, on top of Stage 4.6: presets, A/B and MOODS + Vocal Mutation, on top of Stage 4.5: Vocal Mutation, on top of Formant, Pitch Tune, MOODS 2.0, Dimension, Liquid Echo and hardening). Nothing planned is described as built.
 
 ## Overview
 One JUCE audio plug-in (VST3 only, macOS arm64 first) with an editor window. All processing is local and in
 32-bit float; no network, no hosted service. Plug-in codes: manufacturer `GlKd`, plug-in `Gkid` (never change).
 
 ```
-input -> [Pitch Tune, optional] -> [Formant, optional] -> [Vocal Mutation, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
+input -> [Pitch Tune, optional] -> [Formant, optional] -> [Harmony, optional] -> [Vocal Mutation, optional] -> [Vocal Doubler, optional] -> EQ -> compressor -> saturation -> Glitch Stutter -> Liquid Echo -> Dimension -> output gain -> Mix -> output
    \_ dry copy, delayed by 6 samples (+ the Pitch Tune delay while Tune is on, + the Formant delay while Formant is not 0) _/
 ```
 
 ## Files
 | File | Role |
 |---|---|
-| `Source/PluginProcessor.*` | 46 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
-| `Source/PluginEditor.*` | Window designed at 1060x1148 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 68%: preset and A/B bar, knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
+| `Source/PluginProcessor.*` | 54 parameters (`AudioProcessorValueTreeState`), `processBlock`, state save/restore, meters, tempo lookup, Pitch Tune and Formant latency reporting |
+| `Source/PluginEditor.*` | Window designed at 1060x1280 and resizable (50% to 150%, fixed aspect ratio); the whole interface is laid out at the design size inside one content component and scaled to fit, default 62%: preset and A/B bar, knobs, IN/OUT meters, gain-reduction meter, tempo and Pitch Tune read-outs, 30 Hz timer |
 | `Source/Presets/*` | `SoundState` (plain copy of every sound parameter + Alter Ego selection), `PresetStore` (versioned XML files, safe names, atomic writes), `PresetController` (what Save / Load / Delete / Factory Default do to the plug-in; no UI) |
+| `Source/DSP/VocalDoubling/VocalDoubler.*` | Vocal Doubler: two drifting, delayed, softened copies of the lead split into centre and side; zero latency |
+| `Source/DSP/Harmony/HarmonyVoice.*` | Harmony voice: the lead (delayed) plus one fixed-interval voice from `PitchCorrector`'s fixed-shift mode, gated by voicing |
 | `Source/DSP/VocalMutation.*` | Vocal Mutation: all-pass-pair Hilbert transform + shared carrier = single-sideband frequency shifter / ring modulator; mono/stereo, per-sample, zero latency |
 | `Source/DSP/FormantShifting/FormantShifter.*` | Formant: STFT cepstral-envelope warping with a real gain (moves the voice's resonances, not its notes); mono/stereo, per-sample, own FFT |
 | `Source/DSP/PitchCorrection/*` | Pitch Tune: `YinPitchDetector` (F0), `ScaleQuantizer` (key/scale), `PsolaPitchShifter` (TD-PSOLA-style, one per channel), `PitchCorrector` (ties them together, mono/stereo) |
@@ -43,7 +45,7 @@ input -> [Pitch Tune, optional] -> [Formant, optional] -> [Vocal Mutation, optio
 4. Otherwise: Pitch Tune (if on or ramping: zero non-finite input, keep a straight-through copy, correct in place, crossfade by the
    Tune blend; if off: only `feed`, i.e. record the history), then Formant the same way (if away from 0 or ramping: zero non-finite input, keep a
    straight-through copy, shift in place, crossfade by the Formant blend; if at 0: the shifter still runs at 0 semitones on a scratch copy and the result
-   is thrown away, which keeps its overlap-add full so engaging has no fade-in), then Vocal Mutation (when on or still fading; zero latency, no dry copy needed, it blends internally), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
+   is thrown away, which keeps its overlap-add full so engaging has no fade-in), then Harmony (when on or ramping: same switching pattern as Formant, its own dry-path delay; when off it only listens), then Vocal Mutation (when on or still fading; zero latency, no dry copy needed, it blends internally), then the Vocal Doubler (same), then run EQ, compressor, saturation, stutter, Liquid Echo, Dimension, smoothed gain;
    then crossfade with the dry copy if Mix < 100 % or a Bypass/Mix change is still ramping.
 5. Update peak meters.
 Host blocks larger than the dry buffer are split into chunks.
@@ -268,6 +270,23 @@ Alter Egos own 34 parameters: the 30 effect parameters plus `mut_on`, `mut_amoun
 Chaos moves the continuous values linearly (as everywhere else); `mut_on` is a switch and never moves. Surprise Me does not vary Mutation (the allowlist is unchanged). Mutation BLEND is separate from the global Mix (BLEND slider): Mutation BLEND is how much of the shifted voice is added
 inside the Mutation stage; Mix then blends the whole chain with the dry input. Level: a dry/wet blend of two different signals is quieter, so the four tables' `comp_makeup` values were raised from measurements (CELESTIAL 2.6/1.7 -> 3.5/2.9, VOIDWALKER 5.4/6.1 -> 6.6/7.9,
 THE PARASITE 3.0/7.1 -> 3.8/7.75, ALTERED STATE 3.9/0.9 -> 5.1/2.1); the result is within 0.70 dB of the input at Chaos 0, 0.5 and 1 on speech-like noise. These mappings are designed and measured on synthetic signals; whether each one sounds right on a real voice is a listening decision.
+
+## Vocal Doubler and Harmony (Stage 4.8; `Source/DSP/VocalDoubling/`, `Source/DSP/Harmony/`, tests in `Tests/DoublingHarmonyTests.cpp`)
+**Existing code was checked first.** Dimension (a fixed-delay chorus), Pitch Tune (YIN + PSOLA) and Formant exist; no doubling or interval code existed. The Doubler is therefore a different effect from Dimension, and the Harmony reuses Pitch Tune's pitch machinery instead of adding a second one.
+**Vocal Doubler** (5 parameters, off by default, zero latency): DOUBLE (amount, 0-100 %, default 50), WIDTH (0-100 %, default 70), DETUNE (0-25 cents, default 8), TIMING (5-45 ms, default 18). The input is summed to mono and read at two delays, 0.85 x and 1.25 x TIMING, by cubic interpolation; each delay wanders (+-A samples) along
+its own cosine-interpolated random path (segments of 0.28-0.66 s, fixed seeds so the output is deterministic and independent of the block size); A is scaled so the fastest delay change, which is the pitch wobble, equals DETUNE (measured: at most the setting, typically about two thirds of it; the average pitch is not shifted). Each copy is low-passed by a one-pole filter at 8 kHz.
+The copies are split into centre m = (v1+v2)/2 and side s = (v1-v2)/2: L += g(cos a m + sin a s), R += g(cos a m - sin a s), a = WIDTH x 90 degrees, g = 0.7 x amount. At WIDTH 100 % only the side is added, so the mono sum equals the dry input (measured: to 2e-6); at lower WIDTH the centre is added too (thicker, but the mono sum has some comb colouring: the test only requires it to stay between -1 and +6 dB).
+Level: +0.05 .. +0.73 dB on speech-like noise over 25-100 % amount and 0-100 % width, +0.19 dB at the defaults. Off (settled): skipped and bit-exact; amount 0 is exact too. What it is NOT: a second performance. It cannot change words, phrasing or vibrato; only the timing and pitch wobble are invented.
+**Harmony voice** (3 parameters, off by default): HARMONY ON, INTERVAL (Octave DOWN -12, Fifth DOWN -7, Major 3rd DOWN -4, Minor 3rd DOWN -3, Minor 3rd UP +3, Major 3rd UP +4, Fourth UP +5, Fifth UP +7 (default), Octave UP +12; direction is part of each name), LEVEL (-24..0 dB, default -9). It runs `PitchCorrector` in its new fixed-interval mode
+(`Settings::fixedShift`, `fixedShiftSemitones`; default off, so Pitch Tune is unchanged: tested bit-exact) with mix = 1 to get the shifted voice alone, delays the lead by the same latency and adds the voice. A voiced gate (3 ms attack, 25 ms release, 40 ms hold, decided every 64 samples on a fixed grid so the result never depends on the host block size, delayed by the latency) fades the voice out
+when the singer is unvoiced, so consonants and breaths are not shifted. The voice only ever hears the lead, so it cannot feed back into itself (tested). **Measured on steady synthetic voices:** every interval within 0.1 cents of the target at 130/220/330 Hz; level control exact (12 dB apart for 12 dB); unvoiced noise gated to -227 dB.
+**Limits, stated plainly:** the interval is FIXED, not scale-aware (a third is always major or always minor whatever the melody does); ONE voice that follows ONE solo voice, not chords and not a mixed signal; PSOLA preserves the voice's formants, so large shifts sound like a different (smaller or larger) singer and the voice is a few dB quieter than the lead for upward shifts (measured -5 dB for a fifth up on a 1/h test voice); some grain/roughness is expected;
+notes and pitch changes mid-word are followed by the detector with a short lag. Not studio-grade harmony. Why not scale-aware: a diatonic third needs the sung note's position in a key (Pitch Tune's `ScaleQuantizer` could supply it) plus smooth interval changes at note boundaries; that was left out on purpose until the fixed-interval voice has been judged by ear.
+**Latency:** the delay of the Harmony is exactly Pitch Tune's: 1383 / 1504 / 3004 samples (31.3 ms) at 44.1 / 48 / 96 kHz, added to the reported latency only while HARMONY is on (6 + L; with Pitch Tune as well, 6 + 2L). The dry path (Mix, Bypass) is delayed by the same amount with a 20 ms crossfade, so Mix 0 % and Bypass are the exact input delayed by the total (tested, mono and stereo). The Doubler adds none.
+**Place in the chain:** Harmony after Pitch Tune and FORMANT (it harmonises the corrected, formant-shifted voice) and before Vocal Mutation (the detector needs a clean voice; Mutation's inharmonic output would confuse it); the Doubler after Vocal Mutation and before the EQ (so the EQ and compressor treat the doubles as part of the vocal). **CPU** (Linux x86, measured while another job ran, noisy): Doubler about 0.4-0.8 % of one core, Harmony about 1.9-2.8 %, everything in the plug-in on about 10-11 % at 48 kHz.
+**MOODS:** Alter Egos own the five `dbl_*` values (39 owned values in all): CELESTIAL ON, DOUBLE 22 -> 34 %, WIDTH 90 -> 100 %, DETUNE 5 -> 7 cents, TIMING 24 ms (a wide, airy halo); THE CLONE ON, DOUBLE 40 -> 62 %, WIDTH 70 -> 90 %, DETUNE 8 -> 13 cents, TIMING 20 -> 26 ms (layered); ALTERED STATE ON, DOUBLE 35 -> 55 %, WIDTH 100 %, DETUNE 12 -> 22 cents, TIMING 30 -> 40 ms (loose and unsteady);
+VOIDWALKER and THE PARASITE only switch the Doubler OFF and leave the other four values alone (inactive values). No Alter Ego owns the Harmony, because it changes the plug-in's latency and Alter Egos never do (Pitch Tune and FORMANT are not touched either). Surprise Me does not vary the Doubler. Levels of every Alter Ego at Chaos 0, 0.5 and 1 stay within 0.68 dB of the input, so no makeup was retuned.
+**Listening tool:** `DoubleLab` renders a dry vocal as 01_dry, 02_double_default, 03_double_strong, 04_harmony_fifth_up, 05_harmony_octave_down, 06_double_and_harmony (all aligned).
 
 ## Presets and A/B (Stage 4.6)
 **One source of truth.** The live sound is the parameters (`apvts`). A `SoundState` is only a copy: `captureSoundState()` reads every parameter (except Bypass) in its own units plus the Alter Ego selection; `applySoundState()` writes every parameter back through the normal calls
