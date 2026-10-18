@@ -179,6 +179,51 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     abRecallB.onClick = [this] { if (glitchProcessor.recallAbSlot (1)) refreshAlterEgos(); refreshPresetBar(); };
     abCopyAB.onClick = [this] { if (glitchProcessor.copyAbSlot (0, 1)) showStatus ("A copied to B."); refreshPresetBar(); };
     abCopyBA.onClick = [this] { if (glitchProcessor.copyAbSlot (1, 0)) showStatus ("B copied to A."); refreshPresetBar(); };
+    // AUTOMODE row.
+    styleBarButton (autoAnalyzeButton, lime, "Listen to the vocal for a few seconds (press play in your host). Nothing is changed until you press APPLY.");
+    styleBarButton (autoApplyButton, lime, "Set the controls from the analysis, once, at the chosen intensity. Press SET A first to keep your current sound; every control stays editable.");
+    autoAnalyzeButton.onClick = [this]
+    {
+        if (glitchProcessor.getAnalyzer().isListening())
+            glitchProcessor.getAnalyzer().stop();
+        else
+        {
+            glitchProcessor.getAnalyzer().start();
+            autoWaiting = true;
+            autoSawListening = false;
+        }
+        shownAutoText = {};
+        refreshAutoMode();
+    };
+    autoApplyButton.onClick = [this]
+    {
+        const auto result = glitchProcessor.applyAutoMode ((float) autoIntensitySlider.getValue() / 100.0f);
+        showStatus (result.message);
+        autoStatus.setTooltip (result.notes.joinIntoString ("\n"));
+        refreshAlterEgos();
+        shownPresetText = {};
+        refreshPresetBar();
+    };
+    autoStyleLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
+    autoStyleLabel.setColour (juce::Label::textColourId, violet);
+    autoStyleLabel.setTooltip ("The production direction. ASTRO MODE: dark, atmospheric melodic rap. Original settings, not an exact copy of anyone's sound.");
+    autoIntensityLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
+    autoIntensityLabel.setJustificationType (juce::Justification::centredRight);
+    autoIntensitySlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    autoIntensitySlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 22);
+    autoIntensitySlider.setRange (0.0, 100.0, 1.0);
+    autoIntensitySlider.setTextValueSuffix (" %");
+    autoIntensitySlider.setValue (glitchProcessor.getAutoIntensity() * 100.0, juce::dontSendNotification);
+    autoIntensitySlider.setColour (juce::Slider::trackColourId, violet);
+    autoIntensitySlider.setTooltip ("How strongly AUTOMODE moves the controls when you press APPLY.");
+    autoIntensitySlider.onValueChange = [this] { glitchProcessor.setAutoIntensity ((float) autoIntensitySlider.getValue() / 100.0f); };
+    autoStatus.setFont (juce::FontOptions (11.0f));
+    autoStatus.setJustificationType (juce::Justification::centredLeft);
+    autoStatus.setColour (juce::Label::textColourId, juce::Colours::lightgrey);
+    autoStatus.setMinimumHorizontalScale (0.8f);
+    for (auto* c : std::initializer_list<juce::Component*> { &autoStyleLabel, &autoIntensityLabel, &autoIntensitySlider, &autoStatus })
+        content.addAndMakeVisible (c);
+
     presetStatus.setJustificationType (juce::Justification::centredLeft);
     presetStatus.setFont (juce::FontOptions (11.0f));
     presetStatus.setColour (juce::Label::textColourId, lime);
@@ -471,6 +516,48 @@ void GlitchKidEditor::showStatus (const juce::String& text)
     statusTicks = 30 * 5; // about five seconds
 }
 
+void GlitchKidEditor::refreshAutoMode()
+{
+    auto& an = glitchProcessor.getAnalyzer();
+    const bool listening = an.isListening();
+    if (autoWaiting && listening)
+        autoSawListening = true;
+    if (autoWaiting && autoSawListening && ! listening)
+        autoWaiting = false;
+
+    using S = glitchkid::analysis::VocalAnalysis::Status;
+    juce::String text;
+    bool canApply = false;
+    if (listening)
+        text = "Listening... " + juce::String (an.liveActiveSeconds(), 1) + " s of vocal heard (needs 2 s, stops at 8 s). Press STOP to finish early.";
+    else if (autoWaiting)
+        text = "Waiting for audio. Press play in your host so the vocal reaches GlitchKid.";
+    else
+    {
+        const auto a = an.fetch();
+        switch (a.status)
+        {
+            case S::ready:
+                canApply = true;
+                text = "Ready: " + juce::String (a.activeSeconds, 1) + " s of vocal, peak " + juce::String (a.peakDb, 1) + " dB, level " + juce::String (a.rmsDb, 1)
+                       + " dB" + (a.clippedSamples >= 3 ? ", CLIPPING found" : "") + ". Set INTENSITY, then APPLY.";
+                break;
+            case S::tooShort:  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
+            case S::tooQuiet:  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
+            case S::invalid:   text = "The input contained invalid audio. Nothing changed. Try again."; break;
+            case S::idle:
+            case S::listening: text = "Press ANALYZE, then play the dry vocal for a few seconds."; break;
+        }
+    }
+    if (text != shownAutoText)
+    {
+        shownAutoText = text;
+        autoStatus.setText (text, juce::dontSendNotification);
+        autoAnalyzeButton.setButtonText (listening ? "STOP" : "ANALYZE");
+        autoApplyButton.setEnabled (canApply);
+    }
+}
+
 void GlitchKidEditor::refreshPresetBar()
 {
     const auto name = glitchProcessor.getPresetName();
@@ -598,6 +685,7 @@ void GlitchKidEditor::timerCallback()
 {
     refreshAlterEgos();
     refreshPresetBar();
+    refreshAutoMode();
     if (statusTicks > 0 && --statusTicks == 0)
         presetStatus.setText ({}, juce::dontSendNotification);
     inMeter.pushPeak (glitchProcessor.consumeInputPeak());
@@ -795,6 +883,18 @@ void GlitchKidEditor::layoutContent()
     bar.removeFromRight (8);
     abLabel.setBounds (bar.removeFromRight (38));
     presetStatus.setBounds (bar);
+    r.removeFromTop (6);
+
+    auto autoRow = r.removeFromTop (30); // AUTOMODE: ANALYZE, APPLY, style, intensity, status
+    autoAnalyzeButton.setBounds (autoRow.removeFromLeft (90));
+    autoRow.removeFromLeft (6);
+    autoApplyButton.setBounds (autoRow.removeFromLeft (70));
+    autoRow.removeFromLeft (12);
+    autoStyleLabel.setBounds (autoRow.removeFromLeft (170));
+    autoIntensityLabel.setBounds (autoRow.removeFromLeft (70));
+    autoIntensitySlider.setBounds (autoRow.removeFromLeft (190));
+    autoRow.removeFromLeft (12);
+    autoStatus.setBounds (autoRow);
     r.removeFromTop (6);
 
     // ALTER EGOS strip: title, five buttons, a one-line description; below it the Mood Engine: Chaos, Blend, Surprise Me.

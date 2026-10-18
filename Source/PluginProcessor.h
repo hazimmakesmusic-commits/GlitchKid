@@ -14,6 +14,8 @@
 #include "DSP/FormantShifting/FormantShifter.h"
 #include "AlterEgos.h"
 #include "Presets/SoundState.h"
+#include "Analysis/VocalAnalyzer.h"
+#include "AutoMode/AutoMix.h"
 
 // Signal path: input -> pitch tune (optional) -> formant shift (optional) -> harmony voice (optional, adds latency while on) -> vocal mutation (optional, zero latency) -> vocal doubler (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
@@ -148,6 +150,16 @@ public:
     // marked active (so you can capture the new sound into a slot and compare it with the old one).
     void applyPreset (const juce::String& name, const glitchkid::SoundState&);
     void notePresetSaved (const juce::String& name, const glitchkid::SoundState&); // after a successful save: the live sound is the baseline
+    // AUTOMODE (message thread only, except the analyzer tap which the audio thread feeds). ANALYZE listens to the incoming vocal for a few
+    // seconds; APPLY then turns the finished analysis into new control values once, through the normal parameter calls. Nothing is changed
+    // while listening, and nothing is ever applied automatically.
+    glitchkid::analysis::VocalAnalyzer& getAnalyzer() { return analyzer; }
+    float getAutoIntensity() const;                      // 0..1, saved in the DAW session (default 0.6)
+    void setAutoIntensity (float);
+    glitchkid::automode::Result previewAutoMode (float intensity) const; // what APPLY would do with the last analysis (changes nothing)
+    glitchkid::automode::Result applyAutoMode (float intensity);         // computes and applies it; the sound is then a normal, editable "AutoMode" sound
+    static constexpr const char* autoModePresetName = "AutoMode ASTRO MODE";
+
     juce::String getPresetName() const;                  // "" if none; saved in the DAW session
     void clearPresetName();                              // after the loaded preset's file was deleted: the sound stays, the name goes
     bool isPresetModified() const;                       // false if no preset was loaded or saved since this instance was restored
@@ -186,6 +198,8 @@ private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     void timerCallback() override { updateReportedLatency(); }
     void processChunk (juce::AudioBuffer<float>&);
+    glitchkid::analysis::VocalAnalyzer analyzer;
+    static constexpr const char* autoIntensityKey = "autoIntensity";
     void formantListen (const juce::AudioBuffer<float>&, int numChannels, int dryChannels, int numSamples);
 
     std::atomic<float>* gainDb = nullptr;

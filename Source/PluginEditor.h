@@ -50,7 +50,7 @@ public:
     void resized() override;
 
 private:
-    static constexpr int designW = 1060, designH = 1280; // layout size; the window scales it to fit
+    static constexpr int designW = 1060, designH = 1316; // layout size; the window scales it to fit
     juce::Component content; // declared first so it outlives the controls inside it
     float scaleFactor = 1.0f;
     void layoutContent();
@@ -108,6 +108,14 @@ private:
     juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
     juce::Label presetStatus, abLabel { {}, "A/B" };
     juce::String shownPresetText, shownAbText;
+
+    // AUTOMODE row: ANALYZE listens to the vocal, APPLY commits the analysis once. See PluginProcessor.h.
+    juce::TextButton autoAnalyzeButton { "ANALYZE" }, autoApplyButton { "APPLY" };
+    juce::Label autoStyleLabel { {}, "AUTOMODE: ASTRO MODE" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
+    juce::Slider autoIntensitySlider;
+    bool autoWaiting = false, autoSawListening = false;
+    juce::String shownAutoText;
+    void refreshAutoMode();
     int statusTicks = 0;
     void refreshPresetBar();
     void showStatus (const juce::String&);

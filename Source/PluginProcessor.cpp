@@ -563,6 +563,7 @@ static float wetAmount (bool bypassed, float percent)
 
 void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    analyzer.prepare (sampleRate);
     smoothedGain.reset (sampleRate, 0.02); // 20 ms ramps
     smoothedGain.setCurrentAndTargetValue (targetGain (gainDb->load()));
     wetMix.reset (sampleRate, 0.02);
@@ -682,6 +683,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     // Layouts are matched in/out, but never pass unrelated data through extra outputs.
     for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
+
+    // AutoMode listens to the raw input (before the clean-up below, so it can count invalid samples). It does nothing unless ANALYZE was pressed.
+    analyzer.process (buffer.getArrayOfReadPointers(), juce::jmin (numChannels, getTotalNumInputChannels()), numSamples);
 
     // Non-finite input (NaN / +-Inf) is replaced by 0 once, up front, so it can never travel through the dry copy that Bypass and Mix use
     // (the stages also guard themselves). Finite audio is not touched.
@@ -964,4 +968,37 @@ void GlitchKidProcessor::setStateInformation (const void* data, int sizeInBytes)
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new GlitchKidProcessor();
+}
+
+float GlitchKidProcessor::getAutoIntensity() const
+{
+    const auto v = apvts.state.getProperty (autoIntensityKey);
+    return v.isVoid() ? 0.6f : juce::jlimit (0.0f, 1.0f, (float) (double) v);
+}
+
+void GlitchKidProcessor::setAutoIntensity (float v)
+{
+    apvts.state.setProperty (autoIntensityKey, (double) juce::jlimit (0.0f, 1.0f, std::isfinite (v) ? v : 0.6f), nullptr);
+}
+
+glitchkid::automode::Result GlitchKidProcessor::previewAutoMode (float intensity) const
+{
+    auto rangeOf = [this] (const juce::String& id, glitchkid::automode::Range& out)
+    {
+        auto* r = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id));
+        if (r == nullptr)
+            return false;
+        const auto range = r->getNormalisableRange();
+        out = { range.start, range.end, [range] (float v) { return range.snapToLegalValue (v); } };
+        return true;
+    };
+    return glitchkid::automode::compute (analyzer.fetch(), glitchkid::automode::Profile::astroMode, intensity, captureSoundState(), rangeOf);
+}
+
+glitchkid::automode::Result GlitchKidProcessor::applyAutoMode (float intensity)
+{
+    auto result = previewAutoMode (intensity);
+    if (result.usable && result.changedCount > 0)
+        applyPreset (autoModePresetName, result.sound); // every value is set through the normal parameter calls; the marker shows "*" once the user edits
+    return result;
 }
