@@ -2,6 +2,8 @@
 #include "../Source/Macros/MacroEngine.h"
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
+#include "../Source/Presets/FactoryPresets.h"
+#include "../Source/Presets/PresetBrowser.h"
 #include <set>
 
 // Interactive playground UI: the non-visual logic (macros, quick commands, parameter application, UI flags) and a smoke test that builds the real
@@ -373,6 +375,49 @@ struct MacroTests : public juce::UnitTest
                 expectEquals (p.getUiInt ("uiPage", -1), 1);
                 expect (visible ("ANALYZE VOCAL") && visible ("APPLY SOUND") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
 
+                // the artist gallery: eight cards per page, select -> read -> load -> back to my sound
+                {
+                    std::vector<glitchkid::ui::ArtistCard*> cards;
+                    std::function<void (juce::Component&)> walkCards = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible())
+                                cards.push_back (a);
+                            walkCards (*ch);
+                        }
+                    };
+                    walkCards (*content);
+                    expectEquals ((int) cards.size(), 8);
+                    expect (visible ("LOAD SOUND") && visible ("Punjabi") && visible ("Indian DHH") && visible ("SORT: A-Z") && visible ("FAVOURITES"));
+                    expect (findButton (*content, "BACK TO MY SOUND") != nullptr && ! findButton (*content, "BACK TO MY SOUND")->isEnabled(), "nothing to go back to yet");
+                    th::setParam (p, "gain", -4.0f);
+                    th::setParam (p, "echo_mix", 61.0f);
+                    const int first = cards[0]->getPreset();
+                    cards[0]->triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    expectEquals (th::getParam (p, "echo_mix"), 61.0f, "selecting a card only selects: nothing is loaded");
+                    click ("LOAD SOUND");
+                    expectEquals (p.getPresetName(), juce::String (glitchkid::FactoryPresets::info (first).name));
+                    expect (std::abs (th::getParam (p, "echo_mix") - 61.0f) > 0.5f, "the preset replaced the sound");
+                    expect (findButton (*content, "BACK TO MY SOUND")->isEnabled());
+                    click ("BACK TO MY SOUND");
+                    expectEquals (th::getParam (p, "echo_mix"), 61.0f);
+                    expectEquals (th::getParam (p, "gain"), -4.0f);
+                    th::setParam (p, "gain", 0.0f);
+
+                    click ("Punjabi"); // a filter: every card shown is Punjabi
+                    cards.clear();
+                    walkCards (*content);
+                    expect (! cards.empty());
+                    for (auto* a : cards)
+                        expect (glitchkid::browser::matchesFilter (a->getPreset(), 10), "only Punjabi sounds are shown");
+                    click ("All 50");
+                    cards.clear();
+                    walkCards (*content);
+                    expectEquals ((int) cards.size(), 8);
+                }
+
                 click ("DRY");
                 expectEquals (th::getParam (p, "bypass"), 1.0f);
                 click ("PROCESSED");
@@ -413,6 +458,20 @@ struct MacroTests : public juce::UnitTest
                 glitchkid::PresetController c (p, glitchkid::PresetStore (dir));
                 c.loadFactory (0);
                 snapshot (*ed, "auto_world_loaded");
+                {
+                    std::function<void (juce::Component&)> pick = [&] (juce::Component& comp)
+                    {
+                        for (auto* ch : comp.getChildren())
+                        {
+                            if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible() && a->getPreset() == 18)
+                                a->triggerClick();
+                            pick (*ch);
+                        }
+                    };
+                    pick (*ed);
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                    snapshot (*ed, "auto_artist_selected");
+                }
                 p.getAnalyzer().start();
                 vocalBlocks (p, 1.0);
                 snapshot (*ed, "auto_listening");

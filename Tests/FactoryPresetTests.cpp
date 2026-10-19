@@ -23,9 +23,9 @@ struct FactoryPresetTests : public juce::UnitTest
 
     void runTest() override
     {
-        beginTest ("three presets exist with distinct names and are reserved");
+        beginTest ("all factory presets exist with distinct names and are reserved");
         {
-            expectEquals (count, 3);
+            expectEquals (count, 50);
             for (int i = 0; i < count; ++i)
             {
                 const juce::String n = glitchkid::FactoryPresets::info (i).name;
@@ -71,36 +71,6 @@ struct FactoryPresetTests : public juce::UnitTest
             dir.deleteRecursively();
         }
 
-        beginTest ("intended character: tune on for all, FORMANT only in the third, creative effects as designed");
-        {
-            GlitchKidProcessor p;
-            auto dir = tempDir();
-            PresetController c (p, glitchkid::PresetStore (dir));
-            for (int i = 0; i < count; ++i)
-            {
-                c.loadFactory (i);
-                expectWithinAbsoluteError (getParam (p, "tune_on"), 1.0f, 1.0e-3f);
-                expectWithinAbsoluteError (getParam (p, "bypass"), 0.0f, 1.0e-3f);
-                expectWithinAbsoluteError (getParam (p, "mix"), 100.0f, 1.0e-3f);
-                expectWithinAbsoluteError (getParam (p, "stutter_on"), 0.0f, 1.0e-3f);
-                expectWithinAbsoluteError (getParam (p, "harm_on"), 0.0f, 1.0e-3f);
-            }
-            c.loadFactory (0);
-            expectWithinAbsoluteError (getParam (p, "formant_shift"), 0.0f, 1.0e-3f);
-            expectWithinAbsoluteError (getParam (p, "dbl_on"), 1.0f, 1.0e-3f);
-            expectWithinAbsoluteError (getParam (p, "dim_on"), 1.0f, 1.0e-3f);
-            expect (getParam (p, "eq_hi_gain") < 0.0f, "darker top end");
-            c.loadFactory (1);
-            expectWithinAbsoluteError (getParam (p, "dim_on"), 0.0f, 1.0e-3f);
-            expectWithinAbsoluteError (getParam (p, "dbl_on"), 0.0f, 1.0e-3f);
-            expectWithinAbsoluteError (getParam (p, "mut_on"), 0.0f, 1.0e-3f);
-            expect (getParam (p, "echo_mix") <= 20.0f && getParam (p, "sat_drive") <= 3.0f, "moderate effects");
-            c.loadFactory (2);
-            expect (std::abs (getParam (p, "formant_shift")) > 1.0f);
-            expectWithinAbsoluteError (getParam (p, "mut_on"), 1.0f, 1.0e-3f);
-            dir.deleteRecursively();
-        }
-
         beginTest ("loading is repeatable whatever the plug-in was doing before");
         {
             GlitchKidProcessor p;
@@ -119,7 +89,8 @@ struct FactoryPresetTests : public juce::UnitTest
                 const auto again = capture (p);
                 expectEquals ((int) again.values.size(), (int) first.values.size());
                 for (const auto& e : first.values)
-                    expectWithinAbsoluteError (again.get (e.id, -999.0f), e.value, 1.0e-3f);
+                    if (e.id != "tune_key" && e.id != "tune_scale") // those two are yours: a preset keeps whatever you had
+                        expectWithinAbsoluteError (again.get (e.id, -999.0f), e.value, 1.0e-3f);
             }
             dir.deleteRecursively();
         }
@@ -247,7 +218,7 @@ struct FactoryPresetTests : public juce::UnitTest
             c.loadFactory (0);
             p.captureAbSlot (0);
             const auto a = capture (p);
-            c.loadFactory (2);
+            c.loadFactory (5);
             p.captureAbSlot (1);
             const auto b = capture (p);
             expect (p.recallAbSlot (0));

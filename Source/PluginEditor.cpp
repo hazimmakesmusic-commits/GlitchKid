@@ -475,26 +475,73 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     // ---- HOME screen -------------------------------------------------------------------------------------------------------------
     title.setVisible (false); // the title is painted (with a gradient) by paint(); the old labels stay only so nothing else changes
     tagline.setVisible (false);
-    struct WorldInfo { const char* title; const char* tagline; glitchkid::ui::WorldCard::Icon icon; juce::Colour colour; };
-    const WorldInfo worlds[glitchkid::FactoryPresets::count] = {
-        { "ASTRO MODE", "Dark, spacious, psychedelic", glitchkid::ui::WorldCard::Icon::planet, violet },
-        { "HEARTBREAK", "Intimate, emotional, close", glitchkid::ui::WorldCard::Icon::heart, pink },
-        { "DIGITAL ALTER EGO", "Playful, futuristic, glitchy", glitchkid::ui::WorldCard::Icon::glitch, lime } };
-    for (int i = 0; i < glitchkid::FactoryPresets::count; ++i)
+    // ---- the artist-preset gallery (AUTO) ----
+    favourites = glitchkid::browser::parseFavourites (p.getUiString ("uiFavs"));
     {
-        auto* card = worldCards.add (new glitchkid::ui::WorldCard (worlds[i].title, worlds[i].tagline, worlds[i].icon, worlds[i].colour));
-        card->setLoads (glitchkid::FactoryPresets::info (i).name);
-        card->setTooltip (juce::String (glitchkid::FactoryPresets::info (i).description) + ". Loads the built-in preset; every control stays editable.");
-        card->onClick = [this, i]
+        auto styleSmall = [this] (juce::TextButton& b, const juce::String& tip)
         {
-            const auto outcome = presets.loadFactory (i);
-            showStatus (outcome.message);
-            refreshAlterEgos();
-            shownPresetText = {};
-            refreshPresetBar();
-            mascot.cheer();
+            b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1a1e29));
+            b.setColour (juce::TextButton::buttonOnColourId, lime);
+            b.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
+            b.setColour (juce::TextButton::textColourOnId, glitchkid::ui::obsidian);
+            b.setTooltip (tip);
+            content.addAndMakeVisible (b);
         };
-        content.addAndMakeVisible (card);
+        for (int i = 0; i < cardsPerPage; ++i)
+        {
+            auto* card = artistCards.add (new glitchkid::ui::ArtistCard());
+            card->onClick = [this, card] { if (card->getPreset() >= 0) selectArtist (card->getPreset()); };
+            card->onDoubleClick = [this, card] { if (card->getPreset() >= 0) { selectArtist (card->getPreset()); loadBrowsed(); } };
+            content.addAndMakeVisible (card);
+        }
+        for (int f = 0; f < glitchkid::browser::numFilters; ++f)
+        {
+            filterChips[f].setButtonText (glitchkid::browser::filterName (f));
+            styleSmall (filterChips[f], f == 0 ? "Show all 50 artist-inspired sounds." : f < 3 ? juce::String ("Only ") + glitchkid::browser::filterName (f) + " artists."
+                                                                                              : juce::String ("Only sounds tagged ") + glitchkid::browser::filterName (f) + ". A sound can have several tags.");
+            filterChips[f].onClick = [this, f] { browseQuery.filter = f; galleryPage = 0; refreshGallery(); };
+        }
+        styleSmall (sortButton, "Change the order: A-Z, by origin (international first) or by style.");
+        sortButton.onClick = [this] { browseQuery.sort = (browseQuery.sort + 1) % glitchkid::browser::numSorts; galleryPage = 0; refreshGallery(); };
+        styleSmall (favOnlyButton, "Show only your favourites.");
+        favOnlyButton.onClick = [this] { browseQuery.favouritesOnly = ! browseQuery.favouritesOnly; galleryPage = 0; refreshGallery(); };
+        styleSmall (favButton, "Add or remove the selected sound from your favourites.");
+        favButton.onClick = [this] { toggleFavourite(); };
+        styleSmall (pagePrevButton, "Previous page.");
+        styleSmall (pageNextButton, "Next page.");
+        pagePrevButton.onClick = [this] { galleryPage = juce::jmax (0, galleryPage - 1); refreshGallery(); };
+        pageNextButton.onClick = [this] { ++galleryPage; refreshGallery(); };
+        styleSmall (loadButton, "Load the selected sound into the plug-in now, so you hear it (use DRY / PROCESSED to compare). Your previous sound is kept: BACK TO MY SOUND returns to it.");
+        loadButton.setColour (juce::TextButton::buttonColourId, lime.darker (0.15f));
+        loadButton.setColour (juce::TextButton::textColourOffId, glitchkid::ui::obsidian);
+        loadButton.onClick = [this] { loadBrowsed(); };
+        styleSmall (backToMineButton, "Put back the sound you had before you loaded an artist sound.");
+        backToMineButton.onClick = [this] { backToMine(); };
+        backToMineButton.setEnabled (false);
+
+        searchBox.setTextToShowWhenEmpty ("search artist or sound", glitchkid::ui::textDim);
+        searchBox.setFont (glitchkid::ui::fontOf (13.0f));
+        searchBox.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0b0d13));
+        searchBox.setColour (juce::TextEditor::textColourId, glitchkid::ui::textBright);
+        searchBox.setColour (juce::TextEditor::outlineColourId, glitchkid::ui::border);
+        searchBox.setColour (juce::TextEditor::focusedOutlineColourId, glitchkid::ui::violet);
+        searchBox.setTooltip ("Type part of an artist or sound name.");
+        searchBox.onTextChange = [this] { browseQuery.text = searchBox.getText(); galleryPage = 0; refreshGallery(); };
+        content.addAndMakeVisible (searchBox);
+        for (auto* l : { &galleryCount, &detailDesc, &detailTags, &detailSettings, &detailStart })
+        {
+            l->setJustificationType (juce::Justification::topLeft);
+            l->setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+            l->setFont (glitchkid::ui::fontOf (12.0f));
+            content.addAndMakeVisible (l);
+        }
+        detailDesc.setFont (glitchkid::ui::fontOf (15.0f, true));
+        detailDesc.setColour (juce::Label::textColourId, glitchkid::ui::textBright);
+        detailTags.setFont (glitchkid::ui::fontOf (11.5f, true));
+        detailTags.setColour (juce::Label::textColourId, glitchkid::ui::neon);
+        galleryCount.setJustificationType (juce::Justification::centredLeft);
+        galleryCount.setFont (glitchkid::ui::fontOf (11.0f, true));
+        refreshGallery();
     }
 
     const juce::Colour macroColours[glitchkid::macros::numMacros] = { violet, lime, glitchkid::ui::chrome };
@@ -803,14 +850,15 @@ void GlitchKidEditor::setBypassFromUi (bool bypassed)
 
 juce::String GlitchKidEditor::currentTitle() const
 {
-    static const char* worldNames[] = { "ASTRO MODE", "HEARTBREAK", "DIGITAL ALTER EGO" };
     static const char* categoryNames[] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE", "CHARACTER" };
     if (page == Page::tune)
         return "SET YOUR KEY";
     if (page == Page::modify)
         return categoryNames[juce::jlimit (0, numCategories - 1, category)];
+    if (browsedPreset >= 0)
+        return glitchkid::FactoryPresets::info (browsedPreset).name;
     const int world = glitchkid::FactoryPresets::indexOfName (glitchProcessor.getPresetName());
-    return world >= 0 ? worldNames[world] : "PICK A SOUND";
+    return world >= 0 ? juce::String (glitchkid::FactoryPresets::info (world).name) : juce::String ("PICK AN ARTIST SOUND");
 }
 
 void GlitchKidEditor::startBurst()
@@ -845,14 +893,45 @@ void GlitchKidEditor::refreshHome (float peak)
     mascot.setLevel (peak);
 
     const auto presetName = glitchProcessor.getPresetName();
-    const int world = glitchkid::FactoryPresets::indexOfName (presetName);
-    const bool edited = glitchProcessor.isPresetModified();
-    mascot.setLook (world < 0 ? 0.0f : (float) (world - 1));
-    for (int i = 0; i < worldCards.size(); ++i)
+    const int loaded = glitchkid::FactoryPresets::indexOfName (presetName);
+    const int shownPreset = browsedPreset >= 0 ? browsedPreset : loaded;
+    mascot.setLook (shownPreset < 0 ? 0.0f : (glitchkid::FactoryPresets::info (shownPreset).region == glitchkid::FactoryPresets::Region::international ? -0.7f : 0.7f));
+    for (int i = 0; i < artistCards.size(); ++i)
     {
-        worldCards[i]->setMotion (motionOn);
-        worldCards[i]->setSelected (i == world, i == world && edited);
-        worldCards[i]->tick (dt);
+        auto* card = artistCards[i];
+        card->setMotion (motionOn);
+        const int pi = card->getPreset();
+        if (pi >= 0)
+            card->bind (pi, pi == browsedPreset, pi == loaded, ((favourites >> pi) & 1u) != 0);
+        card->tick (dt);
+    }
+    if (page == Page::autoMix)
+    {
+        const juce::String loadedLine = loaded >= 0 ? juce::String (glitchProcessor.isPresetModified() ? "LOADED NOW: " : "LIVE NOW: ") + glitchkid::FactoryPresets::info (loaded).name
+                                                    : juce::String ("NOTHING FROM THIS LIST IS LOADED");
+        const auto key = juce::String (browsedPreset) + loadedLine + (undo.valid ? "u" : "-");
+        if (key != shownDetailKey)
+        {
+            shownDetailKey = key;
+            if (browsedPreset >= 0)
+            {
+                const auto& in = glitchkid::FactoryPresets::info (browsedPreset);
+                detailDesc.setText (in.description, juce::dontSendNotification);
+                detailTags.setText (juce::String (in.region == glitchkid::FactoryPresets::Region::international ? "INTERNATIONAL" : "INDIAN DHH") + "  |  "
+                                    + glitchkid::FactoryPresets::tagList (in.tags) + "  |  " + loadedLine, juce::dontSendNotification);
+                detailSettings.setText ("WHAT IT DOES: " + juce::String (in.settings) + " Your key and scale are kept.", juce::dontSendNotification);
+                detailStart.setText ("START WITH: " + juce::String (in.startWith), juce::dontSendNotification);
+            }
+            else
+            {
+                detailDesc.setText ("Choose an artist-inspired sound below.", juce::dontSendNotification);
+                detailTags.setText (loadedLine, juce::dontSendNotification);
+                detailSettings.setText ("Each one is an original starting point, not the artist's real sound: tap a card to read what it does, LOAD SOUND to hear it, then MODIFY to shape it.", juce::dontSendNotification);
+                detailStart.setText ({}, juce::dontSendNotification);
+            }
+            backToMineButton.setEnabled (undo.valid);
+            favButton.setToggleState (browsedPreset >= 0 && ((favourites >> browsedPreset) & 1u) != 0, juce::dontSendNotification);
+        }
     }
 
     glitchkid::SoundState small; // just the four parameters the macros read back from
@@ -1016,6 +1095,87 @@ void GlitchKidEditor::refreshAutoMode()
     }
 }
 
+// ---- the artist-preset gallery ----------------------------------------------------------------------------------------------------------
+
+void GlitchKidEditor::refreshGallery()
+{
+    galleryList = glitchkid::browser::run (browseQuery, favourites);
+    const int pages = juce::jmax (1, (int) ((galleryList.size() + cardsPerPage - 1) / cardsPerPage));
+    galleryPage = juce::jlimit (0, pages - 1, galleryPage);
+    const int loaded = glitchkid::FactoryPresets::indexOfName (glitchProcessor.getPresetName());
+    for (int s = 0; s < artistCards.size(); ++s)
+    {
+        const int idx = galleryPage * cardsPerPage + s;
+        const int pi = idx < (int) galleryList.size() ? galleryList[(size_t) idx] : -1;
+        artistCards[s]->bind (pi, pi >= 0 && pi == browsedPreset, pi >= 0 && pi == loaded, pi >= 0 && ((favourites >> pi) & 1u) != 0);
+        if (pi >= 0)
+            artistCards[s]->setTooltip (juce::String (glitchkid::FactoryPresets::info (pi).description) + " (" + glitchkid::FactoryPresets::tagList (glitchkid::FactoryPresets::info (pi).tags)
+                                        + "). Click to read about it; double-click to load it.");
+    }
+    for (int f = 0; f < glitchkid::browser::numFilters; ++f)
+        filterChips[f].setToggleState (f == browseQuery.filter, juce::dontSendNotification);
+    sortButton.setButtonText (juce::String ("SORT: ") + glitchkid::browser::sortName (browseQuery.sort));
+    favOnlyButton.setToggleState (browseQuery.favouritesOnly, juce::dontSendNotification);
+    pagePrevButton.setEnabled (galleryPage > 0);
+    pageNextButton.setEnabled (galleryPage < pages - 1);
+    galleryCount.setText (galleryList.empty() ? juce::String (browseQuery.favouritesOnly ? "NO FAVOURITES HERE YET" : "NOTHING MATCHES")
+                                              : juce::String ((int) galleryList.size()) + " SOUNDS   PAGE " + juce::String (galleryPage + 1) + " / " + juce::String (pages),
+                          juce::dontSendNotification);
+    shownDetailKey = {};
+}
+
+void GlitchKidEditor::selectArtist (int preset)
+{
+    browsedPreset = preset;
+    refreshGallery();
+    shownCompareText = {};
+    titleTarget = {}; // lets the title scramble into the new name
+}
+
+void GlitchKidEditor::loadBrowsed()
+{
+    if (browsedPreset < 0)
+    {
+        showStatus ("Pick an artist sound first.");
+        return;
+    }
+    const auto current = glitchProcessor.getPresetName();
+    const bool onCleanArtistSound = glitchkid::FactoryPresets::indexOfName (current) >= 0 && ! glitchProcessor.isPresetModified();
+    if (! (onCleanArtistSound && undo.valid)) // keep the ORIGINAL sound while you audition several artists in a row
+        undo = { glitchProcessor.captureSoundState(), current, true };
+    const auto outcome = presets.loadFactory (browsedPreset);
+    showStatus (outcome.message);
+    if (! outcome.ok)
+        return;
+    refreshAlterEgos();
+    shownPresetText = {};
+    refreshPresetBar();
+    refreshGallery();
+    mascot.cheer();
+}
+
+void GlitchKidEditor::backToMine()
+{
+    if (! undo.valid)
+        return;
+    glitchProcessor.applyPreset (undo.name, undo.state);
+    undo.valid = false;
+    showStatus ("Back to your sound.");
+    refreshAlterEgos();
+    shownPresetText = {};
+    refreshPresetBar();
+    refreshGallery();
+}
+
+void GlitchKidEditor::toggleFavourite()
+{
+    if (browsedPreset < 0)
+        return;
+    favourites ^= (std::uint64_t) 1 << browsedPreset;
+    glitchProcessor.setUiString ("uiFavs", glitchkid::browser::formatFavourites (favourites));
+    refreshGallery();
+}
+
 void GlitchKidEditor::refreshPresetBar()
 {
     const auto name = glitchProcessor.getPresetName();
@@ -1054,9 +1214,12 @@ void GlitchKidEditor::openPresetMenu()
     juce::PopupMenu menu;
     menu.addSectionHeader ("FACTORY");
     menu.addItem (1, glitchkid::PresetController::factoryDefaultName);
+    juce::PopupMenu intl, dhh;
     for (int i = 0; i < glitchkid::FactoryPresets::count; ++i)
-        menu.addItem (2 + i, glitchkid::FactoryPresets::info (i).name, true,
-                      juce::String (glitchkid::FactoryPresets::info (i).name).equalsIgnoreCase (glitchProcessor.getPresetName()));
+        (glitchkid::FactoryPresets::info (i).region == glitchkid::FactoryPresets::Region::international ? intl : dhh)
+            .addItem (2 + i, glitchkid::FactoryPresets::info (i).name, true, juce::String (glitchkid::FactoryPresets::info (i).name).equalsIgnoreCase (glitchProcessor.getPresetName()));
+    menu.addSubMenu ("International (25)", intl);
+    menu.addSubMenu ("Indian DHH (25)", dhh);
     menu.addSeparator();
     menu.addSectionHeader ("YOUR PRESETS");
     const auto names = presets.getStore().listUserPresets();
@@ -1275,11 +1438,11 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     // the title, painted so it can split and glitch
     const bool tall = page != Page::modify;
     const juce::Rectangle<float> titleRect (screenRect.getX() + 24.0f, screenRect.getY() + (tall ? 52.0f : 54.0f), 720.0f, tall ? 74.0f : 40.0f);
-    const float titleSize = tall ? (titleTarget.length() > 14 ? 46.0f : 64.0f) : 34.0f;
+    const float titleSize = tall ? juce::jlimit (28.0f, 64.0f, 700.0f / ((float) juce::jmax (1, titleTarget.length()) * 0.64f)) : 34.0f;
     auto drawTitle = [&] (juce::Rectangle<float> r, juce::Colour c)
     {
         g.setColour (c);
-        g.setFont (juce::FontOptions (titleSize, juce::Font::bold));
+        g.setFont (glitchkid::ui::fontOf (titleSize, true));
         g.drawText (titleShown, r, juce::Justification::centredLeft, false);
     };
     drawTitle (titleRect.translated (3.0f, 3.0f), ui::pink.withAlpha (0.55f));
@@ -1377,7 +1540,7 @@ void GlitchKidEditor::layoutContent()
     for (int i = 0; i < 3; ++i)
         show (navButtons[i], { screenRect.getX() + 18 + i * 150, screenRect.getY() + 14, 144, 38 });
     show (motionButton, { tall ? screenRect.getRight() - 150 : screenRect.getRight() - 290, screenRect.getY() + 16, 120, 30 });
-    mascotBase = tall ? Rect (786, 108, 196, 196) : Rect (894, 30, 98, 98);
+    mascotBase = page == Page::autoMix ? Rect (878, 76, 104, 104) : tall ? Rect (786, 108, 196, 196) : Rect (894, 30, 98, 98);
     show (mascot, mascotBase);
 
     // ---- bottom bar: presets and A/B (always available) ----
@@ -1428,24 +1591,40 @@ void GlitchKidEditor::layoutContent()
     // ---- step 2: AUTO (the console: reactor, macro dials, audition plates, sound-world pods) ----
     else if (page == Page::autoMix)
     {
-        const int sx = screenRect.getX() + 24, sy = screenRect.getY();
-        show (autoStatus, { sx, sy + 126, 660, 64 });
-        show (scope, { sx, sy + 198, 560, 40 });
-        show (tuneSummary, { sx, sy + 282, 700, 20 });
+        show (detailDesc, { 64, 150, 660, 22 });
+        show (detailTags, { 64, 174, 660, 18 });
+        show (detailSettings, { 64, 194, 660, 38 });
+        show (detailStart, { 64, 232, 660, 34 });
+        show (autoStatus, { 64, 266, 660, 32 });
+        show (scope, { 64, 300, 660, 30 });
+        show (autoStyleLabel, { 744, 194, 266, 14 });
+        show (autoAnalyzeButton, { 744, 214, 108, 108 });
+        show (autoIntensitySlider, { 858, 222, 152, 24 });
+        show (autoApplyButton, { 858, 254, 152, 34 });
 
-        show (autoAnalyzeButton, { 54, 380, 134, 134 });
-        show (autoStyleLabel, { 36, 516, 206, 14 });
-        show (autoIntensitySlider, { 36, 532, 206, 24 });
-        show (autoApplyButton, { 36, 554, 206, 30 });
+        show (searchBox, { 40, 372, 236, 26 });
+        show (favOnlyButton, { 284, 372, 112, 26 });
+        show (sortButton, { 402, 372, 100, 26 });
+        show (favButton, { 508, 372, 100, 26 });
+        show (galleryCount, { 620, 372, 260, 26 });
+        show (pagePrevButton, { 940, 372, 36, 26 });
+        show (pageNextButton, { 984, 372, 36, 26 });
+        for (int f = 0; f < glitchkid::browser::numFilters; ++f)
+            show (filterChips[f], { 40 + (f % 6) * 164, 402 + (f / 6) * 27, 160, 23 });
+        for (int i = 0; i < artistCards.size(); ++i)
+        {
+            artistCards[i]->setBounds ({ 40 + i * 123, 458, 118, 56 });
+            artistCards[i]->setVisible (artistCards[i]->getPreset() >= 0);
+        }
+        show (loadButton, { 40, 520, 200, 42 });
+        show (backToMineButton, { 246, 520, 200, 42 });
+        show (dryButton, { 460, 520, 108, 42 });
+        show (processedButton, { 572, 520, 128, 42 });
+        show (compareCaption, { 706, 520, 150, 42 });
+        show (modifyButton, { 864, 520, 156, 42 });
         for (int i = 0; i < macroDials.size(); ++i)
-            show (*macroDials[i], { 262 + i * 140, 380, 132, 170 });
-        show (*chaosDial, { 262 + 3 * 140, 380, 132, 170 });
-        show (dryButton, { 830, 388, 180, 40 });
-        show (processedButton, { 830, 432, 180, 40 });
-        show (compareCaption, { 830, 476, 180, 20 });
-        show (modifyButton, { 830, 504, 180, 52 });
-        for (int i = 0; i < worldCards.size(); ++i)
-            show (*worldCards[i], { 40 + i * 332, 588, 316, 68 });
+            show (*macroDials[i], { 40 + i * 246, 568, 236, 90 });
+        show (*chaosDial, { 40 + 3 * 246, 568, 236, 90 });
     }
 
     // ---- step 3: MODIFY (one category at a time) ----

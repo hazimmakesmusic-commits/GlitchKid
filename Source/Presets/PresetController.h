@@ -25,7 +25,8 @@ public:
 
     const PresetStore& getStore() const { return store; }
     Outcome loadFactoryDefault();
-    Outcome loadFactory (int index);                            // a built-in preset (see FactoryPresets.h)
+    Outcome loadFactory (int index);                            // a built-in preset (see FactoryPresets.h). Validated first; keeps YOUR tune key and scale
+    bool validateFactory (int index, juce::String* problem = nullptr) const; // every id exists, every value finite and in range, nothing reserved is touched
     static bool isFactoryName (const juce::String& name);       // "Factory Default" or a built-in preset name: reserved, cannot be saved over
     Outcome loadUser (const juce::String& name);
     Outcome saveAs (const juce::String& name, bool overwrite); // saves the live sound

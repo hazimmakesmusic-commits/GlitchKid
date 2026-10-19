@@ -1,6 +1,7 @@
 #include "PlaygroundWidgets.h"
 #include "EffectModel.h"
 #include <BinaryData.h>
+#include "../Presets/FactoryPresets.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 
 namespace glitchkid::ui
@@ -510,6 +511,95 @@ void WorldCard::paint (juce::Graphics& g)
     g.setColour (accent.brighter (0.6f).withAlpha (0.95f));
     g.setFont (fontOf (10.5f, true));
     g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "LOADS: " + loads, tx, r.getY() + 43.0f, tw + 30.0f, 14.0f, juce::Justification::centredLeft);
+}
+
+// ---- ArtistCard ------------------------------------------------------------------------------------------------------------------------
+
+void ArtistCard::bind (int presetIndex, bool s, bool l, bool f)
+{
+    if (presetIndex != preset || s != selected || l != live || f != favourite)
+    {
+        const bool newlySelected = s && ! selected;
+        preset = presetIndex;
+        selected = s;
+        live = l;
+        favourite = f;
+        if (newlySelected && motion)
+            glow = 0.0f; // the frame lights up with a short ramp
+        setVisible (preset >= 0);
+        repaint();
+    }
+}
+
+void ArtistCard::tick (float)
+{
+    const float h = hover, g = glow;
+    hover = motion ? approach (hover, isMouseOver() ? 1.0f : 0.0f, 0.3f) : (isMouseOver() ? 1.0f : 0.0f);
+    glow = motion ? approach (glow, selected ? 1.0f : 0.0f, 0.25f) : (selected ? 1.0f : 0.0f);
+    if (! settled (h, hover) || ! settled (g, glow))
+        repaint();
+}
+
+void ArtistCard::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    if (preset < 0)
+        return;
+    const auto& info = FactoryPresets::info (preset);
+    const auto accent = info.region == FactoryPresets::Region::international ? neon : juce::Colour (0xffffa23a);
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    if (down)
+        r = r.reduced (1.0f);
+    juce::ColourGradient fill (panelTop.interpolatedWith (accent, 0.10f + 0.08f * glow + 0.05f * hover), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false);
+    g.setGradientFill (fill);
+    g.fillRoundedRectangle (r, 8.0f);
+    if (glow > 0.01f)
+        drawGlow (g, r.reduced (2.0f), lime, 7.0f, 0.55f * glow);
+    g.setColour (selected ? lime : (highlighted ? accent : border));
+    g.drawRoundedRectangle (r, 8.0f, selected ? 2.0f : 1.2f);
+    if (hasKeyboardFocus (true))
+    {
+        g.setColour (chrome);
+        g.drawRoundedRectangle (r.expanded (2.0f), 10.0f, 1.2f);
+    }
+
+    // sigil: five strokes between points on a ring, picked from the preset number (a tiny alien glyph, different for every card)
+    const auto sg = juce::Rectangle<float> (26.0f, 26.0f).withCentre ({ r.getX() + 20.0f, r.getCentreY() });
+    g.setColour (accent.withAlpha (selected ? 1.0f : 0.8f));
+    g.drawEllipse (sg, 1.0f);
+    juce::Random rng (preset * 7919 + 13);
+    juce::Point<float> prev;
+    for (int k = 0; k < 5; ++k)
+    {
+        const float a = (float) rng.nextInt (8) * juce::MathConstants<float>::pi / 4.0f;
+        const juce::Point<float> pt (sg.getCentreX() + std::sin (a) * 9.0f, sg.getCentreY() - std::cos (a) * 9.0f);
+        if (k > 0)
+            g.drawLine (prev.x, prev.y, pt.x, pt.y, 1.5f);
+        prev = pt;
+    }
+    g.fillEllipse (sg.getCentreX() - 1.5f, sg.getCentreY() - 1.5f, 3.0f, 3.0f);
+
+    auto area = r.withTrimmedLeft (38.0f).withTrimmedRight (4.0f);
+    g.setColour (selected ? textBright : textBright.withAlpha (0.9f));
+    g.setFont (fontOf (11.5f, true));
+    g.drawFittedText (info.artist, area.withTrimmedBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 2, 0.85f);
+    int bit = 0;
+    while (bit < FactoryPresets::numTags - 1 && ! ((info.tags >> bit) & 1u))
+        ++bit;
+    g.setColour (textDim);
+    g.setFont (fontOf (9.5f, true));
+    g.drawText (FactoryPresets::tagName (bit), area.removeFromBottom (13.0f), juce::Justification::centredLeft, true);
+    if (live)
+    {
+        g.setColour (lime);
+        g.fillEllipse (r.getRight() - 12.0f, r.getY() + 5.0f, 6.0f, 6.0f);
+    }
+    if (favourite)
+    {
+        juce::Path star;
+        star.addStar ({ r.getRight() - 11.0f, r.getBottom() - 10.0f }, 5, 2.4f, 5.2f);
+        g.setColour (neon);
+        g.fillPath (star);
+    }
 }
 
 // ---- NoteKey ---------------------------------------------------------------------------------------------------------------------------

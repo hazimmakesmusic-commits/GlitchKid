@@ -2,6 +2,7 @@
 #include "PluginProcessor.h"
 #include "Presets/PresetController.h"
 #include "Macros/MacroEngine.h"
+#include "Presets/PresetBrowser.h"
 #include "UI/PlaygroundWidgets.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
@@ -79,7 +80,24 @@ private:
     // HOME screen: mascot + live input scope, Sound Worlds, the main AutoMode action, macros, quick commands, dry/processed switch.
     glitchkid::ui::Mascot mascot;
     glitchkid::ui::ScopeStrip scope;
-    juce::OwnedArray<glitchkid::ui::WorldCard> worldCards;
+    // AUTO: the artist-preset gallery. Eight card slots are rebound to the presets of the current page (50 cards are never on screen at once).
+    juce::OwnedArray<glitchkid::ui::ArtistCard> artistCards;
+    juce::TextButton filterChips[glitchkid::browser::numFilters], sortButton, favOnlyButton { "FAVOURITES" }, favButton { "FAVOURITE" },
+                     pagePrevButton { "<" }, pageNextButton { ">" }, loadButton { "LOAD SOUND" }, backToMineButton { "BACK TO MY SOUND" };
+    juce::TextEditor searchBox;
+    juce::Label galleryCount, detailDesc, detailTags, detailSettings, detailStart;
+    glitchkid::browser::Query browseQuery;
+    std::vector<int> galleryList;
+    int galleryPage = 0, browsedPreset = -1;
+    juce::String shownDetailKey;
+    std::uint64_t favourites = 0;
+    struct Undo { glitchkid::SoundState state; juce::String name; bool valid = false; } undo; // your sound from before the last artist preset was loaded
+    static constexpr int cardsPerPage = 8;
+    void refreshGallery();
+    void selectArtist (int preset);
+    void loadBrowsed();
+    void backToMine();
+    void toggleFavourite();
     juce::OwnedArray<glitchkid::ui::MacroDial> macroDials; // SPACE, CHARACTER, PUNCH
     std::unique_ptr<glitchkid::ui::MacroDial> chaosDial;    // the Alter Ego CHAOS amount (needs an Alter Ego)
     juce::TextButton commandButtons[glitchkid::macros::numCommands];

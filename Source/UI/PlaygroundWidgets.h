@@ -75,6 +75,26 @@ private:
     int frame = 0;
 };
 
+// One compact card of the artist-preset gallery: an original alien "sigil" (drawn from the preset's number, so every card has its own), the artist name, the
+// first style tag and a status: selected (lime frame), live (the loaded sound), favourite (small star). No artwork or logo of any artist is used.
+class ArtistCard : public juce::Button
+{
+public:
+    ArtistCard() : juce::Button ("artist") { setWantsKeyboardFocus (true); }
+    void bind (int presetIndex, bool selected, bool live, bool favourite); // presetIndex < 0 clears the card
+    int getPreset() const { return preset; }
+    void setMotion (bool on) { motion = on; }
+    void tick (float dt);              // eases hover / selection glow; repaints only while something is still moving
+    std::function<void()> onDoubleClick;
+    void mouseDoubleClick (const juce::MouseEvent&) override { if (onDoubleClick) onDoubleClick(); }
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    int preset = -1;
+    bool selected = false, live = false, favourite = false, motion = true;
+    float glow = 0.0f, hover = 0.0f;
+};
+
 // One key of the TUNE note pad (C ... B). Selected = lime; a small dot marks the notes the chosen scale allows (read from the real scale table).
 // Choosing a key sends a short ring of light outwards (pulse), which tick() fades; tick() returns true while it is still moving, so nothing repaints at rest.
 class NoteKey : public juce::Button

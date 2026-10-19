@@ -13,8 +13,41 @@ PresetController::Outcome PresetController::loadFactory (int index)
     if (index < 0 || index >= FactoryPresets::count)
         return { false, false, {}, "That factory preset does not exist." };
     const juce::String name = FactoryPresets::info (index).name;
-    processor.applyPreset (name, FactoryPresets::build (index, processor.factoryDefaultState()));
+    juce::String problem;
+    if (! validateFactory (index, &problem))
+        return { false, false, name, "\"" + name + "\" could not be loaded (" + problem + "). Nothing was changed." };
+    auto state = FactoryPresets::build (index, processor.factoryDefaultState());
+    const auto live = processor.captureSoundState(); // the key and scale are yours, not the preset's
+    for (const char* id : { "tune_key", "tune_scale" })
+        state.set (id, live.get (id, state.get (id, 0.0f)));
+    processor.applyPreset (name, state);
     return { true, false, name, "Loaded \"" + name + "\"." };
+}
+
+bool PresetController::validateFactory (int index, juce::String* problem) const
+{
+    auto fail = [problem] (const juce::String& why) { if (problem != nullptr) *problem = why; return false; };
+    if (index < 0 || index >= FactoryPresets::count)
+        return fail ("no such preset");
+    juce::StringArray seen;
+    const auto* o = FactoryPresets::overrides (index);
+    for (int i = 0; i < FactoryPresets::numOverrides (index); ++i)
+    {
+        const juce::String id (o[i].id);
+        for (const char* reserved : { "tune_key", "tune_scale", "gain", "mix", "bypass" })
+            if (id == reserved)
+                return fail (id + " is reserved");
+        if (seen.contains (id))
+            return fail (id + " is set twice");
+        seen.add (id);
+        auto* r = dynamic_cast<juce::RangedAudioParameter*> (processor.apvts.getParameter (id));
+        if (r == nullptr)
+            return fail ("unknown control " + id);
+        const auto range = r->getNormalisableRange();
+        if (! std::isfinite (o[i].value) || o[i].value < range.start - 1.0e-4f || o[i].value > range.end + 1.0e-4f)
+            return fail (id + " is out of range");
+    }
+    return true;
 }
 
 bool PresetController::isFactoryName (const juce::String& name)

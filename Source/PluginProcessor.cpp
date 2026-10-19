@@ -445,6 +445,16 @@ int GlitchKidProcessor::getUiInt (const char* key, int fallback) const
     return v.isVoid() ? fallback : (int) v;
 }
 
+juce::String GlitchKidProcessor::getUiString (const char* key) const
+{
+    return apvts.state.getProperty (key).toString();
+}
+
+void GlitchKidProcessor::setUiString (const char* key, const juce::String& value)
+{
+    apvts.state.setProperty (key, value, nullptr);
+}
+
 void GlitchKidProcessor::setUiInt (const char* key, int value)
 {
     apvts.state.setProperty (key, value, nullptr);
