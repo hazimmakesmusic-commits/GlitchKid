@@ -71,7 +71,25 @@ private:
     Icon icon;
     juce::Colour accent;
     bool selected = false, edited = false, hovering = false, pressed = false, motion = true;
-    float hover = 0.0f, glow = 0.0f;
+    float hover = 0.0f, glow = 0.0f, phase = 0.0f;
+    int frame = 0;
+};
+
+// One key of the TUNE note pad (C ... B). Selected = lime; a small dot marks the notes the chosen scale allows (read from the real scale table).
+// Choosing a key sends a short ring of light outwards (pulse), which tick() fades; tick() returns true while it is still moving, so nothing repaints at rest.
+class NoteKey : public juce::Button
+{
+public:
+    explicit NoteKey (const juce::String& name) : juce::Button (name) { setWantsKeyboardFocus (true); }
+    void setSelected (bool s) { if (s != selected) { selected = s; repaint(); } }
+    void setInScale (bool s) { if (s != inScale) { inScale = s; repaint(); } }
+    void pulse (bool motion) { pulseT = motion ? 1.0f : 0.0f; repaint(); }
+    bool tick (float dt);
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    bool selected = false, inScale = false;
+    float pulseT = 0.0f;
 };
 
 // A large dial for a macro. Drag up/down (Shift = fine), mouse wheel, arrow keys, double-click resets. Reports the new 0..1 value.

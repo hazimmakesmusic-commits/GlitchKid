@@ -336,12 +336,18 @@ void WorldCard::setSelected (bool s, bool e)
     }
 }
 
-void WorldCard::tick (float)
+void WorldCard::tick (float dt)
 {
     const float prevHover = hover, prevGlow = glow;
+    bool ambient = false;
+    if (motion && selected) // the loaded world has a quiet ambient motion (about 15 repaints a second, only for that card)
+    {
+        phase += dt;
+        ambient = (++frame & 1) == 0;
+    }
     hover = motion ? approach (hover, hovering ? 1.0f : 0.0f, 0.3f) : (hovering ? 1.0f : 0.0f);
     glow = motion ? approach (glow, selected ? 1.0f : 0.0f, 0.2f) : (selected ? 1.0f : 0.0f);
-    if (! settled (prevHover, hover) || ! settled (prevGlow, glow))
+    if (ambient || ! settled (prevHover, hover) || ! settled (prevGlow, glow))
         repaint();
 }
 
@@ -387,6 +393,69 @@ void WorldCard::paint (juce::Graphics& g)
     {
         g.setColour (chrome);
         g.strokePath (makePlatePath (r.expanded (3.0f), false), juce::PathStrokeType (1.4f));
+    }
+
+    // artwork: a small drawn scene on the right of the pod. It wakes up (brightens, shifts) when the world is loaded.
+    {
+        const juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (plate, {});
+        const auto art = juce::Rectangle<float> (r.getX() + r.getWidth() * 0.52f, r.getY(), r.getWidth() * 0.48f, r.getHeight());
+        const float a = 0.30f + 0.55f * glow + 0.15f * hover;
+        if (icon == Icon::planet)
+        {
+            for (int i = 0; i < 14; ++i) // stars, twinkling slowly
+            {
+                const float sx = art.getX() + std::fmod ((float) i * 37.7f, art.getWidth()), sy = art.getY() + std::fmod ((float) i * 23.3f, art.getHeight() * 0.8f);
+                const float tw = 0.5f + 0.5f * std::sin (phase * 1.7f + (float) i);
+                g.setColour (chrome.withAlpha (a * (0.35f + 0.5f * tw)));
+                g.fillRect (sx, sy, 1.6f, 1.6f);
+            }
+            const auto c = juce::Point<float> (art.getCentreX() + 14.0f + 3.0f * std::sin (phase * 0.6f) * glow, art.getBottom() - 4.0f);
+            const float R = 30.0f + 3.0f * glow;
+            juce::ColourGradient pl (neon.withAlpha (a), c.x - R * 0.5f, c.y - R, accent.darker (0.6f).withAlpha (a), c.x + R, c.y + R, false);
+            g.setGradientFill (pl);
+            g.fillEllipse (c.x - R, c.y - R, R * 2.0f, R * 2.0f);
+            g.setColour (chrome.withAlpha (a * 0.7f));
+            juce::Path ring;
+            ring.addEllipse (c.x - R * 1.7f, c.y - R * 0.28f, R * 3.4f, R * 0.56f);
+            g.strokePath (ring, juce::PathStrokeType (1.4f), juce::AffineTransform::rotation (-0.35f, c.x, c.y));
+        }
+        else if (icon == Icon::heart)
+        {
+            for (int i = 0; i < 9; ++i) // rain
+            {
+                const float x = art.getX() + (float) i * 17.0f + 6.0f;
+                const float y = art.getY() + std::fmod ((float) i * 19.0f + phase * 38.0f, art.getHeight() + 14.0f) - 14.0f;
+                g.setColour (chrome.withAlpha (a * 0.4f));
+                g.drawLine (x, y, x - 3.0f, y + 11.0f, 1.0f);
+            }
+            juce::Path h;
+            const auto c = juce::Point<float> (art.getRight() - 40.0f, art.getCentreY() + 3.0f);
+            const float k = 1.0f + 0.04f * std::sin (phase * 2.4f) * glow;
+            h.startNewSubPath (c.x, c.y + 22.0f * k);
+            h.cubicTo (c.x - 34.0f * k, c.y - 4.0f * k, c.x - 16.0f * k, c.y - 30.0f * k, c.x, c.y - 11.0f * k);
+            h.cubicTo (c.x + 16.0f * k, c.y - 30.0f * k, c.x + 34.0f * k, c.y - 4.0f * k, c.x, c.y + 22.0f * k);
+            g.setColour (accent.brighter (0.4f).withAlpha (a * 0.8f));
+            g.fillPath (h);
+            g.setColour (obsidian.withAlpha (0.8f));
+            g.drawLine (c.x - 3.0f, c.y - 10.0f, c.x + 3.0f, c.y - 1.0f, 1.8f);
+            g.drawLine (c.x + 3.0f, c.y - 1.0f, c.x - 2.0f, c.y + 10.0f, 1.8f);
+        }
+        else
+        {
+            for (int i = 0; i < 6; ++i) // pixel blocks that shuffle while the world is awake
+                for (int j = 0; j < 3; ++j)
+                {
+                    const int seed = (i * 7 + j * 13 + (int) (phase * 2.0f)) % 5;
+                    if (seed < 2)
+                        continue;
+                    g.setColour ((seed == 4 ? lime : accent.brighter (0.5f)).withAlpha (a * (0.3f + 0.12f * (float) seed)));
+                    g.fillRect (art.getX() + 10.0f + (float) i * 17.0f, art.getY() + 8.0f + (float) j * 17.0f, 13.0f, 13.0f);
+                }
+            const float y = art.getY() + std::fmod (phase * 26.0f, art.getHeight());
+            g.setColour (lime.withAlpha (a * 0.55f * glow));
+            g.fillRect (art.getX(), y, art.getWidth(), 1.5f);
+        }
     }
 
     // status light: lit lime when this pod is loaded
@@ -441,6 +510,48 @@ void WorldCard::paint (juce::Graphics& g)
     g.setColour (accent.brighter (0.6f).withAlpha (0.95f));
     g.setFont (fontOf (10.5f, true));
     g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "LOADS: " + loads, tx, r.getY() + 43.0f, tw + 30.0f, 14.0f, juce::Justification::centredLeft);
+}
+
+// ---- NoteKey ---------------------------------------------------------------------------------------------------------------------------
+
+bool NoteKey::tick (float dt)
+{
+    if (pulseT <= 0.0f)
+        return false;
+    pulseT = juce::jmax (0.0f, pulseT - dt * 3.2f); // about 0.3 s
+    repaint();
+    return pulseT > 0.0f;
+}
+
+void NoteKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
+{
+    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    if (down)
+        r = r.reduced (1.5f);
+    const bool sharp = getButtonText().contains ("#");
+    if (pulseT > 0.0f)
+        drawGlow (g, r.expanded ((1.0f - pulseT) * 7.0f), lime, 10.0f, pulseT * 0.9f);
+    else if (selected)
+        drawGlow (g, r.reduced (3.0f), lime, 7.0f, 0.55f);
+    const auto base = selected ? lime : (sharp ? juce::Colour (0xff0b0c12) : juce::Colour (0xff1d2030));
+    juce::ColourGradient fill (base.brighter (highlighted ? 0.3f : 0.12f), r.getX(), r.getY(), base.darker (0.3f), r.getX(), r.getBottom(), false);
+    g.setGradientFill (fill);
+    g.fillRoundedRectangle (r, 6.0f);
+    g.setColour (selected ? lime.brighter (0.4f) : (highlighted ? neon : chromeDark));
+    g.drawRoundedRectangle (r, 6.0f, selected ? 2.0f : 1.2f);
+    if (hasKeyboardFocus (true))
+    {
+        g.setColour (chrome);
+        g.drawRoundedRectangle (r.expanded (2.0f), 8.0f, 1.2f);
+    }
+    g.setColour (selected ? obsidian : textBright);
+    g.setFont (fontOf (16.0f, true));
+    g.drawText (getButtonText(), r.withTrimmedBottom (8.0f), juce::Justification::centred, false);
+    if (inScale) // this note is allowed by the chosen scale
+    {
+        g.setColour (selected ? obsidian : neon);
+        g.fillEllipse (r.getCentreX() - 2.5f, r.getBottom() - 9.0f, 5.0f, 5.0f);
+    }
 }
 
 // ---- MacroDial -------------------------------------------------------------------------------------------------------------------------

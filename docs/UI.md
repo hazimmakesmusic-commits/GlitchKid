@@ -1,44 +1,63 @@
-# GlitchKid interface: a vocal-effects workstation
+# GlitchKid interface: Tune -> Auto -> Modify (the "console")
 
-The window is one fixed design (1160 x 720) scaled to fit; it is resizable (60 % to 150 %, fixed aspect ratio) and every control is part of that scaled layout, so nothing overlaps or clips at any size.
-Five zones:
+The plug-in is drawn as a small alien-lab console: a dark hull with violet edge lighting, a **glass screen** at the top (step tabs, a painted title, status text, the Kid in his saucer),
+a **deck** below it (reactor ANALYZE button, macro dials, DRY | PROCESSED plates) and three **pods** (the Sound Worlds). Buttons are chamfered hull plates (the step tabs are slanted),
+every knob is a ring of LED segments around a knurled metal cap. On MODIFY the screen shrinks to a title strip and the category panel takes the space.
+**Glitch:** at random moments (every 2-5 s) and on every click the screen glitches for ~1/3 s (title split into pink/blue slices, tear bars, a jolt of the mascot); the title also scrambles into place
+when it changes. All of it stops when MOTION is off. Nothing here changes what a control does.
 
-| Zone | What it holds |
-|---|---|
-| A. Top bar | Crown + GLITCHKID wordmark; preset `<` name `>` (menu); A/B (SET A, A, B, SET B); input and output activity meters (real peaks); settings gear |
-| B. Input / output (left) | Input and output level meters, a clip light (lights red at 0 dBFS, holds about 1 s), the OUTPUT GAIN knob, and the DRY / PROCESSED monitor (the real, delay-matched Bypass) |
-| C. Workspace (centre) | Tabs HOME / EFFECTS / PRESETS / SETTINGS. Only the current tab's controls are shown |
-| D. FX CHAIN (right) | The eleven effects in their REAL processing order; click a row to open it on EFFECTS; the switch at the left turns the effect on or off where it has one |
-| E. Status strip | Small mascot, "MAKE YOUR VOICE WEIRD.", the status message, processing / dry state, reported latency and the version |
+The window is one fixed layout (1060 x 700, scaled to fit; resizable between 60 % and 150 %, aspect ratio kept). Three steps, one page each. A header (brand, the three step buttons,
+the mascot) and a slim preset bar (`<` `>`, preset menu, SAVE, DELETE, A/B) are always shown. The last page and MODIFY category are remembered in the session; a first launch opens **TUNE**.
 
-## HOME
-Three Sound World pods (load the built-in presets), QUICK TWEAKS (DARKER, MORE SPACE, HARDER TUNE, WEIRDER: fixed, bounded changes), AUTO-MIX (ANALYZE VOCAL, INTENSITY, APPLY SOUND; see `docs/AUTOMODE.md`), the SPACE / CHARACTER / PUNCH / CHAOS dials and a rolling input scope.
-Mappings and limits: see the macro table in `Source/Macros/MacroEngine.h`. Nothing is applied until you press a button.
+## 1 TUNE (key and scale)
 
-## EFFECTS
-A grid of the eleven effects (icon, name, state light) and, below it, the controls of the SELECTED effect only. Selecting from the grid or from the chain is the same thing (saved as `uiEffect`).
-Effects with a real on/off parameter (Pitch Tune, Harmony, Mutation, Doubler, Stutter, Echo, Dimension) show an ON switch; Formant, EQ, Compressor and Saturation are always in the chain, and are shown lit only when they are away from their neutral setting
-(Formant not 0 st, any EQ gain, compressor ratio above 1:1, saturation drive above 0 dB). Tile and chain state are read from the real parameters every frame, so the two always agree with the controls.
+Real controls only: **KEY** and **SCALE** (the Pitch Tune parameters `tune_key`, `tune_scale`), **TUNING** on/off (`tune_on`), and **TUNING STYLE**: NATURAL / LIGHT / HARD.
+A style is a fixed setting of Pitch Tune's own strength and speed (NATURAL 50 % / 80 ms, LIGHT 75 % / 35 ms, HARD 100 % / 0 ms) and switches Pitch Tune on (~31 ms of reported latency).
+It is read back from the two knobs, so after hand-editing no style is lit. The summary line ("YOUR KEY: C Natural minor | STYLE: HARD") and the live sung-note read-out come from the real parameters.
+**GlitchKid does not detect your key**; the page says so. NEXT goes to AUTO.
 
-## PRESETS
-The preset list (FACTORY and USER tags; click to load), SAVE PRESET, DELETE (user presets only, asks first), RESET (Factory Default, asks first), A>B / B>A, and the MOODS (Alter Egos) with CHAOS, BLEND and SURPRISE ME.
+## 2 AUTO (sound and analysis)
 
-## SETTINGS
-Animations on/off (`uiMotion`), SHOW PRESET FOLDER, and plain information: version, sample rate, reported latency, where presets are saved, what is fixed (the effect order).
+* **Sound Worlds:** ASTRO MODE, HEARTBREAK, DIGITAL ALTER EGO. Each loads the matching built-in preset (the small line names it). The loaded world is lit.
+* **ANALYZE VOCAL** then **APPLY SOUND**: the AutoMode engine (ASTRO MODE profile only; see AUTOMODE.md). Analysis and applying are separate; nothing is applied until APPLY SOUND. The status ring shows real states
+  (idle / waiting for audio / listening with real progress / ready / could not analyse). INTENSITY sets how strongly APPLY moves the controls.
+* **DRY | PROCESSED:** the real Bypass parameter (delay-matched, 20 ms crossfade), not the Mix knob.
+* **Macros:** SPACE, CHARACTER, PUNCH (see mappings below) and CHAOS (the Alter Ego Chaos; needs an Alter Ego, picked in MODIFY > CHARACTER).
+* **MODIFY >** goes to step 3. The scope strip shows the real recent input level; the mascot reacts to it and to the AutoMode state.
 
-## What is deliberately NOT here
-- **No input-gain stage exists in the engine**, so there is no input-gain knob: the knob on the left is the real OUTPUT GAIN and is labelled so.
-- **No reverb exists.** Liquid Echo, Dimension and the Doubler are the atmosphere tools.
-- **The effect order is fixed by the engine.** The FX CHAIN shows it but cannot reorder, add or remove effects; the panel says so. Reordering would need new engine work.
-- No on/off switch is drawn for effects that have no on/off parameter.
+## 3 MODIFY (one category at a time)
 
-## Design system
-Colour tokens (`Source/UI/PlaygroundWidgets.h`): background `#08090D`, panel `#101219`, raised panel `#151923`, border `#252B38`, primary purple `#963BFF`, neon violet `#B56AFF`, electric lime `#B7FF3C` (active states and feedback only), cyan `#24D8F2` and pink `#FF4FA3` (to tell effects apart: pink for Mutation/Stutter, cyan for Doubler/Echo/Dimension),
-muted text `#9299AA`, text `#F4F3F8`, disabled `#454957`, error / clipping `#FF496A`. Typeface: **Inter** (SIL OFL), compiled into the plug-in from `Assets/Fonts` (see `LICENSES.md`); headings use Inter Bold. Space Grotesk is not bundled (it could not be downloaded in the build environment): to use it,
-add the font file to `Assets/Fonts`, list it in `juce_add_binary_data` in `CMakeLists.txt` and point `fontOf` at it.
-Knobs are one look everywhere (a ring of LED segments around a dark knurled cap), label above, value below, double-click resets to the default. Toggles are small pill switches (lime when on). Animations are minimal and switch off with SETTINGS > ANIMATIONS.
+Tabs: **PITCH & KEY** (on/off, key, scale, style, strength, speed, FORMANT) | **TONE** (the four EQ bands, saturation drive) | **DYNAMICS** (compressor, output gain, IN / OUT / GR meters) |
+**SPACE** (Liquid Echo, Dimension, Doubler, Harmony) | **CHARACTER** (Alter Egos, Chaos, Blend, Surprise Me, Vocal Mutation, Glitch Stutter).
+Under the tabs: **QUICK TWEAKS** (DARKER, MORE SPACE, HARDER TUNE, WEIRDER). Footer: **BACK TO AUTO**, **RESET** (loads Factory Default after asking; A/B snapshots are kept), **SAVE PRESET**, DRY | PROCESSED.
+Nothing is shown that has no behaviour behind it. GlitchKid has no reverb: "Space" is delay, width and doubling.
 
-## Safety and testing
-The interface runs on the message thread (30 Hz timer); it reads parameters and atomics and writes only through the normal parameter and preset calls (`captureSoundState` / `applyParameterChanges`, `PresetController`). It never touches the audio thread. No parameter ID, preset or saved state changed.
-Tests (`Tests/MacroTests.cpp`): the effect model (order, real enable parameters, activity), navigation through the real buttons, each page showing only its own controls, chain switches changing real parameters, and renders of every page, every effect, three window sizes and every AutoMode state
-(set `GLITCHKID_SNAPSHOT_DIR` to write them as PNG). A rendered image being "not blank" does not mean the interface looks good: look at the snapshots, and in a real host.
+## Macros and quick tweaks (exact mappings)
+
+* **SPACE** echo_on/dim_on/dbl_on (on above 2 %), echo_mix 0-60 %, echo_fb 15-45 %, echo_width 20-75 %, dim_mix 0-45 %, dbl_amount 0-40 %. Read back: echo_mix/60.
+* **CHARACTER** sat_drive 0-12 dB, eq_b2_gain 0-+2.5 dB. Read back: sat_drive/12.
+* **PUNCH** comp_ratio 1-6, comp_thresh -12..-26 dB, attack 15 ms, release 110 ms, knee 6 dB, makeup min(4, 0.8 (ratio-1)) dB. Read back: (ratio-1)/5.
+* **DARKER** eq_hi_gain -1.5 dB, eq_b2_gain -0.5 dB, echo_tone x0.85. **MORE SPACE** SPACE +15 points. **HARDER TUNE** tune_on, strength +10 %, speed -8 ms. **WEIRDER** mut_on, +15 % amount, +10 % character.
+A macro overwrites its parameters while dragged; use A/B (SET A first) to return. Quick tweaks are fixed, bounded buttons, **not language understanding**: typed or spoken requests are not implemented.
+Never touched by macros or tweaks: Gain, Mix, Bypass, key, scale, FORMANT, the Alter Ego selection.
+
+## Design system and safety
+
+Obsidian background; acid lime = primary/active; electric violet = atmosphere; hot pink = chaos/mutation/errors/dry; chrome = highlights. `Source/UI/PlaygroundWidgets.*`: palette, look-and-feel, widgets. No images, fonts or network.
+All painting and animation run on the message thread from the editor's 30 Hz timer; a widget repaints only when its value moved; MOTION off makes everything static. The audio thread is unchanged.
+Pages are laid out in `GlitchKidEditor::layoutContent()`: every control that is not part of the current page is hidden, so nothing from another page can be clicked.
+Parameter IDs, state, presets, A/B and automation are unchanged; the interface only adds saved preferences `uiPage`, `uiCategory`, `uiMotion` (never part of a sound or preset).
+
+## Testing
+
+`Tests/MacroTests.cpp`: macro, tweak and tuning-style logic; parameter application; saved preferences; and an editor test that builds the real editor, renders every page and MODIFY category at several sizes,
+drives the real navigation buttons (checking that each page shows only its own controls and that the buttons change real parameters), and renders every AutoMode state.
+`GLITCHKID_SNAPSHOT_DIR=/some/folder` writes the renders as PNG files. They show layout; they do not replace looking at the plug-in in the DAW.
+
+## Game-identity pass (latest)
+- TUNE: a twelve-key note pad and six scale chips replace the key/scale boxes on this page (the boxes remain on MODIFY > PITCH & KEY). They write the real Tune Key / Tune Scale parameters. A dot on a key means the chosen scale allows that note (from the real scale table). Choosing a key or scale sends a short pulse of light; a change from automation or a preset pulses too. Nothing detects your key.
+- Sound World pods carry small drawn scenes (planet and stars, rain and a cracked heart, shuffling pixel blocks). They wake up (brighten, shift) when loaded, with quiet ambient motion only on the loaded pod (about 15 repaints a second). Switch off with MOTION.
+- Page and category changes fade in over about 5 frames; the first title does not scramble.
+- Typeface is now Inter (bundled; see `LICENSES.md`); the palette tokens are the newer ones in `PlaygroundWidgets.h`.
+- Not done: no input waveform of the processed signal (only the real input scope and meters), no Space Grotesk, no separate loading screen (no loading state exists), key detection does not exist.
+- The five-zone "workstation" layout (HOME / EFFECTS / PRESETS / SETTINGS) is in git history at commit 3c9ac0c.

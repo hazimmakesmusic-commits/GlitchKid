@@ -54,70 +54,70 @@ public:
     void resized() override;
 
 private:
-    // Layout size; the window scales it to fit. Four zones: a top bar (brand, preset selector, A/B, activity, settings), the input/output section on the left, the central
-    // workspace (HOME / EFFECTS / PRESETS / SETTINGS) and the FX CHAIN on the right, plus a thin status strip. Every control that is not part of the current page is hidden.
-    static constexpr int designW = 1160, designH = 720;
-    enum class Page { home = 0, effects = 1, presets = 2, settings = 3 };
-    Page page = Page::home;
-    int selectedEffect = 0; // glitchkid::fx::Effect
+    // Layout size; the window scales it to fit. The interface is three steps, one page each: TUNE (key + scale), AUTO (sound + analysis), MODIFY (advanced,
+    // one category at a time). A header (brand, step buttons, mascot) and the preset bar are always shown; everything else belongs to exactly one page.
+    static constexpr int designW = 1060, designH = 700;
+    enum class Page { tune = 0, autoMix = 1, modify = 2 };
+    enum class Category { pitch = 0, tone, dynamics, space, character };
+    static constexpr int numCategories = 5;
+    Page page = Page::tune;
+    int category = 0;
     bool motionOn = true;
     glitchkid::ui::PlaygroundLookAndFeel lookAndFeel; // declared first: it must outlive every control that uses it
     juce::Component content; // declared before the controls so it outlives them
     float scaleFactor = 1.0f;
     void layoutContent();
     void showPage (Page, bool remember);
-    void selectEffect (int effect, bool openEffects);
+    void showCategory (int, bool remember);
     void buildPageControls();
     std::vector<juce::Rectangle<int>> panelRects;
     void timerCallback() override;
     void refreshHome (float peak);
     void setBypassFromUi (bool bypassed);
-    void toggleEffect (int effect);
     juce::TooltipWindow tooltipWindow { this, 500 }; // the controls' tooltips need one to be shown at all
 
-    // Top bar, FX CHAIN and the EFFECTS grid
-    glitchkid::ui::Mascot mascot; // small: it lives in the status strip
-    glitchkid::ui::ActivityMeter inActivity, outActivity;
-    glitchkid::ui::ClipLed clipLed;
-    glitchkid::ui::GearButton gearButton;
-    juce::OwnedArray<glitchkid::ui::EffectTile> effectTiles;
-    juce::OwnedArray<glitchkid::ui::ChainRow> chainRows;
-    juce::TextButton navButtons[4];
-    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, inputCaption { {}, "INPUT" };
-
-    // HOME: Sound Worlds, the main AutoMode action, macros, quick tweaks and the input scope.
+    // HOME screen: mascot + live input scope, Sound Worlds, the main AutoMode action, macros, quick commands, dry/processed switch.
+    glitchkid::ui::Mascot mascot;
     glitchkid::ui::ScopeStrip scope;
     juce::OwnedArray<glitchkid::ui::WorldCard> worldCards;
     juce::OwnedArray<glitchkid::ui::MacroDial> macroDials; // SPACE, CHARACTER, PUNCH
     std::unique_ptr<glitchkid::ui::MacroDial> chaosDial;    // the Alter Ego CHAOS amount (needs an Alter Ego)
     juce::TextButton commandButtons[glitchkid::macros::numCommands];
-    juce::Label talkCaption { {}, "QUICK TWEAKS" };
-    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" };
+    juce::Label talkCaption { {}, "QUICK TWEAKS" }, talkNote, compareCaption;
+    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" }, motionButton;
 
-    // PRESETS and SETTINGS
-    juce::TextButton resetButton { "RESET" }, motionButton, showFolderButton { "SHOW PRESET FOLDER" };
-    juce::Label settingsInfo, fxNote, effectNote, statusRight;
-    struct PresetListModel : public juce::ListBoxModel
-    {
-        explicit PresetListModel (GlitchKidEditor& e) : editor (e) {}
-        int getNumRows() override { return editor.presetNames.size(); }
-        void paintListBoxItem (int row, juce::Graphics&, int width, int height, bool selected) override;
-        void listBoxItemClicked (int row, const juce::MouseEvent&) override;
-        GlitchKidEditor& editor;
-    };
-    juce::StringArray presetNames;
-    std::vector<int> presetKinds; // 0 factory, 1 user
-    PresetListModel presetListModel { *this };
-    juce::ListBox presetList { "presets", nullptr };
-    void refreshPresetList();
-    juce::TextButton styleButtons[glitchkid::macros::numTuneStyles];
-    juce::Label tuneSummary, tuneOnCaption { {}, "TUNING" }, styleCaption { {}, "TUNING STYLE" };
+    // Navigation and page controls
+    juce::TextButton navButtons[3], categoryButtons[numCategories], nextButton { "NEXT  >" }, modifyButton { "MODIFY  >" },
+                     backButton { "<  BACK TO AUTO" }, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" },
+                     styleButtons[glitchkid::macros::numTuneStyles];
+    // TUNE note pad and scale chips: they drive the same Tune Key / Tune Scale parameters as the boxes on MODIFY.
+    juce::OwnedArray<glitchkid::ui::NoteKey> noteKeys;
+    juce::TextButton scaleChips[6];
+    int shownKey = -1, shownScale = -1;
+    float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
+    void refreshTunePad();
+    void startFade();
+    juce::Label tuneSubline, tuneSummary, tuneOnCaption { {}, "TUNING" }, styleCaption { {}, "TUNING STYLE" };
+
+    // The glass screen: its title is painted (not a label) so it can scramble and glitch. Glitch bursts are short (about a third of a second), happen
+    // at random moments and on every click, and are skipped when MOTION is off.
+    juce::Rectangle<int> screenRect, mascotBase;
+    juce::String titleTarget, titleShown;
+    int scrambleFrames = 0, glitchFrames = 0, nextBurstIn = 70;
+    unsigned glitchSeed = 1;
+    juce::Random glitchRng { 7 };
+    juce::String currentTitle() const;
+    void startBurst();
+    void mouseDown (const juce::MouseEvent&) override;
     juce::String shownCompareText;
 
     GlitchKidProcessor& glitchProcessor;
     LevelMeter inMeter, outMeter;
     GainReductionMeter grMeter;
     juce::Label compTitle { {}, "COMPRESSOR" }, grLabel { {}, "GR" };
+    juce::Label title { {}, "GLITCHKID" };
+    juce::Label tagline { {}, "A playground for your sound." };
+    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
     juce::Label bandNames[ParametricEq::numBands];
     juce::ToggleButton bypassButton { "Bypass" };
     juce::Label stutterTitle { {}, "GLITCH STUTTER" }, stutterRateLabel { {}, "RATE" }, tempoLabel;
@@ -127,7 +127,7 @@ private:
     juce::String shownTempoText;
 
     // Pitch Tune row: ON, key, scale, strength, speed, FORMANT (independent of ON), and a read-out of the sung note and the note it is pulled to.
-    juce::Label tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
+    juce::Label tuneTitle { {}, "PITCH TUNE  +  FORMANT" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
     juce::ToggleButton tuneOnButton { "ON" };
     juce::ComboBox tuneKeyBox, tuneScaleBox;
     juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed, formant
@@ -154,7 +154,7 @@ private:
 
     // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes the
     // loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it, A>B / B>A copy a slot.
-    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, presetMenuButton, presetSaveButton { "SAVE PRESET" }, presetDeleteButton { "DELETE" };
+    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
     juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
     juce::Label presetStatus, abLabel { {}, "A/B" };
     juce::String shownPresetText, shownAbText;
