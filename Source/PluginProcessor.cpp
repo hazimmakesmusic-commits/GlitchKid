@@ -1080,9 +1080,9 @@ void GlitchKidProcessor::setAutoIntensity (float v)
     apvts.state.setProperty (autoIntensityKey, (double) juce::jlimit (0.0f, 1.0f, std::isfinite (v) ? v : 0.6f), nullptr);
 }
 
-glitchkid::automode::Result GlitchKidProcessor::previewAutoMode (float intensity) const
+glitchkid::automode::RangeLookup GlitchKidProcessor::makeRangeLookup() const
 {
-    auto rangeOf = [this] (const juce::String& id, glitchkid::automode::Range& out)
+    return [this] (const juce::String& id, glitchkid::automode::Range& out)
     {
         auto* r = dynamic_cast<juce::RangedAudioParameter*> (apvts.getParameter (id));
         if (r == nullptr)
@@ -1091,7 +1091,11 @@ glitchkid::automode::Result GlitchKidProcessor::previewAutoMode (float intensity
         out = { range.start, range.end, [range] (float v) { return range.snapToLegalValue (v); } };
         return true;
     };
-    return glitchkid::automode::compute (analyzer.fetch(), glitchkid::automode::Profile::astroMode, intensity, captureSoundState(), rangeOf);
+}
+
+glitchkid::automode::Result GlitchKidProcessor::previewAutoMode (float intensity) const
+{
+    return glitchkid::automode::compute (analyzer.fetch(), glitchkid::automode::Profile::astroMode, intensity, captureSoundState(), makeRangeLookup());
 }
 
 glitchkid::automode::Result GlitchKidProcessor::applyAutoMode (float intensity)

@@ -47,7 +47,7 @@ Relationship compare (const analysis::VocalAnalysis& lead, const analysis::Vocal
     // Bands 1-3 carry the voice. The voice is "covered" where its level in the band is not clearly above the beat's level in that band:
     // 6 dB or more above = no risk, level with the beat = about 0.5, 3 dB or more below = full risk.
     float worst = 0.35f; // below this a band is not reported as a problem
-    for (int b = 1; b <= 3; ++b)
+    for (int b = 3; b >= 1; --b) // (on a tie the higher band wins: the words matter more than the low-mids)
     {
         const float diff = bandDb (lead, b) - bandDb (beat, b);
         r.maskRisk[(size_t) b] = std::clamp ((6.0f - diff) / 9.0f, 0.0f, 1.0f);

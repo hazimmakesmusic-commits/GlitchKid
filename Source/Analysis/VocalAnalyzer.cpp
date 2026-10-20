@@ -194,6 +194,8 @@ void VocalAnalyzer::publish (const VocalAnalysis& a) noexcept
     for (int i = 0; i < numFields; ++i)
         fields[(size_t) i].store (v[i], std::memory_order_relaxed);
     status.store ((int) a.status, std::memory_order_release);
+    if (a.status != VocalAnalysis::Status::listening && a.status != VocalAnalysis::Status::idle)
+        completed.fetch_add (1, std::memory_order_release); // one more analysis has FINISHED (any outcome)
 }
 
 VocalAnalysis VocalAnalyzer::analyzeOffline (const float* mono, int numSamples, double sampleRate)

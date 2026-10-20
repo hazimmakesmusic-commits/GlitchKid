@@ -3,6 +3,7 @@
 #include "Presets/PresetController.h"
 #include "Macros/MacroEngine.h"
 #include "Presets/PresetBrowser.h"
+#include "AutoMode/MixEngine.h"
 #include "UI/PlaygroundWidgets.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
@@ -181,10 +182,19 @@ private:
     // AUTOMODE row: ANALYZE listens to the vocal, APPLY commits the analysis once. See PluginProcessor.h.
     glitchkid::ui::ReactorButton autoAnalyzeButton;
     juce::TextButton autoApplyButton { "APPLY SOUND" };
-    juce::Label autoStyleLabel { {}, "AUTO-MIX: ASTRO MODE" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
+    juce::Label autoStyleLabel { {}, "MIX INTENSITY" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
     juce::Slider autoIntensitySlider;
     bool autoWaiting = false, autoSawListening = false;
     juce::String shownAutoText;
+    // BUILD MY VOCAL MIX: the big button listens to the vocal (the host must be playing), then the mix engine builds a proposal from the selected artist sound
+    // and the measurements and it is applied to the real parameters. BACK TO MY SOUND restores the sound from before the build.
+    enum class BuildState { idle, listening, built, failed };
+    BuildState buildState = BuildState::idle;
+    int buildStartCount = 0; // the analyzer's completed-analysis counter when BUILD was pressed
+    glitchkid::automode::MixProposal lastProposal;
+    juce::String buildMessage;
+    void runBuild();
+    void showWhatChanged();
     void refreshAutoMode();
     int statusTicks = 0;
     void refreshPresetBar();

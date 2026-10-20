@@ -175,6 +175,7 @@ public:
     void stopSourceAnalysis();
     float getAutoIntensity() const;                      // 0..1, saved in the DAW session (default 0.6)
     void setAutoIntensity (float);
+    glitchkid::automode::RangeLookup makeRangeLookup() const; // legal range + step of every parameter (for the AutoMode and BUILD MY VOCAL MIX engines)
     glitchkid::automode::Result previewAutoMode (float intensity) const; // what APPLY would do with the last analysis (changes nothing)
     glitchkid::automode::Result applyAutoMode (float intensity);         // computes and applies it; the sound is then a normal, editable "AutoMode" sound
     static constexpr const char* autoModePresetName = "AutoMode ASTRO MODE";

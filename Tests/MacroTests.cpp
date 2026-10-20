@@ -330,7 +330,7 @@ struct MacroTests : public juce::UnitTest
                 };
 
                 // first launch: TUNE
-                expect (visible ("NEXT  >") && visible ("HARD") && ! visible ("ANALYZE VOCAL") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
+                expect (visible ("NEXT  >") && visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
                 expect (visible ("1  TUNE") && visible ("2  AUTO") && visible ("3  MODIFY"), "the three steps are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
 
@@ -373,7 +373,63 @@ struct MacroTests : public juce::UnitTest
 
                 click ("NEXT  >");
                 expectEquals (p.getUiInt ("uiPage", -1), 1);
-                expect (visible ("ANALYZE VOCAL") && visible ("APPLY SOUND") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
+                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
+
+                // BUILD MY VOCAL MIX, end to end through the real button: listens, builds, applies, can be undone; silence fails honestly
+                {
+                                        th::setParam (p, "gain", -2.0f);
+                    const auto sBefore = p.captureSoundState();
+                    expect (findButton (*content, "WHAT CHANGED") != nullptr && ! findButton (*content, "WHAT CHANGED")->isEnabled(), "nothing to explain before a build");
+                    {
+                        std::function<void (juce::Component&)> pickCard = [&] (juce::Component& comp)
+                        {
+                            for (auto* ch : comp.getChildren())
+                            {
+                                if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible() && a->getPreset() == 18)
+                                    a->triggerClick(); // A Boogie wit da Hoodie is on page 1: the build starts from this profile
+                                pickCard (*ch);
+                            }
+                        };
+                        pickCard (*content);
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    }
+                    click ("BUILD MY VOCAL MIX");
+                    auto feed = [&] (double seconds, bool silent)
+                    {
+                        const auto x = vocalish (48000.0, seconds);
+                        juce::MidiBuffer midi;
+                        for (size_t pos = 0; pos + 480 <= x.size(); pos += 480)
+                        {
+                            th::Buf b (2, 480);
+                            for (int i = 0; i < 480; ++i) { const float v = silent ? 0.0f : x[pos + (size_t) i]; b.setSample (0, i, v); b.setSample (1, i, v); }
+                            p.processBlock (b, midi);
+                        }
+                    };
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100); // the timer sees "listening"
+                    feed (12.0, false);
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300); // the timer sees the end of the analysis and builds
+                    expect (p.getPresetName().startsWith ("Built: "), "a mix was built: " + p.getPresetName());
+                    expect (p.getPresetName().contains ("A BOOGIE WIT DA HOODIE STYLE"), "built from the selected profile");
+                    int moved = 0;
+                    for (const auto& e : p.captureSoundState().values)
+                        moved += std::abs (e.value - sBefore.get (e.id, e.value)) > 0.06f ? 1 : 0;
+                    expect (moved > 10, "the build really moved the parameters: " + juce::String (moved));
+                    expect (findButton (*content, "WHAT CHANGED")->isEnabled() && findButton (*content, "BUILD AGAIN") != nullptr);
+                    expect (std::abs (th::getParam (p, "gain") + 2.0f) < 0.06f, "Gain is never touched");
+                    click ("BACK TO MY SOUND");
+                    for (const auto& e : sBefore.values)
+                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "undo restored " + e.id);
+
+                    // a silent input: no usable vocal, nothing changes, the button offers TRY AGAIN
+                    const auto sQuiet = p.captureSoundState();
+                    click ("BUILD AGAIN");
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                    feed (31.0, true);
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+                    expect (findButton (*content, "TRY AGAIN") != nullptr, "a silent input is reported as a failure");
+                    for (const auto& e : sQuiet.values)
+                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "a failed build changed nothing: " + e.id);
+                }
 
                 // the artist gallery: eight cards per page, select -> read -> load -> back to my sound
                 {
@@ -388,8 +444,8 @@ struct MacroTests : public juce::UnitTest
                         }
                     };
                     walkCards (*content);
-                    expectEquals ((int) cards.size(), 8);
-                    expect (visible ("LOAD SOUND") && visible ("Punjabi") && visible ("Indian DHH") && visible ("SORT: A-Z") && visible ("FAVOURITES"));
+                    expectEquals ((int) cards.size(), 8, "eight cards");
+                    expect (visible ("LOAD SOUND") && visible ("Punjabi") && visible ("Indian DHH") && visible ("SORT: A-Z") && visible ("FAVOURITES"), "gallery controls visible");
                     expect (findButton (*content, "BACK TO MY SOUND") != nullptr && ! findButton (*content, "BACK TO MY SOUND")->isEnabled(), "nothing to go back to yet");
                     th::setParam (p, "gain", -4.0f);
                     th::setParam (p, "echo_mix", 61.0f);
@@ -409,7 +465,7 @@ struct MacroTests : public juce::UnitTest
                     click ("Punjabi"); // a filter: every card shown is Punjabi
                     cards.clear();
                     walkCards (*content);
-                    expect (! cards.empty());
+                    expect (! cards.empty(), "cards after filter");
                     for (auto* a : cards)
                         expect (glitchkid::browser::matchesFilter (a->getPreset(), 10), "only Punjabi sounds are shown");
                     click ("All 50");
@@ -425,7 +481,7 @@ struct MacroTests : public juce::UnitTest
 
                 click ("MODIFY  >");
                 expectEquals (p.getUiInt ("uiPage", -1), 2);
-                expect (visible ("PITCH & KEY") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("ANALYZE VOCAL"));
+                expect (visible ("PITCH & KEY") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("BUILD MY VOCAL MIX"));
 
                 // each category shows only its own controls (checked with the Alter Ego buttons and the DRY/PROCESSED switch as markers)
                 click ("CHARACTER");
@@ -443,7 +499,7 @@ struct MacroTests : public juce::UnitTest
 
                 // reset asks first; the preset system underneath is the existing one
                 click ("<  BACK TO AUTO");
-                expect (visible ("ANALYZE VOCAL"));
+                expect (visible ("TRY AGAIN"), "AUTO shows the build button (TRY AGAIN after the silent attempt)");
                 click ("1  TUNE");
                 expect (visible ("NEXT  >"));
             }

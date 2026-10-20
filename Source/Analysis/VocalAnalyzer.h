@@ -50,6 +50,7 @@ public:
     void process (const float* const* channels, int numChannels, int numSamples) noexcept; // audio thread
 
     bool isListening() const { return status.load (std::memory_order_acquire) == (int) VocalAnalysis::Status::listening; }
+    int completedCount() const { return completed.load (std::memory_order_acquire); } // how many analyses have finished so far (ready or not): lets the UI tell "mine ended" from a stale result
     float liveActiveSeconds() const { return liveActive.load (std::memory_order_relaxed); }
     float liveTotalSeconds() const { return liveTotal.load (std::memory_order_relaxed); }
     VocalAnalysis fetch() const;                       // message thread: the last published result (status idle/listening carry no measurements)
@@ -87,6 +88,7 @@ private:
     bool listening = false;
 
     std::atomic<int> request { 0 };
+    std::atomic<int> completed { 0 };
     std::atomic<int> status { (int) VocalAnalysis::Status::idle };
     std::atomic<float> liveActive { 0.0f }, liveTotal { 0.0f };
     static constexpr int numFields = 18;

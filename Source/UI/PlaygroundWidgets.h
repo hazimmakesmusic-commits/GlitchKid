@@ -166,7 +166,7 @@ enum class AutoState { idle, waiting, working, ready, error };
 class ReactorButton : public juce::TextButton
 {
 public:
-    ReactorButton() : juce::TextButton ("ANALYZE VOCAL") {}
+    ReactorButton() : juce::TextButton ("BUILD MY VOCAL MIX") {}
     void setState (AutoState, float progress01);
     void setMotion (bool on) { motion = on; }
     void tick (float dtSeconds);

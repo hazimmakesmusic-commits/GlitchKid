@@ -192,35 +192,29 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     abCopyAB.onClick = [this] { if (glitchProcessor.copyAbSlot (0, 1)) showStatus ("A copied to B."); refreshPresetBar(); };
     abCopyBA.onClick = [this] { if (glitchProcessor.copyAbSlot (1, 0)) showStatus ("B copied to A."); refreshPresetBar(); };
     // AUTOMODE row.
-    styleBarButton (autoAnalyzeButton, lime, "Listen to the vocal for a few seconds (press play in your host). Nothing is changed until you press APPLY.");
-    styleBarButton (autoApplyButton, lime, "Set the controls from the analysis, once, at the chosen intensity. Press SET A first to keep your current sound; every control stays editable.");
+    styleBarButton (autoAnalyzeButton, lime, "BUILD MY VOCAL MIX: listens to your vocal for a few seconds (press play in your host and let it rap or sing), then builds a starting mix from the selected artist sound and what it heard, and applies it. Press BACK TO MY SOUND to undo.");
+    styleBarButton (autoApplyButton, lime, "Shows exactly which settings the last build changed, why, and what was not available.");
     autoAnalyzeButton.onClick = [this]
     {
         if (glitchProcessor.getAnalyzer().isListening())
-            glitchProcessor.stopSourceAnalysis();
+            glitchProcessor.stopSourceAnalysis(); // finish early with what has been heard; the build runs when the analysis ends
         else
         {
+            buildStartCount = glitchProcessor.getAnalyzer().completedCount();
             glitchProcessor.startSourceAnalysis();
+            buildState = BuildState::listening;
+            buildMessage = {};
             autoWaiting = true;
             autoSawListening = false;
         }
         shownAutoText = {};
         refreshAutoMode();
     };
-    autoApplyButton.onClick = [this]
-    {
-        const auto result = glitchProcessor.applyAutoMode ((float) autoIntensitySlider.getValue() / 100.0f);
-        showStatus (result.message);
-        if (result.usable)
-            mascot.cheer();
-        autoStatus.setTooltip (result.notes.joinIntoString ("\n"));
-        refreshAlterEgos();
-        shownPresetText = {};
-        refreshPresetBar();
-    };
+    autoApplyButton.setButtonText ("WHAT CHANGED");
+    autoApplyButton.onClick = [this] { showWhatChanged(); };
     autoStyleLabel.setFont (juce::FontOptions (12.0f, juce::Font::bold));
     autoStyleLabel.setColour (juce::Label::textColourId, violet);
-    autoStyleLabel.setTooltip ("The production direction. ASTRO MODE: dark, atmospheric melodic rap. Original settings, not an exact copy of anyone's sound.");
+    autoStyleLabel.setTooltip ("How much of the artist sound's effect amounts (echo, doubler, saturation...) a build uses: 100 % = the sound as saved, 0 % = half of it.");
     autoIntensityLabel.setFont (juce::FontOptions (11.0f, juce::Font::bold));
     autoIntensityLabel.setJustificationType (juce::Justification::centredRight);
     autoIntensitySlider.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -688,7 +682,7 @@ void GlitchKidEditor::buildPageControls()
     };
 
     static const char* navText[3] = { "1  TUNE", "2  AUTO", "3  MODIFY" };
-    static const char* navTip[3] = { "Step 1: tell GlitchKid the key and scale of your beat.", "Step 2: choose a sound world and let AutoMode set up the effects.",
+    static const char* navTip[3] = { "Step 1: tell GlitchKid the key and scale of your beat.", "Step 2: pick an artist-inspired sound, then press BUILD MY VOCAL MIX.",
                                      "Step 3: fine-tune one category at a time." };
     for (int i = 0; i < 3; ++i)
     {
@@ -707,11 +701,11 @@ void GlitchKidEditor::buildPageControls()
         categoryButtons[i].onClick = [this, i] { showCategory (i, true); };
     }
 
-    primary (nextButton, "Continue to step 2: choose a sound world.");
+    primary (nextButton, "Continue to step 2: pick an artist sound and build your mix.");
     nextButton.onClick = [this] { showPage (Page::autoMix, true); };
     primary (modifyButton, "Go to step 3: fine-tune the sound, one category at a time.");
     modifyButton.onClick = [this] { showPage (Page::modify, true); };
-    style (backButton, "Back to the sound worlds and AutoMode.");
+    style (backButton, "Back to the artist sounds and BUILD MY VOCAL MIX.");
     backButton.onClick = [this] { showPage (Page::autoMix, true); };
     style (resetButton, "Set every control back to its default (Factory Default). Asks first. Your A/B snapshots are kept.");
     resetButton.setColour (juce::TextButton::textColourOffId, pink);
@@ -881,7 +875,7 @@ void GlitchKidEditor::mouseDown (const juce::MouseEvent&)
     startBurst();
 }
 
-// One 30 Hz tick of the home screen: real input level into the mascot and scope, the dials read back from the controls, the selected Sound World
+// One 30 Hz tick of the home screen: real input level into the mascot and scope, the dials read back from the controls, the selected artist sound
 // from the loaded preset, the dry/processed switch from the Bypass parameter. Nothing here touches the audio thread.
 void GlitchKidEditor::refreshHome (float peak)
 {
@@ -1044,6 +1038,67 @@ void GlitchKidEditor::showStatus (const juce::String& text)
     statusTicks = 30 * 5; // about five seconds
 }
 
+void GlitchKidEditor::runBuild()
+{
+    namespace am = glitchkid::automode;
+    using SS = GlitchKidProcessor::SourceStatus;
+    am::MixInput in;
+    in.profile = browsedPreset >= 0 ? browsedPreset : glitchkid::FactoryPresets::indexOfName (glitchProcessor.getPresetName());
+    in.intensity = (float) autoIntensitySlider.getValue() / 100.0f;
+    in.current = glitchProcessor.captureSoundState();
+    in.factoryDefault = glitchProcessor.factoryDefaultState();
+    in.lead = glitchProcessor.getAnalyzer().fetch();
+    in.beat = glitchProcessor.getInstrumentalAnalyzer().fetch();
+    const auto st = glitchProcessor.getInstrumentalStatus();
+    in.instrumental = st == SS::live ? am::InstrumentalInput::live : st == SS::connectedSilent ? am::InstrumentalInput::connectedSilent : am::InstrumentalInput::notConnected;
+
+    lastProposal = am::buildMix (in, glitchProcessor.makeRangeLookup());
+    buildMessage = lastProposal.message;
+    if (! lastProposal.usable)
+    {
+        buildState = BuildState::failed;
+        return;
+    }
+    const bool rebuilding = glitchProcessor.getPresetName().startsWith ("Built: ") && ! glitchProcessor.isPresetModified();
+    if (! (rebuilding && undo.valid)) // keep the ORIGINAL sound while you build again and again
+        undo = { in.current, glitchProcessor.getPresetName(), true };
+    glitchProcessor.applyPreset ("Built: " + lastProposal.profileName, lastProposal.sound); // every value goes through the normal parameter calls
+    buildState = BuildState::built;
+    autoStatus.setTooltip (lastProposal.evidence.joinIntoString ("\n") + "\n" + lastProposal.unavailable.joinIntoString ("\n"));
+    showStatus (lastProposal.message);
+    refreshAlterEgos();
+    shownPresetText = {};
+    refreshPresetBar();
+    refreshGallery();
+    mascot.cheer();
+}
+
+void GlitchKidEditor::showWhatChanged()
+{
+    if (! lastProposal.usable)
+        return;
+    juce::String text = lastProposal.message + "\n\n";
+    for (const auto& e : lastProposal.evidence)
+        text << "- " << e << "\n";
+    int fromProfile = 0;
+    juce::String shown;
+    for (const auto& c : lastProposal.changes)
+    {
+        if (c.reason.startsWith ("From the "))
+        {
+            ++fromProfile;
+            continue;
+        }
+        auto* prm = glitchProcessor.apvts.getParameter (c.id);
+        shown << "  " << (prm != nullptr ? prm->getName (32) : c.id) << ": " << juce::String (c.from, 1) << " -> " << juce::String (c.to, 1) << "  (" << c.reason << ")\n";
+    }
+    text << "\nChanged because of your vocal or beat:\n" << (shown.isEmpty() ? juce::String ("  (nothing: the profile fitted as saved)\n") : shown);
+    text << "\n" << fromProfile << " more settings come straight from the " << lastProposal.profileName << " profile.\n\nNot available:\n";
+    for (const auto& u : lastProposal.unavailable)
+        text << "- " << u << "\n";
+    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon, "What the build changed", text, "OK", this);
+}
+
 void GlitchKidEditor::refreshAutoMode()
 {
     auto& an = glitchProcessor.getAnalyzer();
@@ -1052,10 +1107,14 @@ void GlitchKidEditor::refreshAutoMode()
         autoSawListening = true;
     if (autoWaiting && autoSawListening && ! listening)
         autoWaiting = false;
+    if (buildState == BuildState::listening && ! listening && an.completedCount() > buildStartCount)
+    {
+        autoWaiting = false;
+        runBuild(); // the analysis this press started has ended: build (or explain why not)
+    }
 
     using S = glitchkid::analysis::VocalAnalysis::Status;
     juce::String text;
-    bool canApply = false;
     auto ring = glitchkid::ui::AutoState::idle;
     float ringProgress = 0.0f;
     auto mood = glitchkid::ui::Mascot::Mood::idle;
@@ -1064,41 +1123,38 @@ void GlitchKidEditor::refreshAutoMode()
         ring = glitchkid::ui::AutoState::working;
         ringProgress = an.liveActiveSeconds() / glitchkid::analysis::VocalAnalyzer::maxActiveSeconds;
         mood = glitchkid::ui::Mascot::Mood::listening;
+        text = "Listening to the vocal: " + juce::String (an.liveActiveSeconds(), 1) + " s heard (needs 2 s, stops at 8 s). Press BUILD NOW to stop early.";
     }
     else if (autoWaiting)
-        ring = glitchkid::ui::AutoState::waiting;
-    if (listening)
-        text = "Listening... " + juce::String (an.liveActiveSeconds(), 1) + " s of vocal heard (needs 2 s, stops at 8 s). Press STOP to finish early.";
-    else if (autoWaiting)
-        text = "Waiting for audio. Press play in your host so the vocal reaches GlitchKid.";
-    else
     {
-        const auto a = an.fetch();
-        switch (a.status)
-        {
-            case S::ready:
-                canApply = true;
-                ring = glitchkid::ui::AutoState::ready;
-                mood = glitchkid::ui::Mascot::Mood::ready;
-                text = "Ready: " + juce::String (a.activeSeconds, 1) + " s of vocal, peak " + juce::String (a.peakDb, 1) + " dB, level " + juce::String (a.rmsDb, 1)
-                       + " dB" + (a.clippedSamples >= 3 ? ", CLIPPING found" : "") + ". Set INTENSITY, then APPLY.";
-                {
-                    const auto rel = glitchkid::automode::compare (a, glitchProcessor.getInstrumentalAnalyzer().fetch());
-                    text += rel.valid ? " BEAT: " + juce::String (rel.reasons.front()) : " BEAT: not analysed (" + juce::String (rel.unavailable) + ")";
-                }
-                break;
-            case S::tooShort: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
-            case S::tooQuiet: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
-            case S::invalid: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;   text = "The input contained invalid audio. Nothing changed. Try again."; break;
-            case S::idle:
-            case S::listening: text = "Press ANALYZE, then play the dry vocal for a few seconds."; break;
-        }
+        ring = glitchkid::ui::AutoState::waiting;
+        text = "Waiting for audio. Press play in your host so the vocal reaches GlitchKid.";
     }
+    else if (buildState == BuildState::built)
+    {
+        ring = glitchkid::ui::AutoState::ready;
+        mood = glitchkid::ui::Mascot::Mood::ready;
+        text = buildMessage + " Audition with DRY / PROCESSED, WHAT CHANGED shows why; BACK TO MY SOUND undoes it.";
+    }
+    else if (buildState == BuildState::failed)
+    {
+        ring = glitchkid::ui::AutoState::error;
+        mood = glitchkid::ui::Mascot::Mood::error;
+        text = buildMessage;
+    }
+    else
+        text = "Pick an artist sound below (or none for a clean start), press BUILD MY VOCAL MIX, then play the vocal. It works without the beat.";
+
+    // what GlitchKid can really hear right now (never claims an analysis that did not happen)
     {
         using SS = GlitchKidProcessor::SourceStatus;
         const auto st = glitchProcessor.getInstrumentalStatus();
-        const auto line = juce::String ("LEAD: this track's input (live)   |   INSTRUMENTAL: ")
-                          + (st == SS::live ? "LIVE" : st == SS::connectedSilent ? "CONNECTED, BUT SILENT" : "NOT CONNECTED") + "   |   AD-LIBS: NOT AVAILABLE";
+        const bool beatAnalysed = glitchProcessor.getInstrumentalAnalyzer().fetch().status == S::ready;
+        const auto leadStatus = an.fetch().status;
+        const juce::String lead = listening ? "LISTENING" : leadStatus == S::ready ? "ANALYSED" : "NOT ANALYSED YET";
+        const juce::String beat = st == SS::notConnected ? "NOT CONNECTED (vocal-only mix)" : st == SS::connectedSilent ? "ON, BUT NO SIGNAL"
+                                                                                           : beatAnalysed ? "LIVE, ANALYSED" : "LIVE, NOT ANALYSED YET";
+        const auto line = "LEAD: " + lead + "   |   INSTRUMENTAL: " + beat + "   |   AD-LIBS: NOT AVAILABLE";
         if (line != sourceLine.getText())
             sourceLine.setText (line, juce::dontSendNotification);
         sourceLine.setColour (juce::Label::textColourId, st == SS::live ? glitchkid::ui::lime : glitchkid::ui::textDim);
@@ -1109,8 +1165,8 @@ void GlitchKidEditor::refreshAutoMode()
     {
         shownAutoText = text;
         autoStatus.setText (text, juce::dontSendNotification);
-        autoAnalyzeButton.setButtonText (listening ? "STOP" : "ANALYZE VOCAL");
-        autoApplyButton.setEnabled (canApply);
+        autoAnalyzeButton.setButtonText (listening ? "BUILD NOW" : buildState == BuildState::failed ? "TRY AGAIN" : buildState == BuildState::built ? "BUILD AGAIN" : "BUILD MY VOCAL MIX");
+        autoApplyButton.setEnabled (lastProposal.usable);
     }
 }
 

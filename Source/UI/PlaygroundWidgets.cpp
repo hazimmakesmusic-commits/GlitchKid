@@ -863,7 +863,7 @@ void ReactorButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
     }
     g.setColour (juce::Colour (0xff0b1400).withAlpha (alpha));
     g.setFont (fontOf (juce::jlimit (11.0f, 17.0f, d * 0.115f), true));
-    g.drawFittedText (getButtonText().replaceFirstOccurrenceOf (" ", "\n"), juce::Rectangle<int> ((int) (c.x - coreR), (int) (c.y - coreR * 0.5f + oy), (int) (coreR * 2.0f), (int) coreR), juce::Justification::centred, 2);
+    g.drawFittedText (getButtonText(), juce::Rectangle<int> ((int) (c.x - coreR * 0.9f), (int) (c.y - coreR * 0.62f + oy), (int) (coreR * 1.8f), (int) (coreR * 1.24f)), juce::Justification::centred, 3);
 }
 
 // ---- effect tiles, chain rows, meters ---------------------------------------------------------------------------------------------------

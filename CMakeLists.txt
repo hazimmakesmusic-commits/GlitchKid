@@ -53,6 +53,7 @@ target_sources(GlitchKid PRIVATE
     Source/Analysis/VocalAnalyzer.cpp
     Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
+    Source/AutoMode/MixEngine.cpp
     Source/Macros/MacroEngine.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/EffectModel.cpp
@@ -102,6 +103,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/FactoryPresetTests.cpp
         Tests/ArtistPresetTests.cpp
         Tests/SourceTests.cpp
+        Tests/MixEngineTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -127,6 +129,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Analysis/VocalAnalyzer.cpp
         Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
+    Source/AutoMode/MixEngine.cpp
         Source/Macros/MacroEngine.cpp
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/EffectModel.cpp
