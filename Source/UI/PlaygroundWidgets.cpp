@@ -513,25 +513,24 @@ void WorldCard::paint (juce::Graphics& g)
     g.drawText (selected ? (edited ? "LOADED (EDITED)" : "LOADED") : "LOADS: " + loads, tx, r.getY() + 43.0f, tw + 30.0f, 14.0f, juce::Justification::centredLeft);
 }
 
-// ---- ArtistCard ------------------------------------------------------------------------------------------------------------------------
+// ---- ProfileCard -----------------------------------------------------------------------------------------------------------------------
 
-void ArtistCard::bind (int presetIndex, bool s, bool l, bool f)
+void ProfileCard::bind (int p, bool s, bool l)
 {
-    if (presetIndex != preset || s != selected || l != live || f != favourite)
+    if (p != profile || s != selected || l != live)
     {
         const bool newlySelected = s && ! selected;
-        preset = presetIndex;
+        profile = p;
         selected = s;
         live = l;
-        favourite = f;
         if (newlySelected && motion)
             glow = 0.0f; // the frame lights up with a short ramp
-        setVisible (preset >= 0);
+        setVisible (profile >= 0);
         repaint();
     }
 }
 
-void ArtistCard::tick (float)
+void ProfileCard::tick (float)
 {
     const float h = hover, g = glow;
     hover = motion ? approach (hover, isMouseOver() ? 1.0f : 0.0f, 0.3f) : (isMouseOver() ? 1.0f : 0.0f);
@@ -540,65 +539,54 @@ void ArtistCard::tick (float)
         repaint();
 }
 
-void ArtistCard::paintButton (juce::Graphics& g, bool highlighted, bool down)
+void ProfileCard::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    if (preset < 0)
+    if (profile < 0)
         return;
-    const auto& info = FactoryPresets::info (preset);
-    const auto accent = info.region == FactoryPresets::Region::international ? neon : juce::Colour (0xffffa23a);
+    const auto& info = FactoryPresets::info (profile);
     auto r = getLocalBounds().toFloat().reduced (2.0f);
     if (down)
         r = r.reduced (1.0f);
-    juce::ColourGradient fill (panelTop.interpolatedWith (accent, 0.10f + 0.08f * glow + 0.05f * hover), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false);
+    juce::ColourGradient fill (panelTop.interpolatedWith (violet, 0.10f + 0.10f * glow + 0.05f * hover), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false);
     g.setGradientFill (fill);
-    g.fillRoundedRectangle (r, 8.0f);
+    g.fillRoundedRectangle (r, 9.0f);
     if (glow > 0.01f)
         drawGlow (g, r.reduced (2.0f), lime, 7.0f, 0.55f * glow);
-    g.setColour (selected ? lime : (highlighted ? accent : border));
-    g.drawRoundedRectangle (r, 8.0f, selected ? 2.0f : 1.2f);
+    g.setColour (selected ? lime : (highlighted ? neon : border));
+    g.drawRoundedRectangle (r, 9.0f, selected ? 2.0f : 1.2f);
     if (hasKeyboardFocus (true))
     {
         g.setColour (chrome);
-        g.drawRoundedRectangle (r.expanded (2.0f), 10.0f, 1.2f);
+        g.drawRoundedRectangle (r.expanded (2.0f), 11.0f, 1.2f);
     }
 
-    // sigil: five strokes between points on a ring, picked from the preset number (a tiny alien glyph, different for every card)
-    const auto sg = juce::Rectangle<float> (26.0f, 26.0f).withCentre ({ r.getX() + 20.0f, r.getCentreY() });
-    g.setColour (accent.withAlpha (selected ? 1.0f : 0.8f));
-    g.drawEllipse (sg, 1.0f);
-    juce::Random rng (preset * 7919 + 13);
+    // sigil: five strokes between points on a ring, picked from the profile number (a tiny alien glyph, different for every card)
+    const auto sg = juce::Rectangle<float> (32.0f, 32.0f).withCentre ({ r.getX() + 26.0f, r.getCentreY() });
+    g.setColour ((selected ? lime : neon).withAlpha (selected ? 1.0f : 0.85f));
+    g.drawEllipse (sg, 1.1f);
+    juce::Random rng (profile * 7919 + 13);
     juce::Point<float> prev;
     for (int k = 0; k < 5; ++k)
     {
         const float a = (float) rng.nextInt (8) * juce::MathConstants<float>::pi / 4.0f;
-        const juce::Point<float> pt (sg.getCentreX() + std::sin (a) * 9.0f, sg.getCentreY() - std::cos (a) * 9.0f);
+        const juce::Point<float> pt (sg.getCentreX() + std::sin (a) * 11.0f, sg.getCentreY() - std::cos (a) * 11.0f);
         if (k > 0)
-            g.drawLine (prev.x, prev.y, pt.x, pt.y, 1.5f);
+            g.drawLine (prev.x, prev.y, pt.x, pt.y, 1.6f);
         prev = pt;
     }
-    g.fillEllipse (sg.getCentreX() - 1.5f, sg.getCentreY() - 1.5f, 3.0f, 3.0f);
+    g.fillEllipse (sg.getCentreX() - 1.8f, sg.getCentreY() - 1.8f, 3.6f, 3.6f);
 
-    auto area = r.withTrimmedLeft (38.0f).withTrimmedRight (4.0f);
-    g.setColour (selected ? textBright : textBright.withAlpha (0.9f));
-    g.setFont (fontOf (11.5f, true));
-    g.drawFittedText (info.artist, area.withTrimmedBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 2, 0.85f);
-    int bit = 0;
-    while (bit < FactoryPresets::numTags - 1 && ! ((info.tags >> bit) & 1u))
-        ++bit;
+    auto area = r.withTrimmedLeft (50.0f).withTrimmedRight (14.0f);
+    g.setColour (selected ? textBright : textBright.withAlpha (0.92f));
+    g.setFont (fontOf (13.0f, true));
+    g.drawFittedText (info.name, area.removeFromTop (r.getHeight() * 0.5f + 2.0f).toNearestInt(), juce::Justification::bottomLeft, 1, 0.8f);
     g.setColour (textDim);
-    g.setFont (fontOf (9.5f, true));
-    g.drawText (FactoryPresets::tagName (bit), area.removeFromBottom (13.0f), juce::Justification::centredLeft, true);
+    g.setFont (fontOf (10.5f));
+    g.drawFittedText (info.tagline, area.toNearestInt(), juce::Justification::topLeft, 2, 0.85f);
     if (live)
     {
         g.setColour (lime);
-        g.fillEllipse (r.getRight() - 12.0f, r.getY() + 5.0f, 6.0f, 6.0f);
-    }
-    if (favourite)
-    {
-        juce::Path star;
-        star.addStar ({ r.getRight() - 11.0f, r.getBottom() - 10.0f }, 5, 2.4f, 5.2f);
-        g.setColour (neon);
-        g.fillPath (star);
+        g.fillEllipse (r.getRight() - 12.0f, r.getY() + 6.0f, 6.0f, 6.0f);
     }
 }
 

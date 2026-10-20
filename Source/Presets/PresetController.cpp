@@ -17,8 +17,8 @@ PresetController::Outcome PresetController::loadFactory (int index)
     if (! validateFactory (index, &problem))
         return { false, false, name, "\"" + name + "\" could not be loaded (" + problem + "). Nothing was changed." };
     auto state = FactoryPresets::build (index, processor.factoryDefaultState());
-    const auto live = processor.captureSoundState(); // the key and scale are yours, not the preset's
-    for (const char* id : { "tune_key", "tune_scale" })
+    const auto live = processor.captureSoundState(); // tuning (on, style, key, scale) and your Gain / Mix are yours, not the profile's
+    for (const char* id : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix" })
         state.set (id, live.get (id, state.get (id, 0.0f)));
     processor.applyPreset (name, state);
     return { true, false, name, "Loaded \"" + name + "\"." };
@@ -34,7 +34,7 @@ bool PresetController::validateFactory (int index, juce::String* problem) const
     for (int i = 0; i < FactoryPresets::numOverrides (index); ++i)
     {
         const juce::String id (o[i].id);
-        for (const char* reserved : { "tune_key", "tune_scale", "gain", "mix", "bypass" })
+        for (const char* reserved : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "bypass" })
             if (id == reserved)
                 return fail (id + " is reserved");
         if (seen.contains (id))

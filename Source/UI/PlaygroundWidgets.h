@@ -75,14 +75,14 @@ private:
     int frame = 0;
 };
 
-// One compact card of the artist-preset gallery: an original alien "sigil" (drawn from the preset's number, so every card has its own), the artist name, the
-// first style tag and a status: selected (lime frame), live (the loaded sound), favourite (small star). No artwork or logo of any artist is used.
-class ArtistCard : public juce::Button
+// One card for a starting profile: an original alien "sigil" (drawn from the profile's number, so every card has its own), the profile name, a few words about
+// it, and a status: selected (lime frame) or live (the loaded sound). No artwork of any artist is used.
+class ProfileCard : public juce::Button
 {
 public:
-    ArtistCard() : juce::Button ("artist") { setWantsKeyboardFocus (true); }
-    void bind (int presetIndex, bool selected, bool live, bool favourite); // presetIndex < 0 clears the card
-    int getPreset() const { return preset; }
+    ProfileCard() : juce::Button ("profile") { setWantsKeyboardFocus (true); }
+    void bind (int profileIndex, bool selected, bool live);
+    int getProfile() const { return profile; }
     void setMotion (bool on) { motion = on; }
     void tick (float dt);              // eases hover / selection glow; repaints only while something is still moving
     std::function<void()> onDoubleClick;
@@ -90,8 +90,8 @@ public:
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
-    int preset = -1;
-    bool selected = false, live = false, favourite = false, motion = true;
+    int profile = -1;
+    bool selected = false, live = false, motion = true;
     float glow = 0.0f, hover = 0.0f;
 };
 

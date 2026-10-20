@@ -11,7 +11,7 @@ namespace glitchkid::automode
 // Foundation: the profile's own saved values (or the clean Factory Default when no profile is selected). The measurements then make small, documented,
 // bounded adjustments to it. Because the foundation never depends on the current sound (only the key, scale, Gain and Mix are carried over), building twice
 // gives the same result: repeated builds cannot push anything further and further.
-// Never touched: Bypass, Mix, Gain, Tune key and scale (yours), and anything the profile does not set. No key, BPM, genre or "quality" is ever claimed.
+// Never touched: Bypass, Mix, Gain and ALL of Pitch Tune (on, strength, speed, key, scale: yours). The old creative effects (Mutation, Harmony, Stutter, Formant) are switched off. No key, BPM, genre or "quality" is ever claimed.
 enum class MixMode { vocalOnly, beatInformed };
 enum class InstrumentalInput { notConnected, connectedSilent, live }; // what the plug-in's instrumental input is doing (see GlitchKidProcessor::SourceStatus)
 
@@ -24,6 +24,7 @@ struct MixInput
     analysis::VocalAnalysis lead;
     analysis::VocalAnalysis beat;           // only used when status is ready
     InstrumentalInput instrumental = InstrumentalInput::notConnected;
+    bool allowProfileOnly = false;          // true: if too little vocal was heard (status tooShort), still apply the profile as saved (a starting mix, not fitted to the voice)
 };
 
 struct MixChange

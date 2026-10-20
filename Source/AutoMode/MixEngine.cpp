@@ -15,7 +15,7 @@ constexpr float maxThresholdShift = 8.0f; // dB
 constexpr float maxEqGain = 6.0f;         // no EQ band is ever pushed beyond +/-6 dB by a build
 
 // Effect amounts that the intensity scales (value moves between its default and the profile's value).
-const char* const amountIds[] = { "echo_mix", "dim_mix", "dbl_amount", "mut_amount", "sat_drive", "stutter_mix" };
+const char* const amountIds[] = { "echo_mix", "dim_mix", "dbl_amount", "sat_drive" };
 
 juce::String f1 (float v) { return juce::String (v, 1); }
 
@@ -42,7 +42,8 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
 
     // ---- is there anything to build from? (never pretend) ----
     const auto& a = in.lead;
-    if (a.status != S::ready || ! ok (a.rmsDb) || ! ok (a.peakDb))
+    const bool partial = in.allowProfileOnly && a.status == S::tooShort; // a little audio was heard, but not enough to fit anything to it
+    if (! partial && (a.status != S::ready || ! ok (a.rmsDb) || ! ok (a.peakDb)))
     {
         p.message = a.status == S::tooShort ? "Too little vocal was heard (about 2 seconds of singing or rapping are needed). Nothing was changed. Try again."
                   : a.status == S::tooQuiet ? "No usable vocal was heard: the input was silent or very quiet. Check the track and that the host is playing. Nothing was changed."
@@ -55,7 +56,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
 
     // ---- foundation: the profile's own values ----
     SoundState s = in.profile >= 0 && in.profile < FactoryPresets::count ? FactoryPresets::build (in.profile, in.factoryDefault) : in.factoryDefault;
-    for (const char* keep : { "tune_key", "tune_scale", "gain", "mix" })
+    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix" })
         s.set (keep, in.current.get (keep, in.factoryDefault.get (keep, 0.0f)));
     s.egoId = {};
     s.egoChaos = 0.0f;
@@ -70,8 +71,18 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
         w = w.isEmpty() ? reason : w + " " + reason;
     };
 
-    p.evidence.add ("LEAD: " + f1 (a.activeSeconds) + " s of vocal, peak " + f1 (a.peakDb) + " dB, level " + f1 (a.rmsDb) + " dB (digital, not LUFS), dynamic range "
-                    + f1 (a.dynamicRangeDb) + " dB.");
+    // the old creative effects are not part of a vocal mix any more: a build switches them off (and says so); BACK TO MY SOUND restores them
+    for (const char* on : { "mut_on", "harm_on", "stutter_on" })
+        if (in.current.get (on, 0.0f) >= 0.5f)
+            why[on] = "Not part of the vocal mix any more: switched off (BACK TO MY SOUND brings it back).";
+    if (std::abs (in.current.get ("formant_shift", 0.0f)) > 0.05f)
+        why["formant_shift"] = "Not part of the vocal mix any more: set back to 0 (BACK TO MY SOUND brings it back).";
+
+    if (partial)
+        p.evidence.add ("LEAD: only " + f1 (a.activeSeconds) + " s of vocal was heard (about 2 s are needed), so nothing was fitted to your voice.");
+    else
+        p.evidence.add ("LEAD: " + f1 (a.activeSeconds) + " s of vocal, peak " + f1 (a.peakDb) + " dB, level " + f1 (a.rmsDb) + " dB (digital, not LUFS), dynamic range "
+                        + f1 (a.dynamicRangeDb) + " dB.");
 
     // ---- intensity: how much of the profile's effect amounts is used ----
     {
@@ -90,7 +101,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
     }
 
     // ---- dynamics: keep the compressor doing the same amount of work whatever the recording level ----
-    const bool compOn = get ("comp_ratio", 1.0f) > 1.05f;
+    const bool compOn = get ("comp_ratio", 1.0f) > 1.05f && ! partial;
     if (compOn)
     {
         const float shift = clampf (0.7f * (a.rmsDb - referenceRmsDb), -maxThresholdShift, maxThresholdShift);
@@ -111,7 +122,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
     }
 
     // ---- hot input ----
-    if (a.clippedSamples >= 3 || a.peakDb > -0.5f)
+    if (! partial && (a.clippedSamples >= 3 || a.peakDb > -0.5f))
     {
         put ("sat_drive", get ("sat_drive") * 0.5f, "The input is clipping or touching full scale: saturation halved.");
         put ("comp_makeup", std::max (0.0f, get ("comp_makeup") - 2.0f), "The input is hot: 2 dB less makeup gain.");
@@ -119,7 +130,9 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
     }
 
     // ---- tone from the balance of the voice itself ----
-    const float lowShare = a.bandFraction[0], lowMid = a.bandFraction[1], presence = a.bandFraction[3], air = a.bandFraction[4];
+    // (with only a sliver of audio the band shares mean nothing: neutral values trigger none of the tone rules)
+    const float lowShare = partial ? 0.1f : a.bandFraction[0], lowMid = partial ? 0.45f : a.bandFraction[1], presence = partial ? 0.1f : a.bandFraction[3], air = partial ? 0.05f : a.bandFraction[4];
+    const float sibilance = partial ? 0.0f : a.sibilanceIndex;
     auto eqAdd = [&] (const char* id, float delta, const juce::String& reason)
     {
         put (id, clampf (get (id) + delta, -maxEqGain, maxEqGain), reason);
@@ -133,8 +146,8 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
         eqAdd ("eq_b2_gain", 1.0f, "The words may be hard to hear (little energy at 2-5 kHz): presence raised.");
         p.evidence.add ("Presence (2-5 kHz) is only " + juce::String (juce::roundToInt (presence * 100.0f)) + " % of the vocal's energy.");
     }
-    if (a.sibilanceIndex > 0.35f)
-        eqAdd ("eq_hi_gain", -clampf ((a.sibilanceIndex - 0.35f) * 6.0f, 0.0f, 2.0f), "S sounds look strong (estimate): high shelf lowered.");
+    if (sibilance > 0.35f)
+        eqAdd ("eq_hi_gain", -clampf ((sibilance - 0.35f) * 6.0f, 0.0f, 2.0f), "S sounds look strong (estimate): high shelf lowered.");
     else if (air < 0.015f && presence < 0.12f)
         eqAdd ("eq_hi_gain", 1.0f, "The vocal is dark on top: high shelf raised a little.");
     if (air > 0.12f)
@@ -179,16 +192,19 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
                                                                                   : "The instrumental was not analysed (not enough usable audio while listening), so this is a VOCAL ONLY mix.");
     p.unavailable.add ("Ad-libs cannot be heard separately, key and tempo are not detected, and there is no reverb: the echo, Dimension and Doubler carry the space.");
 
-    // ---- pitch: only what the user set ----
+    // ---- pitch: never changed by a build, only reported ----
     if (get ("tune_on") >= 0.5f)
     {
         const int key = juce::roundToInt (s.get ("tune_key", 0.0f)), scale = juce::roundToInt (s.get ("tune_scale", 0.0f));
         static const char* keys[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
-        p.evidence.add (juce::String ("Pitch Tune follows YOUR key and scale: ") + keys[juce::jlimit (0, 11, key)] + " "
-                        + glitchkid::pitch::ScaleQuantizer::name ((glitchkid::pitch::ScaleQuantizer::Scale) juce::jlimit (0, glitchkid::pitch::ScaleQuantizer::numScales - 1, scale)) + " (not detected).");
+        p.evidence.add (juce::String ("Pitch Tune is ON and left exactly as you set it on TUNE: ") + keys[juce::jlimit (0, 11, key)] + " "
+                        + glitchkid::pitch::ScaleQuantizer::name ((glitchkid::pitch::ScaleQuantizer::Scale) juce::jlimit (0, glitchkid::pitch::ScaleQuantizer::numScales - 1, scale))
+                        + ", strength " + juce::String (juce::roundToInt (s.get ("tune_strength", 100.0f))) + " % (your key is not detected).");
         if (key == 0 && scale == 0)
             p.unavailable.add ("Pitch Tune is on but no key and scale are set (C Chromatic lets every note through). Choose them on TUNE for real tuning.");
     }
+    else
+        p.evidence.add ("Pitch Tune is OFF: a build never switches tuning on. Use the TUNE screen if you want it.");
 
     // ---- make every value legal, then list what actually changes ----
     for (auto& e : s.values)
@@ -223,7 +239,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
     for (const auto& c : p.changes)
         if (! areas.contains (area (c.id)))
             areas.add (area (c.id));
-    p.message = juce::String (p.mode == MixMode::beatInformed ? "BEAT INFORMED" : "VOCAL ONLY") + " mix built from " + p.profileName + ": "
+    p.message = juce::String (partial ? "STARTING MIX (profile only, not fitted to your voice)" : p.mode == MixMode::beatInformed ? "BEAT INFORMED mix" : "VOCAL ONLY mix") + " built from " + p.profileName + ": "
                 + (p.changes.empty() ? juce::String ("nothing needed changing.") : juce::String ((int) p.changes.size()) + " settings changed (" + areas.joinIntoString (", ") + ").");
     return p;
 }

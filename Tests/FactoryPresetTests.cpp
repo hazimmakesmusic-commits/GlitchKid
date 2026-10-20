@@ -25,7 +25,7 @@ struct FactoryPresetTests : public juce::UnitTest
     {
         beginTest ("all factory presets exist with distinct names and are reserved");
         {
-            expectEquals (count, 50);
+            expectEquals (count, 8);
             for (int i = 0; i < count; ++i)
             {
                 const juce::String n = glitchkid::FactoryPresets::info (i).name;
@@ -89,7 +89,7 @@ struct FactoryPresetTests : public juce::UnitTest
                 const auto again = capture (p);
                 expectEquals ((int) again.values.size(), (int) first.values.size());
                 for (const auto& e : first.values)
-                    if (e.id != "tune_key" && e.id != "tune_scale") // those two are yours: a preset keeps whatever you had
+                    if (! e.id.startsWith ("tune_") && e.id != "gain" && e.id != "mix") // tuning, Gain and Mix are yours: a profile keeps whatever you had
                         expectWithinAbsoluteError (again.get (e.id, -999.0f), e.value, 1.0e-3f);
             }
             dir.deleteRecursively();
@@ -227,7 +227,7 @@ struct FactoryPresetTests : public juce::UnitTest
             expect (p.recallAbSlot (1));
             for (const auto& e : b.values)
                 expectWithinAbsoluteError (getParam (p, e.id.toRawUTF8()), e.value, 1.0e-3f);
-            expect (std::abs (a.get ("formant_shift", 0.0f) - b.get ("formant_shift", 0.0f)) > 1.0f, "the two slots really differ");
+            expect (std::abs (a.get ("echo_on", 0.0f) - b.get ("echo_on", 0.0f)) > 0.5f, "the two slots really differ");
             dir.deleteRecursively();
         }
 

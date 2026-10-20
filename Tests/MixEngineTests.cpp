@@ -89,7 +89,7 @@ struct MixEngineTests : public juce::UnitTest
         beginTest ("a profile and a vocal analysis produce real parameter changes, each with a reason, evidence and a plain summary");
         {
             GlitchKidProcessor p;
-            auto in = inputFor (p, 0);
+            auto in = inputFor (p, 1);
             const auto r = am::buildMix (in, rangesOf (p));
             expect (r.usable && r.mode == am::MixMode::vocalOnly);
             expect (r.changes.size() > 12, "many controls move for a profile: " + juce::String ((int) r.changes.size()));
@@ -100,7 +100,7 @@ struct MixEngineTests : public juce::UnitTest
                 expectWithinAbsoluteError (r.sound.get (c.id, -999.0f), c.to, 1.0e-6f);
             }
             expect (! r.evidence.isEmpty() && ! r.unavailable.isEmpty());
-            expect (r.message.contains ("VOCAL ONLY") && r.message.contains ("TRAVIS SCOTT STYLE"), r.message);
+            expect (r.message.contains ("VOCAL ONLY") && r.message.contains ("MODERN MELODIC RAP"), r.message);
             expectEquals (differing (r.sound, in.current), (int) r.changes.size());
         }
 
@@ -200,16 +200,19 @@ struct MixEngineTests : public juce::UnitTest
             th::setParam (p, "mix", 70.0f);
             th::setParam (p, "tune_key", 9.0f);
             th::setParam (p, "tune_scale", 2.0f);
-            for (int i = -1; i < fp::count; i += 7)
+            th::setParam (p, "tune_on", 1.0f);
+            th::setParam (p, "tune_strength", 62.0f);
+            th::setParam (p, "tune_speed", 30.0f);
+            for (int i = -1; i < fp::count; i += 3)
             {
                 auto in = inputFor (p, i);
                 in.lead.clippedSamples = 40; // even a clipping take only changes the effect settings, never the Gain
                 const auto r = am::buildMix (in, rangesOf (p));
-                for (const char* id : { "gain", "mix", "tune_key", "tune_scale" })
+                for (const char* id : { "gain", "mix", "tune_key", "tune_scale", "tune_on", "tune_strength", "tune_speed" })
                     expectWithinAbsoluteError (r.sound.get (id, -999.0f), in.current.get (id, -998.0f), 1.0e-4f);
                 expect (! r.sound.has ("bypass"));
                 for (const auto& c : r.changes)
-                    expect (c.id != "gain" && c.id != "mix" && c.id != "tune_key" && c.id != "tune_scale" && c.id != "bypass");
+                    expect (c.id != "gain" && c.id != "mix" && ! c.id.startsWith ("tune_") && c.id != "bypass");
             }
         }
 
@@ -225,17 +228,17 @@ struct MixEngineTests : public juce::UnitTest
                     minDiff = juce::jmin (minDiff, differing (states[(size_t) a], states[(size_t) b]));
             logMessage ("closest pair of built mixes differs in " + juce::String (minDiff) + " controls");
             expect (minDiff >= 8);
-            auto low = inputFor (p, 0), high = inputFor (p, 0);
+            auto low = inputFor (p, 1), high = inputFor (p, 1);
             low.intensity = 0.0f; high.intensity = 1.0f;
             const auto l = am::buildMix (low, rangesOf (p)), h = am::buildMix (high, rangesOf (p));
             expect (l.sound.get ("echo_mix", 0.0f) < h.sound.get ("echo_mix", 0.0f) && l.sound.get ("dbl_amount", 0.0f) < h.sound.get ("dbl_amount", 0.0f));
-            expectWithinAbsoluteError (h.sound.get ("echo_mix", 0.0f), 28.0f, 0.15f); // intensity 1 = the profile as saved (Travis Scott echo mix 28)
+            expectWithinAbsoluteError (h.sound.get ("echo_mix", 0.0f), 14.0f, 0.15f); // intensity 1 = the profile as saved (MODERN MELODIC RAP echo mix 14)
         }
 
         beginTest ("repeating a build does not drift: applying the proposal and building again changes nothing");
         {
             GlitchKidProcessor p;
-            auto in = inputFor (p, 11);
+            auto in = inputFor (p, 3);
             in.beat = crowdedBeat();
             in.instrumental = am::InstrumentalInput::live;
             auto first = am::buildMix (in, rangesOf (p));
@@ -278,9 +281,9 @@ struct MixEngineTests : public juce::UnitTest
             th::setParam (p, "echo_mix", 61.0f);
             th::setParam (p, "gain", -2.0f);
             const auto before = p.captureSoundState();
-            auto in = inputFor (p, 20);
+            auto in = inputFor (p, 4);
             const auto r = am::buildMix (in, rangesOf (p));
-            p.applyPreset ("Built: " + juce::String (fp::info (20).name), r.sound);
+            p.applyPreset ("Built: " + juce::String (fp::info (4).name), r.sound);
             for (const auto& c : r.changes)
             {
                 auto* prm = dynamic_cast<juce::RangedAudioParameter*> (p.apvts.getParameter (c.id));
@@ -298,6 +301,64 @@ struct MixEngineTests : public juce::UnitTest
             p.applyPreset ("", before); // UNDO: the sound captured before the build
             for (const auto& e : before.values)
                 expectWithinAbsoluteError (th::getParam (p, e.id.toRawUTF8()), e.value, 0.06f);
+        }
+
+        beginTest ("tuning is yours: a build never switches Pitch Tune on or off or changes its style, key or scale; the old creative effects are switched off and reported");
+        {
+            GlitchKidProcessor p;
+            auto off = inputFor (p, 2); // HARD-TUNED RAP, tuning currently OFF
+            auto r = am::buildMix (off, rangesOf (p));
+            expectEquals (r.sound.get ("tune_on", -1.0f), 0.0f, "tuning stays off");
+            expect (r.evidence.joinIntoString (" ").contains ("Pitch Tune is OFF"));
+            th::setParam (p, "tune_on", 1.0f);
+            th::setParam (p, "tune_strength", 100.0f);
+            th::setParam (p, "tune_speed", 0.0f);
+            th::setParam (p, "tune_key", 6.0f);
+            th::setParam (p, "tune_scale", 1.0f);
+            th::setParam (p, "mut_on", 1.0f);
+            th::setParam (p, "stutter_on", 1.0f);
+            th::setParam (p, "harm_on", 1.0f);
+            th::setParam (p, "formant_shift", 3.0f);
+            auto on = inputFor (p, 0); // CLEAN & NATURAL: gentle, but it must not soften the user's hard tune
+            r = am::buildMix (on, rangesOf (p));
+            expectEquals (r.sound.get ("tune_on", -1.0f), 1.0f);
+            expectEquals (r.sound.get ("tune_key", -1.0f), 6.0f);
+            expectEquals (r.sound.get ("tune_scale", -1.0f), 1.0f);
+            expectWithinAbsoluteError (r.sound.get ("tune_strength", -1.0f), 100.0f, 0.2f);
+            expectWithinAbsoluteError (r.sound.get ("tune_speed", -1.0f), 0.0f, 0.5f);
+            expect (r.evidence.joinIntoString (" ").contains ("F# Major"), "the user's key and scale are named");
+            for (const char* id : { "mut_on", "stutter_on", "harm_on" })
+                expectEquals (r.sound.get (id, -1.0f), 0.0f, juce::String (id) + " switched off");
+            expectWithinAbsoluteError (r.sound.get ("formant_shift", -1.0f), 0.0f, 0.06f);
+            bool reported = false;
+            for (const auto& c : r.changes)
+                reported = reported || (c.id == "mut_on" && c.reason.contains ("Not part of the vocal mix"));
+            expect (reported, "switching off an old effect is reported with a reason");
+        }
+
+        beginTest ("too little vocal heard: with the fallback on, the profile alone is applied as a labelled starting mix; with it off, nothing; silence always fails");
+        {
+            GlitchKidProcessor p;
+            auto in = inputFor (p, 6);
+            in.lead.status = au::VocalAnalysis::Status::tooShort;
+            in.lead.activeSeconds = 0.8f;
+            auto off = am::buildMix (in, rangesOf (p));
+            expect (! off.usable && off.changes.empty(), "no fabricated fit without the fallback");
+            in.allowProfileOnly = true;
+            const auto on = am::buildMix (in, rangesOf (p));
+            expect (on.usable && on.mode == am::MixMode::vocalOnly && on.message.contains ("STARTING MIX") && on.message.contains ("profile only"), on.message);
+            auto asSaved = inputFor (p, 6);
+            asSaved.lead = typicalLead();
+            asSaved.lead.rmsDb = -20.0f; asSaved.lead.peakDb = -8.0f; // exactly the level the profile was set for: no fitting happens
+            asSaved.lead.bandFraction = { 0.10f, 0.45f, 0.28f, 0.10f, 0.07f }; asSaved.lead.dynamicRangeDb = 14.0f; asSaved.lead.sibilanceIndex = 0.1f;
+            const auto fitted = am::buildMix (asSaved, rangesOf (p));
+            expectEquals (differing (on.sound, fitted.sound), 0, "the fallback equals a build on a vocal that needs no adjustment");
+            for (const auto& e : on.evidence)
+                expect (! e.contains ("peak"), "no measurements are quoted when none were reliable");
+            in.lead.status = au::VocalAnalysis::Status::tooQuiet;
+            expect (! am::buildMix (in, rangesOf (p)).usable, "silence is never papered over");
+            in.lead.status = au::VocalAnalysis::Status::invalid;
+            expect (! am::buildMix (in, rangesOf (p)).usable);
         }
 
         beginTest ("end to end audio: analyse a real signal offline, build every profile, render: finite, near the input level, never clipping");

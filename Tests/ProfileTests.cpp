@@ -1,11 +1,10 @@
 #include "TestHelpers.h"
 #include "../Source/Presets/FactoryPresets.h"
-#include "../Source/Presets/PresetBrowser.h"
 #include "../Source/Presets/PresetController.h"
 #include <set>
 
-// The 50 artist-inspired presets: the roster, validation against the real parameter tree, distinct settings, safe level, a measurable audible
-// difference, key/scale preservation, state round trips and the browser logic (filters, search, sorting, favourites).
+// The eight starting profiles: the roster, validation against the real parameter tree, only the processing that matters for a vocal mix, distinct settings,
+// safe level, a measurable audible difference, tuning (on, style, key, scale) left to the user, and state round trips.
 namespace
 {
 namespace fp = glitchkid::FactoryPresets;
@@ -93,59 +92,58 @@ std::vector<double> features (const std::vector<float>& x)
     return out;
 }
 
-struct ArtistPresetTests : public juce::UnitTest
+struct ProfileTests : public juce::UnitTest
 {
-    ArtistPresetTests() : juce::UnitTest ("Artist presets", "GlitchKid") {}
+    ProfileTests() : juce::UnitTest ("Profiles", "GlitchKid") {}
 
     void runTest() override
     {
-        static const char* roster[50] = {
-            "Travis Scott", "Juice WRLD", "Don Toliver", "The Kid LAROI", "Future", "Playboi Carti", "Lil Uzi Vert", "Yeat", "Ken Carson", "Destroy Lonely",
-            "Drake", "Post Malone", "Young Thug", "Gunna", "Lil Baby", "21 Savage", "Central Cee", "Dave", "A Boogie wit da Hoodie", "Rod Wave",
-            "Lil Peep", "XXXTentacion", "blackbear", "Machine Gun Kelly", "Kendrick Lamar",
-            "KR$NA", "DIVINE", "Seedhe Maut", "Raftaar", "Emiway Bantai", "Ikka", "Talha Anjum", "Talhah Yunus", "Young Stunners", "Badshah",
-            "Yo Yo Honey Singh", "Sidhu Moose Wala", "AP Dhillon", "Shubh", "Karan Aujla", "Diljit Dosanjh", "Chaar Diwaari", "Dhanji", "Yashraj", "Naam Sujal",
-            "Sikander Kahlon", "Prabh Deep", "MC Stan", "King", "Panther" };
+        static const char* names[8] = { "CLEAN & NATURAL", "MODERN MELODIC RAP", "HARD-TUNED RAP", "DARK & ATMOSPHERIC", "BRIGHT & PRESENT", "SMOOTH R&B", "GRITTY RAP", "SPACIOUS LEAD" };
 
-        beginTest ("roster: 50 presets, 25 international and 25 Indian DHH, in the requested order, every field filled in, no overclaiming");
+        beginTest ("library: eight profiles, in order, every field filled in, no overclaiming, no artist names");
         {
-            expectEquals (fp::count, 50);
-            std::set<juce::String> names;
-            int intl = 0, dhh = 0;
+            expectEquals (fp::count, 8);
+            std::set<juce::String> seen;
             for (int i = 0; i < fp::count; ++i)
             {
                 const auto& in = fp::info (i);
-                expectEquals (juce::String (in.artist), juce::String (roster[i]));
-                expectEquals (juce::String (in.name), juce::String (roster[i]).toUpperCase() + " STYLE");
-                names.insert (juce::String (in.name).toLowerCase());
-                (in.region == fp::Region::international ? intl : dhh)++;
-                expect (in.tags != 0 && juce::String (in.description).length() > 15 && juce::String (in.settings).length() > 15 && juce::String (in.startWith).length() > 15, in.name);
-                expect ((in.region == fp::Region::international) == (i < 25), in.name);
-                const auto all = (juce::String (in.description) + in.settings + in.startWith).toLowerCase();
-                for (const char* banned : { "official", "licensed", "exact", "identical" })
-                    expect (! all.contains (banned), juce::String (in.name) + " must not overclaim: " + banned);
+                expectEquals (juce::String (in.name), juce::String (names[i]));
+                expectEquals (fp::indexOfName (juce::String (names[i]).toLowerCase()), i);
+                seen.insert (in.name);
+                expect (juce::String (in.tagline).length() > 8 && juce::String (in.description).length() > 30 && juce::String (in.settings).length() > 20 && juce::String (in.startWith).length() > 20, in.name);
+                const auto all = (juce::String (in.tagline) + in.description + in.settings + in.startWith).toLowerCase();
+                for (const char* banned : { "official", "licensed", "exact", "identical", "travis", "drake", "juice", "kendrick", "future" })
+                    expect (! all.contains (banned), juce::String (in.name) + " must not name an artist or overclaim: " + banned);
             }
-            expectEquals ((int) names.size(), 50);
-            expectEquals (intl, 25);
-            expectEquals (dhh, 25);
+            expectEquals ((int) seen.size(), 8);
+            expect (! PresetController::isFactoryName ("TRAVIS SCOTT STYLE"), "the old artist names are gone");
         }
 
-        beginTest ("validation: every preset uses only real parameters, in range, once each, never the reserved ones; bad indexes are refused");
+        beginTest ("validation: only real parameters, in range, once each, only vocal-mix processing, never Pitch Tune, Gain, Mix or Bypass");
         {
             GlitchKidProcessor p;
             auto dir = tempDir();
             PresetController c (p, glitchkid::PresetStore (dir));
+            const std::set<juce::String> allowedGroups { "eq_", "comp_", "sat_", "echo_", "dim_", "dbl_" };
             for (int i = 0; i < fp::count; ++i)
             {
                 juce::String why;
                 expect (c.validateFactory (i, &why), juce::String (fp::info (i).name) + ": " + why);
+                for (int k = 0; k < fp::numOverrides (i); ++k)
+                {
+                    const juce::String id (fp::overrides (i)[k].id);
+                    bool ok = false;
+                    for (const auto& g : allowedGroups)
+                        ok = ok || id.startsWith (g);
+                    expect (ok, juce::String (fp::info (i).name) + " uses only vocal-mix processing: " + id);
+                }
             }
             expect (! c.validateFactory (-1) && ! c.validateFactory (fp::count));
             expect (! c.loadFactory (-1).ok && ! c.loadFactory (fp::count).ok);
             dir.deleteRecursively();
         }
 
-        beginTest ("distinct: no two presets share settings (every pair differs in several controls)");
+        beginTest ("distinct: every pair of profiles differs in many controls, and each differs from the default");
         {
             GlitchKidProcessor p;
             const auto def = p.factoryDefaultState();
@@ -158,7 +156,7 @@ struct ArtistPresetTests : public juce::UnitTest
                 int vsDefault = 0;
                 for (const auto& e : states[(size_t) a].values)
                     vsDefault += std::abs (e.value - def.get (e.id, e.value)) > 1.0e-6f ? 1 : 0;
-                expect (vsDefault >= 12, juce::String (fp::info (a).name) + " changes enough controls");
+                expect (vsDefault >= 10, juce::String (fp::info (a).name) + " changes enough controls: " + juce::String (vsDefault));
                 for (int b = a + 1; b < fp::count; ++b)
                 {
                     int diff = 0;
@@ -167,15 +165,18 @@ struct ArtistPresetTests : public juce::UnitTest
                     if (diff < minDiff) { minDiff = diff; minA = a; minB = b; }
                 }
             }
-            logMessage ("closest pair of presets: " + juce::String (fp::info (minA).name) + " / " + fp::info (minB).name + ", " + juce::String (minDiff) + " controls differ");
-            expect (minDiff >= 8, "closest pair differs in at least 8 controls");
+            logMessage ("closest pair of profiles: " + juce::String (fp::info (minA).name) + " / " + fp::info (minB).name + ", " + juce::String (minDiff) + " controls differ");
+            expect (minDiff >= 10, "closest pair differs in at least 10 controls");
         }
 
-        beginTest ("loading: every preset loads exactly, keeps YOUR key and scale, leaves Gain, Mix and Bypass alone, and survives save/restore");
+        beginTest ("loading: every profile loads exactly, keeps YOUR tuning, key, scale, Gain and Mix, and survives save/restore");
         {
             GlitchKidProcessor p;
             auto dir = tempDir();
             PresetController c (p, glitchkid::PresetStore (dir));
+            th::setParam (p, "tune_on", 1.0f);
+            th::setParam (p, "tune_strength", 85.0f);
+            th::setParam (p, "tune_speed", 12.0f);
             th::setParam (p, "tune_key", 7.0f);
             th::setParam (p, "tune_scale", 2.0f);
             th::setParam (p, "gain", -3.0f);
@@ -187,15 +188,17 @@ struct ArtistPresetTests : public juce::UnitTest
                 expect (out.ok, juce::String (fp::info (i).name));
                 expectEquals (th::getParam (p, "tune_key"), 7.0f, "key kept");
                 expectEquals (th::getParam (p, "tune_scale"), 2.0f, "scale kept");
+                expectEquals (th::getParam (p, "tune_on"), 1.0f, "tuning on/off kept");
+                expectWithinAbsoluteError (th::getParam (p, "tune_strength"), 85.0f, 0.2f);
+                expectWithinAbsoluteError (th::getParam (p, "tune_speed"), 12.0f, 1.0f);
                 expectEquals (p.getPresetName(), juce::String (fp::info (i).name));
                 const auto built = fp::build (i, def);
-                for (const auto& e : built.values)
+                for (int k = 0; k < fp::numOverrides (i); ++k)
                 {
-                    if (e.id == "tune_key" || e.id == "tune_scale")
-                        continue;
-                    auto* r = dynamic_cast<juce::RangedAudioParameter*> (p.apvts.getParameter (e.id));
+                    const auto id = built.values.empty() ? juce::String() : juce::String (fp::overrides (i)[k].id);
+                    auto* r = dynamic_cast<juce::RangedAudioParameter*> (p.apvts.getParameter (id));
                     const float step = r->getNormalisableRange().interval;
-                    expect (std::abs (r->convertFrom0to1 (r->getValue()) - e.value) <= (step > 0.0f ? 0.5f * step + 1.0e-3f : 2.0e-3f), juce::String (fp::info (i).name) + " " + e.id);
+                    expect (std::abs (r->convertFrom0to1 (r->getValue()) - fp::overrides (i)[k].value) <= (step > 0.0f ? 0.5f * step + 1.0e-3f : 2.0e-3f), juce::String (fp::info (i).name) + " " + id);
                 }
                 juce::MemoryBlock mb;
                 p.getStateInformation (mb);
@@ -209,36 +212,30 @@ struct ArtistPresetTests : public juce::UnitTest
             dir.deleteRecursively();
         }
 
-        beginTest ("saving a loaded artist preset as your own: file round trip is exact, and a damaged file (NaN, missing values) loads safely");
+        beginTest ("saving a loaded profile as your own: file round trip is exact, and a damaged file (NaN, missing values) loads safely");
         {
             GlitchKidProcessor p;
             auto dir = tempDir();
             PresetController c (p, glitchkid::PresetStore (dir));
-            c.loadFactory (12);
+            c.loadFactory (3);
             const auto before = p.captureSoundState();
-            expect (c.saveAs ("My Thug", false).ok);
-            c.loadFactory (30);
-            expect (c.loadUser ("My Thug").ok);
+            expect (c.saveAs ("My Dark", false).ok);
+            c.loadFactory (5);
+            expect (c.loadUser ("My Dark").ok);
             const auto after = p.captureSoundState();
             for (const auto& e : before.values)
                 expectWithinAbsoluteError (after.get (e.id, -999.0f), e.value, 1.0e-3f);
             dir.getChildFile ("Broken.gkpreset").replaceWithText ("<GlitchKidPreset version=\"1\"><Param id=\"sat_drive\" value=\"nan\"/></GlitchKidPreset>");
-            const auto out = c.loadUser ("Broken");
-            const auto s = p.captureSoundState();
-            for (const auto& e : s.values)
+            c.loadUser ("Broken");
+            for (const auto& e : p.captureSoundState().values)
                 expect (std::isfinite (e.value), "finite after a damaged load: " + e.id);
-            logMessage ("damaged preset load reported ok=" + juce::String ((int) out.ok));
             dir.deleteRecursively();
         }
 
-        beginTest ("audio: every preset is finite, near the input level (+/-3 dB), never clips, and measurably changes the sound");
+        beginTest ("audio: every profile is finite, near the input level (+/-3 dB), never clips, and clearly changes the sound; no two sound alike");
         {
             const auto in = voice (48000.0, 5.0);
-            double inPeak = 0.0;
-            for (float v : in) inPeak = juce::jmax (inPeak, (double) std::abs (v));
             const double inDb = rmsDb (in, 72000);
-            logMessage ("input peak " + juce::String (inPeak, 2) + ", level " + juce::String (inDb, 1) + " dB");
-
             GlitchKidProcessor ref;
             const auto refFeat = features (render (ref, in));
             std::vector<std::vector<double>> feats;
@@ -255,7 +252,7 @@ struct ArtistPresetTests : public juce::UnitTest
                 for (float v : out) { finite = finite && std::isfinite (v); peak = juce::jmax (peak, (double) std::abs (v)); }
                 expect (finite, juce::String (fp::info (i).name) + " finite");
                 const double delta = rmsDb (out, 72000) - inDb;
-                logMessage ("PRESETLEVEL " + juce::String (fp::info (i).artist) + " | " + juce::String (delta, 2) + " dB | peak " + juce::String (peak, 2));
+                logMessage ("PROFILELEVEL " + juce::String (fp::info (i).name) + " | " + juce::String (delta, 2) + " dB | peak " + juce::String (peak, 2));
                 expect (std::abs (delta) <= 3.0, juce::String (fp::info (i).name) + " level change " + juce::String (delta, 1) + " dB");
                 expect (peak < 0.98, juce::String (fp::info (i).name) + " peak " + juce::String (peak, 2));
                 worstLevel = juce::jmax (worstLevel, std::abs (delta));
@@ -277,60 +274,11 @@ struct ArtistPresetTests : public juce::UnitTest
                         d = juce::jmax (d, std::abs (feats[(size_t) a][k] - feats[(size_t) b][k]));
                     if (d < closest) { closest = d; ca = a; cb = b; }
                 }
-            logMessage ("worst level change " + juce::String (worstLevel, 2) + " dB, worst peak " + juce::String (worstPeak, 2)
-                        + "; most similar pair of outputs: " + juce::String (fp::info (ca).name) + " / " + fp::info (cb).name + " (largest feature gap " + juce::String (closest, 2) + " dB)");
-            expect (closest > 0.15, "no two presets sound the same on this signal");
-        }
-
-        beginTest ("browser: filters, search, sort and favourites");
-        {
-            namespace br = glitchkid::browser;
-            expectEquals ((int) br::run ({}, 0).size(), 50);
-            br::Query q;
-            q.filter = 1;
-            expectEquals ((int) br::run (q, 0).size(), 25);
-            q.filter = 2;
-            expectEquals ((int) br::run (q, 0).size(), 25);
-            int covered = 0;
-            for (int f = 3; f < br::numFilters; ++f)
-            {
-                q.filter = f;
-                const auto r = br::run (q, 0);
-                expect (! r.empty(), br::filterName (f));
-                for (int i : r)
-                    expect (br::matchesFilter (i, f));
-                covered += (int) r.size();
-            }
-            expect (covered > 50, "presets belong to several style filters");
-            expect (br::matchesFilter (36, 10) && br::matchesFilter (37, 10) && ! br::matchesFilter (0, 10), "Sidhu Moose Wala and AP Dhillon are Punjabi, Travis Scott is not");
-            q = {};
-            q.text = "krsna";
-            auto r = br::run (q, 0);
-            expect (r.size() == 1 && r[0] == 25, "search ignores punctuation: krsna finds KR$NA");
-            q.text = "  TRAVIS ";
-            r = br::run (q, 0);
-            expect (r.size() == 1 && r[0] == 0);
-            q.text = "zzzz";
-            expect (br::run (q, 0).empty());
-            q = {};
-            q.favouritesOnly = true;
-            expect (br::run (q, 0).empty());
-            const std::uint64_t favs = (1ull << 3) | (1ull << 40);
-            r = br::run (q, favs);
-            expectEquals ((int) r.size(), 2);
-            q = {};
-            q.sort = br::origin;
-            r = br::run (q, 0);
-            expect (fp::info (r.front()).region == fp::Region::international && fp::info (r.back()).region == fp::Region::dhh);
-            q.sort = br::alphabetical;
-            r = br::run (q, 0);
-            for (size_t i = 1; i < r.size(); ++i)
-                expect (juce::String (fp::info (r[i - 1]).artist).toLowerCase() <= juce::String (fp::info (r[i]).artist).toLowerCase());
-            expectEquals ((int) br::parseFavourites (br::formatFavourites (favs)), (int) favs);
-            expect (br::parseFavourites ("not hex") == 0 && br::parseFavourites ("") == 0);
-            expect ((br::parseFavourites ("ffffffffffffffff") >> 50) == 0, "bits beyond the 50 presets are ignored");
+            logMessage ("worst level change " + juce::String (worstLevel, 2) + " dB, worst peak " + juce::String (worstPeak, 2) + "; most similar pair of outputs: "
+                        + juce::String (fp::info (ca).name) + " / " + fp::info (cb).name + " (largest feature gap " + juce::String (closest, 2) + " dB)");
+            expect (closest > 0.8, "no two profiles sound the same on this signal: " + juce::String (closest, 2));
         }
     }
 };
-ArtistPresetTests artistPresetTests;
+ProfileTests profileTests;
 }

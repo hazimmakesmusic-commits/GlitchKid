@@ -49,7 +49,6 @@ target_sources(GlitchKid PRIVATE
     Source/Presets/PresetStore.cpp
     Source/Presets/PresetController.cpp
     Source/Presets/FactoryPresets.cpp
-    Source/Presets/PresetBrowser.cpp
     Source/Analysis/VocalAnalyzer.cpp
     Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
@@ -101,7 +100,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/MutationTests.cpp
         Tests/PresetTests.cpp
         Tests/FactoryPresetTests.cpp
-        Tests/ArtistPresetTests.cpp
+        Tests/ProfileTests.cpp
         Tests/SourceTests.cpp
         Tests/MixEngineTests.cpp
         Tests/AutoModeTests.cpp
@@ -125,7 +124,6 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Presets/PresetStore.cpp
         Source/Presets/PresetController.cpp
         Source/Presets/FactoryPresets.cpp
-        Source/Presets/PresetBrowser.cpp
         Source/Analysis/VocalAnalyzer.cpp
         Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp

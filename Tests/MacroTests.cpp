@@ -3,7 +3,6 @@
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
 #include "../Source/Presets/FactoryPresets.h"
-#include "../Source/Presets/PresetBrowser.h"
 #include <set>
 
 // Interactive playground UI: the non-visual logic (macros, quick commands, parameter application, UI flags) and a smoke test that builds the real
@@ -72,8 +71,7 @@ struct MacroTests : public juce::UnitTest
             const auto base = p.captureSoundState();
             const std::map<int, std::set<juce::String>> allowed = {
                 { 0, { "echo_on", "dim_on", "dbl_on", "echo_mix", "echo_fb", "echo_width", "dim_mix", "dbl_amount" } },
-                { 1, { "sat_drive", "eq_b2_gain" } },
-                { 2, { "comp_ratio", "comp_thresh", "comp_attack", "comp_release", "comp_knee", "comp_makeup" } } };
+                { 1, { "comp_ratio", "comp_thresh", "comp_attack", "comp_release", "comp_knee", "comp_makeup" } } };
             for (int m = 0; m < glitchkid::macros::numMacros; ++m)
                 for (float v : { 0.0f, 0.1f, 0.33f, 0.5f, 0.77f, 1.0f, -3.0f, 9.0f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
                 {
@@ -146,9 +144,6 @@ struct MacroTests : public juce::UnitTest
             expectEquals (h.get ("tune_strength", 0.0f), 100.0f);
             expectEquals (h.get ("tune_speed", 9.0f), 0.0f);
             expectEquals (h.get ("tune_on", 0.0f), 1.0f);
-            auto w = base;
-            for (int n = 0; n < 60; ++n) glitchkid::macros::apply (Command::weirder, w);
-            expectEquals (w.get ("mut_amount", 0.0f), 100.0f);
             auto sp = base;
             float last = glitchkid::macros::read (Macro::space, sp);
             for (int n = 0; n < 10; ++n)
@@ -235,15 +230,14 @@ struct MacroTests : public juce::UnitTest
             expectEquals (glitchkid::macros::readTuneStyle (base), -1);
         }
 
-        beginTest ("editor: builds, lays out, animates and renders at several sizes, with the LAB closed and open, in every AutoMode state");
+        beginTest ("editor: builds, lays out and renders at several sizes; three pages, four MODIFY categories, eight profiles, BUILD end to end");
         {
             const juce::String outDir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             auto snapshot = [&] (juce::AudioProcessorEditor& ed, const juce::String& shot)
             {
-                juce::MessageManager::getInstance()->runDispatchLoopUntil (200); // the editor's 30 Hz timer runs
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
                 auto img = ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
                 expect (img.isValid() && img.getWidth() == ed.getWidth());
-                // not a blank or single-colour image: count distinct colours on a coarse grid
                 std::set<juce::uint32> colours;
                 for (int y = 0; y < img.getHeight(); y += 7)
                     for (int x = 0; x < img.getWidth(); x += 7)
@@ -259,21 +253,20 @@ struct MacroTests : public juce::UnitTest
                 }
             };
 
-            auto vocalBlocks = [] (GlitchKidProcessor& p, double seconds)
+            auto feedBlocks = [] (GlitchKidProcessor& p, double seconds, bool silent)
             {
                 const auto x = vocalish (48000.0, seconds);
                 juce::MidiBuffer midi;
                 for (size_t pos = 0; pos + 480 <= x.size(); pos += 480)
                 {
                     th::Buf b (2, 480);
-                    for (int i = 0; i < 480; ++i) { b.setSample (0, i, x[pos + (size_t) i]); b.setSample (1, i, x[pos + (size_t) i]); }
+                    for (int i = 0; i < 480; ++i) { const float v = silent ? 0.0f : x[pos + (size_t) i]; b.setSample (0, i, v); b.setSample (1, i, v); }
                     p.processBlock (b, midi);
                 }
             };
 
-            // every page, and every MODIFY category, renders
             for (int pg = 0; pg < 3; ++pg)
-                for (int cat = 0; cat < (pg == 2 ? 5 : 1); ++cat)
+                for (int cat = 0; cat < (pg == 2 ? 4 : 1); ++cat)
                 {
                     GlitchKidProcessor p;
                     p.setUiInt ("uiPage", pg);
@@ -284,7 +277,6 @@ struct MacroTests : public juce::UnitTest
                     snapshot (*ed, "page" + juce::String (pg) + (pg == 2 ? "_cat" + juce::String (cat) : juce::String()));
                 }
 
-            // resizing keeps the layout (and does not crash) at the limits
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiPage", 2);
@@ -298,7 +290,6 @@ struct MacroTests : public juce::UnitTest
                 }
             }
 
-            // navigation: the real buttons switch pages, and each page shows only its own controls
             {
                 GlitchKidProcessor p;
                 p.prepareToPlay (48000.0, 480);
@@ -324,22 +315,36 @@ struct MacroTests : public juce::UnitTest
                     expect (b != nullptr && b->isVisible(), "button '" + text + "' is there to click");
                     if (b != nullptr)
                     {
-                        b->triggerClick(); // posts the click: let the message loop deliver it
+                        b->triggerClick();
                         juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
                     }
                 };
+                std::vector<glitchkid::ui::ProfileCard*> cards;
+                auto collectCards = [&]
+                {
+                    cards.clear();
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* a = dynamic_cast<glitchkid::ui::ProfileCard*> (ch); a != nullptr && a->isVisible())
+                                cards.push_back (a);
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                };
 
-                // first launch: TUNE
                 expect (visible ("NEXT  >") && visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
                 expect (visible ("1  TUNE") && visible ("2  AUTO") && visible ("3  MODIFY"), "the three steps are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
+                expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
 
-                click ("HARD"); // a real action: sets Pitch Tune
+                click ("HARD");
                 expectEquals (th::getParam (p, "tune_on"), 1.0f);
                 expectEquals (th::getParam (p, "tune_strength"), 100.0f);
                 expectEquals (th::getParam (p, "tune_speed"), 0.0f);
 
-                // the TUNE note pad and scale chips write the real Tune Key / Tune Scale parameters
                 {
                     glitchkid::ui::NoteKey* d = nullptr;
                     int keys = 0;
@@ -375,103 +380,62 @@ struct MacroTests : public juce::UnitTest
                 expectEquals (p.getUiInt ("uiPage", -1), 1);
                 expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
 
-                // BUILD MY VOCAL MIX, end to end through the real button: listens, builds, applies, can be undone; silence fails honestly
-                {
-                                        th::setParam (p, "gain", -2.0f);
-                    const auto sBefore = p.captureSoundState();
-                    expect (findButton (*content, "WHAT CHANGED") != nullptr && ! findButton (*content, "WHAT CHANGED")->isEnabled(), "nothing to explain before a build");
-                    {
-                        std::function<void (juce::Component&)> pickCard = [&] (juce::Component& comp)
-                        {
-                            for (auto* ch : comp.getChildren())
-                            {
-                                if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible() && a->getPreset() == 18)
-                                    a->triggerClick(); // A Boogie wit da Hoodie is on page 1: the build starts from this profile
-                                pickCard (*ch);
-                            }
-                        };
-                        pickCard (*content);
-                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
-                    }
-                    click ("BUILD MY VOCAL MIX");
-                    auto feed = [&] (double seconds, bool silent)
-                    {
-                        const auto x = vocalish (48000.0, seconds);
-                        juce::MidiBuffer midi;
-                        for (size_t pos = 0; pos + 480 <= x.size(); pos += 480)
-                        {
-                            th::Buf b (2, 480);
-                            for (int i = 0; i < 480; ++i) { const float v = silent ? 0.0f : x[pos + (size_t) i]; b.setSample (0, i, v); b.setSample (1, i, v); }
-                            p.processBlock (b, midi);
-                        }
-                    };
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100); // the timer sees "listening"
-                    feed (12.0, false);
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300); // the timer sees the end of the analysis and builds
-                    expect (p.getPresetName().startsWith ("Built: "), "a mix was built: " + p.getPresetName());
-                    expect (p.getPresetName().contains ("A BOOGIE WIT DA HOODIE STYLE"), "built from the selected profile");
-                    int moved = 0;
-                    for (const auto& e : p.captureSoundState().values)
-                        moved += std::abs (e.value - sBefore.get (e.id, e.value)) > 0.06f ? 1 : 0;
-                    expect (moved > 10, "the build really moved the parameters: " + juce::String (moved));
-                    expect (findButton (*content, "WHAT CHANGED")->isEnabled() && findButton (*content, "BUILD AGAIN") != nullptr);
-                    expect (std::abs (th::getParam (p, "gain") + 2.0f) < 0.06f, "Gain is never touched");
-                    click ("BACK TO MY SOUND");
-                    for (const auto& e : sBefore.values)
-                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "undo restored " + e.id);
+                collectCards();
+                expectEquals ((int) cards.size(), 8, "all eight profiles are on one page");
 
-                    // a silent input: no usable vocal, nothing changes, the button offers TRY AGAIN
-                    const auto sQuiet = p.captureSoundState();
-                    click ("BUILD AGAIN");
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
-                    feed (31.0, true);
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
-                    expect (findButton (*content, "TRY AGAIN") != nullptr, "a silent input is reported as a failure");
-                    for (const auto& e : sQuiet.values)
-                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "a failed build changed nothing: " + e.id);
-                }
-
-                // the artist gallery: eight cards per page, select -> read -> load -> back to my sound
+                // select -> LOAD PROFILE -> BACK TO MY SOUND
                 {
-                    std::vector<glitchkid::ui::ArtistCard*> cards;
-                    std::function<void (juce::Component&)> walkCards = [&] (juce::Component& c)
-                    {
-                        for (auto* ch : c.getChildren())
-                        {
-                            if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible())
-                                cards.push_back (a);
-                            walkCards (*ch);
-                        }
-                    };
-                    walkCards (*content);
-                    expectEquals ((int) cards.size(), 8, "eight cards");
-                    expect (visible ("LOAD SOUND") && visible ("Punjabi") && visible ("Indian DHH") && visible ("SORT: A-Z") && visible ("FAVOURITES"), "gallery controls visible");
                     expect (findButton (*content, "BACK TO MY SOUND") != nullptr && ! findButton (*content, "BACK TO MY SOUND")->isEnabled(), "nothing to go back to yet");
                     th::setParam (p, "gain", -4.0f);
                     th::setParam (p, "echo_mix", 61.0f);
-                    const int first = cards[0]->getPreset();
-                    cards[0]->triggerClick();
+                    const int first = cards[3]->getProfile();
+                    cards[3]->triggerClick();
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
                     expectEquals (th::getParam (p, "echo_mix"), 61.0f, "selecting a card only selects: nothing is loaded");
-                    click ("LOAD SOUND");
+                    click ("LOAD PROFILE");
                     expectEquals (p.getPresetName(), juce::String (glitchkid::FactoryPresets::info (first).name));
-                    expect (std::abs (th::getParam (p, "echo_mix") - 61.0f) > 0.5f, "the preset replaced the sound");
+                    expect (std::abs (th::getParam (p, "echo_mix") - 61.0f) > 0.5f, "the profile replaced the sound");
+                    expectEquals (th::getParam (p, "gain"), -4.0f); // gain is the user's, a profile never sets it
                     expect (findButton (*content, "BACK TO MY SOUND")->isEnabled());
                     click ("BACK TO MY SOUND");
                     expectEquals (th::getParam (p, "echo_mix"), 61.0f);
                     expectEquals (th::getParam (p, "gain"), -4.0f);
-                    th::setParam (p, "gain", 0.0f);
+                    th::setParam (p, "gain", -2.0f);
+                    th::setParam (p, "echo_mix", 0.0f);
+                }
 
-                    click ("Punjabi"); // a filter: every card shown is Punjabi
-                    cards.clear();
-                    walkCards (*content);
-                    expect (! cards.empty(), "cards after filter");
-                    for (auto* a : cards)
-                        expect (glitchkid::browser::matchesFilter (a->getPreset(), 10), "only Punjabi sounds are shown");
-                    click ("All 50");
-                    cards.clear();
-                    walkCards (*content);
-                    expectEquals ((int) cards.size(), 8);
+                // BUILD MY VOCAL MIX through the real button: listens, builds, applies, can be undone; silence fails honestly
+                {
+                    const auto sBefore = p.captureSoundState();
+                    expect (! findButton (*content, "WHAT CHANGED")->isEnabled(), "nothing to explain before a build");
+                    collectCards();
+                    cards[1]->triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    click ("BUILD MY VOCAL MIX");
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                    feedBlocks (p, 12.0, false);
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+                    expect (p.getPresetName().startsWith ("Built: "), "a mix was built: " + p.getPresetName());
+                    expect (p.getPresetName().containsIgnoreCase (glitchkid::FactoryPresets::info (cards[1]->getProfile()).name), "built from the selected profile");
+                    int moved = 0;
+                    for (const auto& e : p.captureSoundState().values)
+                        moved += std::abs (e.value - sBefore.get (e.id, e.value)) > 0.06f ? 1 : 0;
+                    expect (moved > 5, "the build really moved the parameters: " + juce::String (moved));
+                    expect (findButton (*content, "WHAT CHANGED")->isEnabled() && findButton (*content, "BUILD AGAIN") != nullptr);
+                    expect (std::abs (th::getParam (p, "gain") + 2.0f) < 0.06f, "Gain is never touched");
+                    expectEquals (th::getParam (p, "tune_key"), 2.0f); // key and scale stay the user's
+                    click ("BACK TO MY SOUND");
+                    for (const auto& e : sBefore.values)
+                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "undo restored " + e.id);
+
+                    const auto sQuiet = p.captureSoundState();
+                    click ("BUILD AGAIN");
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                    feedBlocks (p, 31.0, true);
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
+                    expect (findButton (*content, "TRY AGAIN") != nullptr, "a silent input is reported as a failure");
+                    for (const auto& e : sQuiet.values)
+                        expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "a failed build changed nothing: " + e.id);
                 }
 
                 click ("DRY");
@@ -481,57 +445,38 @@ struct MacroTests : public juce::UnitTest
 
                 click ("MODIFY  >");
                 expectEquals (p.getUiInt ("uiPage", -1), 2);
-                expect (visible ("PITCH & KEY") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("BUILD MY VOCAL MIX"));
+                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("BUILD MY VOCAL MIX"));
 
-                // each category shows only its own controls (checked with the Alter Ego buttons and the DRY/PROCESSED switch as markers)
-                click ("CHARACTER");
-                expectEquals (p.getUiInt ("uiCategory", -1), 4);
-                expect (visible ("SURPRISE ME") && visible ("CELESTIAL") && ! visible ("HARD"));
                 click ("PITCH & KEY");
-                expect (visible ("HARD") && ! visible ("SURPRISE ME") && ! visible ("CELESTIAL"));
+                expectEquals (p.getUiInt ("uiCategory", -1), 0);
+                expect (visible ("HARD"));
                 click ("TONE");
-                expect (! visible ("HARD") && ! visible ("SURPRISE ME") && visible ("DARKER") && visible ("RESET"), "the footer stays, the category controls change");
+                expect (! visible ("HARD") && visible ("DARKER") && visible ("RESET"), "the footer stays, the category controls change");
+                click ("DYNAMICS");
+                expectEquals (p.getUiInt ("uiCategory", -1), 2);
+                click ("SPACE");
+                expectEquals (p.getUiInt ("uiCategory", -1), 3);
 
-                // a quick tweak is a real parameter change
                 const float before = th::getParam (p, "eq_hi_gain");
                 click ("DARKER");
                 expect (th::getParam (p, "eq_hi_gain") < before - 1.0f);
 
-                // reset asks first; the preset system underneath is the existing one
                 click ("<  BACK TO AUTO");
                 expect (visible ("TRY AGAIN"), "AUTO shows the build button (TRY AGAIN after the silent attempt)");
                 click ("1  TUNE");
                 expect (visible ("NEXT  >"));
             }
 
-            // the AUTO page in every AutoMode state, a loaded Sound World, the dry state and still mode
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiPage", 1);
                 p.prepareToPlay (48000.0, 480);
                 std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
-                auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ed-" + juce::String::toHexString (juce::Random().nextInt64()));
-                glitchkid::PresetController c (p, glitchkid::PresetStore (dir));
-                c.loadFactory (0);
-                snapshot (*ed, "auto_world_loaded");
-                {
-                    std::function<void (juce::Component&)> pick = [&] (juce::Component& comp)
-                    {
-                        for (auto* ch : comp.getChildren())
-                        {
-                            if (auto* a = dynamic_cast<glitchkid::ui::ArtistCard*> (ch); a != nullptr && a->isVisible() && a->getPreset() == 18)
-                                a->triggerClick();
-                            pick (*ch);
-                        }
-                    };
-                    pick (*ed);
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
-                    snapshot (*ed, "auto_artist_selected");
-                }
+                snapshot (*ed, "auto_idle");
                 p.getAnalyzer().start();
-                vocalBlocks (p, 1.0);
+                feedBlocks (p, 1.0, false);
                 snapshot (*ed, "auto_listening");
-                vocalBlocks (p, 12.0);
+                feedBlocks (p, 12.0, false);
                 snapshot (*ed, "auto_ready");
                 p.applyAutoMode (0.7f);
                 snapshot (*ed, "auto_applied");
@@ -540,15 +485,6 @@ struct MacroTests : public juce::UnitTest
                 th::setParam (p, "bypass", 0.0f);
                 p.setUiFlag ("uiMotion", false);
                 snapshot (*ed, "auto_still");
-                p.getAnalyzer().start();
-                juce::MidiBuffer midi;
-                th::Buf quiet (2, 480);
-                p.processBlock (quiet, midi);
-                p.getAnalyzer().stop();
-                p.processBlock (quiet, midi);
-                snapshot (*ed, "auto_error");
-                ed.reset();
-                dir.deleteRecursively();
             }
             {
                 GlitchKidProcessor p;

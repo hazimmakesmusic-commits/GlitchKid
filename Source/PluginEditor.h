@@ -2,7 +2,6 @@
 #include "PluginProcessor.h"
 #include "Presets/PresetController.h"
 #include "Macros/MacroEngine.h"
-#include "Presets/PresetBrowser.h"
 #include "AutoMode/MixEngine.h"
 #include "UI/PlaygroundWidgets.h"
 
@@ -35,7 +34,7 @@ class ParamKnob
 {
 public:
     ParamKnob (juce::AudioProcessorValueTreeState&, const char* paramId, const juce::String& name,
-               const juce::String& suffix, juce::Colour colour);
+               const juce::String& suffix, juce::Colour colour, const juce::String& tooltip = {});
     void addTo (juce::Component& parent);
     void setBounds (juce::Rectangle<int> r);
     void setEnabled (bool);
@@ -47,6 +46,7 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
 };
 
+// The three steps: TUNE (key, scale, tuning style), AUTO (pick a profile, BUILD MY VOCAL MIX, audition), MODIFY (Pitch & Key, Tone, Dynamics, Space).
 class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -56,12 +56,10 @@ public:
     void resized() override;
 
 private:
-    // Layout size; the window scales it to fit. The interface is three steps, one page each: TUNE (key + scale), AUTO (sound + analysis), MODIFY (advanced,
-    // one category at a time). A header (brand, step buttons, mascot) and the preset bar are always shown; everything else belongs to exactly one page.
-    static constexpr int designW = 1060, designH = 700;
+    // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
+    static constexpr int designW = 1160, designH = 720;
     enum class Page { tune = 0, autoMix = 1, modify = 2 };
-    enum class Category { pitch = 0, tone, dynamics, space, character };
-    static constexpr int numCategories = 5;
+    static constexpr int numCategories = 4; // PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::tune;
     int category = 0;
     bool motionOn = true;
@@ -72,122 +70,53 @@ private:
     void showPage (Page, bool remember);
     void showCategory (int, bool remember);
     void buildPageControls();
+    juce::String currentTitle() const;
     std::vector<juce::Rectangle<int>> panelRects;
     void timerCallback() override;
-    void refreshHome (float peak);
+    void refreshState (float peak);
     void setBypassFromUi (bool bypassed);
     juce::TooltipWindow tooltipWindow { this, 500 }; // the controls' tooltips need one to be shown at all
 
-    // HOME screen: mascot + live input scope, Sound Worlds, the main AutoMode action, macros, quick commands, dry/processed switch.
-    glitchkid::ui::Mascot mascot;
-    glitchkid::ui::ScopeStrip scope;
-    // AUTO: the artist-preset gallery. Eight card slots are rebound to the presets of the current page (50 cards are never on screen at once).
-    juce::OwnedArray<glitchkid::ui::ArtistCard> artistCards;
-    juce::TextButton filterChips[glitchkid::browser::numFilters], sortButton, favOnlyButton { "FAVOURITES" }, favButton { "FAVOURITE" },
-                     pagePrevButton { "<" }, pageNextButton { ">" }, loadButton { "LOAD SOUND" }, backToMineButton { "BACK TO MY SOUND" };
-    juce::TextEditor searchBox;
-    juce::Label sourceLine;
-    juce::Label galleryCount, detailDesc, detailTags, detailSettings, detailStart;
-    glitchkid::browser::Query browseQuery;
-    std::vector<int> galleryList;
-    int galleryPage = 0, browsedPreset = -1;
-    juce::String shownDetailKey;
-    std::uint64_t favourites = 0;
-    struct Undo { glitchkid::SoundState state; juce::String name; bool valid = false; } undo; // your sound from before the last artist preset was loaded
-    static constexpr int cardsPerPage = 8;
-    void refreshGallery();
-    void selectArtist (int preset);
-    void loadBrowsed();
-    void backToMine();
-    void toggleFavourite();
-    juce::OwnedArray<glitchkid::ui::MacroDial> macroDials; // SPACE, CHARACTER, PUNCH
-    std::unique_ptr<glitchkid::ui::MacroDial> chaosDial;    // the Alter Ego CHAOS amount (needs an Alter Ego)
-    juce::TextButton commandButtons[glitchkid::macros::numCommands];
-    juce::Label talkCaption { {}, "QUICK TWEAKS" }, talkNote, compareCaption;
-    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" }, motionButton;
+    juce::Rectangle<int> screenRect, mascotBase;
+    juce::String titleShown;
+    float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
+    void startFade();
 
-    // Navigation and page controls
-    juce::TextButton navButtons[3], categoryButtons[numCategories], nextButton { "NEXT  >" }, modifyButton { "MODIFY  >" },
-                     backButton { "<  BACK TO AUTO" }, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" },
-                     styleButtons[glitchkid::macros::numTuneStyles];
+    glitchkid::ui::Mascot mascot;
+    juce::TextButton navButtons[3], categoryButtons[4];
+    juce::TextButton nextButton { "NEXT  >" }, modifyButton { "MODIFY  >" }, backButton { "<  BACK TO AUTO" };
+    juce::TextButton motionButton, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" };
+    glitchkid::ui::ScopeStrip scope;
+    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" };
+    juce::Label compareCaption, talkCaption { {}, "QUICK TWEAKS" };
+    juce::TextButton commandButtons[glitchkid::macros::numCommands];
+    juce::String shownCompareText;
+
     // TUNE note pad and scale chips: they drive the same Tune Key / Tune Scale parameters as the boxes on MODIFY.
     juce::OwnedArray<glitchkid::ui::NoteKey> noteKeys;
     juce::TextButton scaleChips[6];
     int shownKey = -1, shownScale = -1;
-    float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
     void refreshTunePad();
-    void startFade();
-    juce::Label tuneSubline, tuneSummary, tuneOnCaption { {}, "TUNING" }, styleCaption { {}, "TUNING STYLE" };
-
-    // The glass screen: its title is painted (not a label) so it can scramble and glitch. Glitch bursts are short (about a third of a second), happen
-    // at random moments and on every click, and are skipped when MOTION is off.
-    juce::Rectangle<int> screenRect, mascotBase;
-    juce::String titleTarget, titleShown;
-    int scrambleFrames = 0, glitchFrames = 0, nextBurstIn = 70;
-    unsigned glitchSeed = 1;
-    juce::Random glitchRng { 7 };
-    juce::String currentTitle() const;
-    void startBurst();
-    void mouseDown (const juce::MouseEvent&) override;
-    juce::String shownCompareText;
-
-    GlitchKidProcessor& glitchProcessor;
-    LevelMeter inMeter, outMeter;
-    GainReductionMeter grMeter;
-    juce::Label compTitle { {}, "COMPRESSOR" }, grLabel { {}, "GR" };
-    juce::Label title { {}, "GLITCHKID" };
-    juce::Label tagline { {}, "A playground for your sound." };
-    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" };
-    juce::Label bandNames[ParametricEq::numBands];
-    juce::ToggleButton bypassButton { "Bypass" };
-    juce::Label stutterTitle { {}, "GLITCH STUTTER" }, stutterRateLabel { {}, "RATE" }, tempoLabel;
-    juce::ToggleButton stutterOnButton { "ON" };
-    juce::ComboBox stutterRateBox;
-    juce::OwnedArray<ParamKnob> stutterMixKnob;
-    juce::String shownTempoText;
-
-    // Pitch Tune row: ON, key, scale, strength, speed, FORMANT (independent of ON), and a read-out of the sung note and the note it is pulled to.
-    juce::Label tuneTitle { {}, "PITCH TUNE  +  FORMANT" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
+    juce::TextButton styleButtons[glitchkid::macros::numTuneStyles];
+    juce::Label tuneSubline, tuneSummary, tuneOnCaption { {}, "TUNING" }, styleCaption { {}, "TUNING STYLE" }, tuneKeyLabel { {}, "KEY" }, tuneScaleLabel { {}, "SCALE" }, tuneReadout;
     juce::ToggleButton tuneOnButton { "ON" };
     juce::ComboBox tuneKeyBox, tuneScaleBox;
-    juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed, formant
+    juce::OwnedArray<ParamKnob> tuneKnobs; // strength, speed
     juce::String shownTuneText;
 
-    // Vocal Mutation row: ON, a read-out of what the settings do (type + shift in Hz), MUTATION, CHARACTER, BLEND.
-    juce::Label mutTitle { {}, "VOCAL MUTATION" }, mutReadout;
-    juce::ToggleButton mutOnButton { "ON" };
-    juce::OwnedArray<ParamKnob> mutKnobs; // mutation, character, blend
-    juce::String shownMutText;
-
-    // DOUBLE / HARMONY row: the Vocal Doubler (DOUBLE ON, DOUBLE amount, WIDTH, DETUNE, TIMING) and the fixed-interval Harmony voice (HARMONY ON, INTERVAL, LEVEL).
-    juce::Label dhTitle { {}, "DOUBLE / HARMONY" }, harmIntervalLabel { {}, "INTERVAL" }, harmNote;
-    juce::ToggleButton dblOnButton { "DOUBLE ON" }, harmOnButton { "HARMONY ON" };
-    juce::ComboBox harmIntervalBox;
-    juce::OwnedArray<ParamKnob> dhKnobs; // double, width, detune, timing, harmony level
-    juce::String shownHarmNote;
-
-    // Liquid Echo row: ON, SYNC, division, time, feedback, tone, width, mix.
-    juce::Label echoTitle { {}, "LIQUID ECHO" }, echoDivLabel { {}, "DIVISION" };
-    juce::ToggleButton echoOnButton { "ON" }, echoSyncButton { "SYNC" };
-    juce::ComboBox echoDivBox;
-    juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, width, mix
-
-    // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes the
-    // loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it, A>B / B>A copy a slot.
-    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
-    juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
-    juce::Label presetStatus, abLabel { {}, "A/B" };
-    juce::String shownPresetText, shownAbText;
-
-    // AUTOMODE row: ANALYZE listens to the vocal, APPLY commits the analysis once. See PluginProcessor.h.
-    glitchkid::ui::ReactorButton autoAnalyzeButton;
-    juce::TextButton autoApplyButton { "APPLY SOUND" };
-    juce::Label autoStyleLabel { {}, "MIX INTENSITY" }, autoIntensityLabel { {}, "INTENSITY" }, autoStatus;
+    // AUTO: the eight starting profiles, the build button, the audition buttons
+    juce::OwnedArray<glitchkid::ui::ProfileCard> profileCards;
+    juce::Label detailDesc, detailSettings, detailStart, sourceLine, autoStatus, autoStyleLabel { {}, "MIX INTENSITY" };
+    glitchkid::ui::ReactorButton autoAnalyzeButton;   // BUILD MY VOCAL MIX (listens, then builds)
+    juce::TextButton autoApplyButton { "WHAT CHANGED" }, loadButton { "LOAD PROFILE" }, backToMineButton { "BACK TO MY SOUND" };
     juce::Slider autoIntensitySlider;
+    int browsedProfile = -1;
+    juce::String shownDetailKey, shownAutoText;
     bool autoWaiting = false, autoSawListening = false;
-    juce::String shownAutoText;
-    // BUILD MY VOCAL MIX: the big button listens to the vocal (the host must be playing), then the mix engine builds a proposal from the selected artist sound
-    // and the measurements and it is applied to the real parameters. BACK TO MY SOUND restores the sound from before the build.
+    struct Undo { glitchkid::SoundState state; juce::String name; bool valid = false; } undo; // your sound from before the last build or profile load
+
+    // BUILD MY VOCAL MIX: the big button listens to the vocal (the host must be playing), then the mix engine builds a proposal from the selected profile and the
+    // measurements and it is applied to the real parameters. BACK TO MY SOUND restores the sound from before the build.
     enum class BuildState { idle, listening, built, failed };
     BuildState buildState = BuildState::idle;
     int buildStartCount = 0; // the analyzer's completed-analysis counter when BUILD was pressed
@@ -196,6 +125,34 @@ private:
     void runBuild();
     void showWhatChanged();
     void refreshAutoMode();
+    void selectProfile (int);
+    void loadBrowsed();
+    void backToMine();
+    void refreshProfiles();
+
+    // MODIFY controls (every one is a real parameter)
+    juce::OwnedArray<ParamKnob> toneKnobs; // LOW, BODY, PRESENCE, AIR, WARMTH
+    juce::OwnedArray<ParamKnob> compKnobs; // threshold, ratio, attack, release, makeup
+    juce::OwnedArray<ParamKnob> gainKnob;
+    juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, mix
+    juce::OwnedArray<ParamKnob> dimKnobs;  // width, mix
+    juce::OwnedArray<ParamKnob> dblKnobs;  // amount, width
+    LevelMeter inMeter, outMeter;
+    GainReductionMeter grMeter;
+    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, grLabel { {}, "GR" }, echoTitle { {}, "ECHO" }, echoDivLabel { {}, "DIVISION" }, dimTitle { {}, "WIDTH (DIMENSION)" },
+                dblTitle { {}, "DOUBLER" }, toneTitle { {}, "TONE" }, compTitle { {}, "COMPRESSOR" };
+    juce::ToggleButton echoOnButton { "ON" }, echoSyncButton { "SYNC" }, dimOnButton { "ON" }, dblOnButton { "ON" };
+    juce::ComboBox echoDivBox;
+    juce::ToggleButton bypassButton { "Bypass" }; // (attached to the Bypass parameter; never shown: DRY / PROCESSED is the interface to it)
+
+    GlitchKidProcessor& glitchProcessor;
+
+    // PRESETS + A/B bar. PRESET opens a menu (factory default, then your saved presets); SAVE names and stores the current sound; DELETE removes
+    // the loaded user preset (after a confirmation). A/B: SET A / SET B capture the current sound into a slot, A / B recall it.
+    juce::TextButton presetPrevButton { "<" }, presetNextButton { ">" }, presetMenuButton, presetSaveButton { "SAVE" }, presetDeleteButton { "DELETE" };
+    juce::TextButton abSetA { "SET A" }, abSetB { "SET B" }, abRecallA { "A" }, abRecallB { "B" }, abCopyAB { "A>B" }, abCopyBA { "B>A" };
+    juce::Label presetStatus, abLabel { {}, "A/B" };
+    juce::String shownPresetText, shownAbText, shownTempoText;
     int statusTicks = 0;
     void refreshPresetBar();
     void showStatus (const juce::String&);
@@ -205,38 +162,13 @@ private:
     void askDeletePreset();
     void askYesNo (const juce::String& heading, const juce::String& message, const juce::String& yesText, std::function<void()> onYes);
 
-    // ALTER EGOS + MOOD ENGINE (see AlterEgos.h). The lit Alter Ego is the one whose values all match the controls.
-    // CHAOS and SURPRISE ME write the normal parameters; BLEND is the ordinary "mix" parameter.
-    juce::Label egoTitle { {}, "ALTER EGOS" }, egoInfo, chaosLabel { {}, "CHAOS" }, blendLabel { {}, "BLEND" };
-    juce::TextButton egoButtons[AlterEgos::count];
-    juce::Slider chaosSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
-    juce::Slider blendSlider { juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight };
-    juce::TextButton surpriseButton { "SURPRISE ME" };
-    bool updatingChaosFromCode = false;
-    juce::String shownEgoText;
-    void refreshAlterEgos();
-
-    // Dimension row: ON, width, detune, depth, mix.
-    juce::Label dimTitle { {}, "DIMENSION" };
-    juce::ToggleButton dimOnButton { "ON" };
-    juce::OwnedArray<ParamKnob> dimKnobs;
-
-    juce::OwnedArray<ParamKnob> gainKnob;
-    juce::OwnedArray<ParamKnob> driveKnob;
-    juce::OwnedArray<ParamKnob> compKnobs;
-    juce::OwnedArray<ParamKnob> eqKnobs[ParametricEq::numBands];
     juce::AudioProcessorValueTreeState::ButtonAttachment bypassAttachment;
-    juce::AudioProcessorValueTreeState::ButtonAttachment stutterOnAttachment;
-    juce::AudioProcessorValueTreeState::ComboBoxAttachment stutterRateAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment echoOnAttachment, echoSyncAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment echoDivAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment dimOnAttachment;
     juce::AudioProcessorValueTreeState::ButtonAttachment tuneOnAttachment;
-    juce::AudioProcessorValueTreeState::ButtonAttachment mutOnAttachment;
-    juce::AudioProcessorValueTreeState::ButtonAttachment dblOnAttachment, harmOnAttachment;
-    juce::AudioProcessorValueTreeState::ComboBoxAttachment harmIntervalAttachment;
+    juce::AudioProcessorValueTreeState::ButtonAttachment dblOnAttachment;
     juce::AudioProcessorValueTreeState::ComboBoxAttachment tuneKeyAttachment, tuneScaleAttachment;
-    juce::AudioProcessorValueTreeState::SliderAttachment blendAttachment;
     glitchkid::PresetController presets;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidEditor)
