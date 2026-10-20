@@ -85,6 +85,7 @@ private:
     juce::TextButton filterChips[glitchkid::browser::numFilters], sortButton, favOnlyButton { "FAVOURITES" }, favButton { "FAVOURITE" },
                      pagePrevButton { "<" }, pageNextButton { ">" }, loadButton { "LOAD SOUND" }, backToMineButton { "BACK TO MY SOUND" };
     juce::TextEditor searchBox;
+    juce::Label sourceLine;
     juce::Label galleryCount, detailDesc, detailTags, detailSettings, detailStart;
     glitchkid::browser::Query browseQuery;
     std::vector<int> galleryList;

@@ -158,7 +158,8 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
 GlitchKidProcessor::GlitchKidProcessor()
     : AudioProcessor (BusesProperties()
                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+                          .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
+                          .withInput  ("Instrumental", juce::AudioChannelSet::stereo(), false)), // optional sidechain-style input; off until the host routes something to it
       apvts (*this, nullptr, "GlitchKidState", createLayout())
 {
     setLatencySamples (Saturation::latencySamples);
@@ -445,6 +446,25 @@ int GlitchKidProcessor::getUiInt (const char* key, int fallback) const
     return v.isVoid() ? fallback : (int) v;
 }
 
+GlitchKidProcessor::SourceStatus GlitchKidProcessor::getInstrumentalStatus() const
+{
+    if (! beatBusOn.load (std::memory_order_relaxed))
+        return SourceStatus::notConnected;
+    return beatSilentSeconds.load (std::memory_order_relaxed) < 1.0f ? SourceStatus::live : SourceStatus::connectedSilent;
+}
+
+void GlitchKidProcessor::startSourceAnalysis()
+{
+    analyzer.start();
+    beatAnalyzer.start();
+}
+
+void GlitchKidProcessor::stopSourceAnalysis()
+{
+    analyzer.stop();
+    beatAnalyzer.stop();
+}
+
 juce::String GlitchKidProcessor::getUiString (const char* key) const
 {
     return apvts.state.getProperty (key).toString();
@@ -591,8 +611,10 @@ CompressorSettings GlitchKidProcessor::readCompressorSettings() const
 bool GlitchKidProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto& out = layouts.getMainOutputChannelSet();
-    return (out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono())
-           && out == layouts.getMainInputChannelSet();
+    const bool mainOk = (out == juce::AudioChannelSet::stereo() || out == juce::AudioChannelSet::mono()) && out == layouts.getMainInputChannelSet();
+    // The instrumental input is optional: disabled, mono or stereo. It is only ever listened to; it never reaches the output.
+    const auto aux = layouts.inputBuses.size() > 1 ? layouts.inputBuses[1] : juce::AudioChannelSet::disabled();
+    return mainOk && (aux.isDisabled() || aux == juce::AudioChannelSet::mono() || aux == juce::AudioChannelSet::stereo());
 }
 
 // Target linear gain. The 0.1 dB parameter grid can leave float residue (e.g. 9e-7 dB) at "0 dB" on
@@ -614,6 +636,8 @@ static float wetAmount (bool bypassed, float percent)
 void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     analyzer.prepare (sampleRate);
+    beatAnalyzer.prepare (sampleRate);
+    sourceRate = sampleRate;
     smoothedGain.reset (sampleRate, 0.02); // 20 ms ramps
     smoothedGain.setCurrentAndTargetValue (targetGain (gainDb->load()));
     wetMix.reset (sampleRate, 0.02);
@@ -704,11 +728,36 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     shownTempo.store (currentBpm, std::memory_order_relaxed);
     tempoFromHost.store (usedHost, std::memory_order_relaxed);
 
+    // The main bus is the only thing that is processed and returned. The optional instrumental bus (extra input channels in the same host
+    // buffer) is only measured: getBusBuffer builds a view over the host's channels without allocating.
+    // (Views over the host's own channel pointers: the main bus is always the first channels, the instrumental bus follows the main INPUT channels.
+    // The channel counts are clamped to what the host buffer really holds, so a short buffer can never be read past its end.)
+    const int mainIn = getMainBusNumInputChannels();
+    juce::AudioBuffer<float> main (buffer.getArrayOfWritePointers(), juce::jmin (getMainBusNumOutputChannels(), buffer.getNumChannels()), buffer.getNumSamples());
+    const int auxChannels = getBusCount (true) > 1 && getBus (true, 1)->isEnabled() ? getChannelCountOfBus (true, 1) : 0;
+    if (auxChannels > 0 && buffer.getNumChannels() >= mainIn + auxChannels)
+    {
+        juce::AudioBuffer<float> aux (buffer.getArrayOfWritePointers() + mainIn, auxChannels, buffer.getNumSamples());
+        beatAnalyzer.process (aux.getArrayOfReadPointers(), aux.getNumChannels(), aux.getNumSamples());
+        float peak = 0.0f;
+        for (int ch = 0; ch < aux.getNumChannels(); ++ch)
+        {
+            const auto* x = aux.getReadPointer (ch);
+            for (int i = 0; i < aux.getNumSamples(); ++i)
+                peak = juce::jmax (peak, std::isfinite (x[i]) ? std::abs (x[i]) : 0.0f);
+        }
+        beatSilentSamples = peak > 1.0e-4f ? 0.0 : beatSilentSamples + (double) aux.getNumSamples();
+        beatSilentSeconds.store ((float) (beatSilentSamples / juce::jmax (1.0, sourceRate)), std::memory_order_relaxed);
+        beatBusOn.store (true, std::memory_order_relaxed);
+    }
+    else
+        beatBusOn.store (false, std::memory_order_relaxed);
+
     const int cap = dryBuffer.getNumSamples();
-    const int total = buffer.getNumSamples();
+    const int total = main.getNumSamples();
     for (int start = 0; start < total; start += cap)
     {
-        juce::AudioBuffer<float> chunk (buffer.getArrayOfWritePointers(), buffer.getNumChannels(),
+        juce::AudioBuffer<float> chunk (main.getArrayOfWritePointers(), main.getNumChannels(),
                                         start, juce::jmin (cap, total - start));
         processChunk (chunk);
     }
@@ -731,11 +780,11 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     const int numChannels = buffer.getNumChannels();
 
     // Layouts are matched in/out, but never pass unrelated data through extra outputs.
-    for (int ch = getTotalNumInputChannels(); ch < getTotalNumOutputChannels(); ++ch)
+    for (int ch = getMainBusNumInputChannels(); ch < getMainBusNumOutputChannels(); ++ch)
         buffer.clear (ch, 0, numSamples);
 
     // AutoMode listens to the raw input (before the clean-up below, so it can count invalid samples). It does nothing unless ANALYZE was pressed.
-    analyzer.process (buffer.getArrayOfReadPointers(), juce::jmin (numChannels, getTotalNumInputChannels()), numSamples);
+    analyzer.process (buffer.getArrayOfReadPointers(), juce::jmin (numChannels, getMainBusNumInputChannels()), numSamples);
 
     // Non-finite input (NaN / +-Inf) is replaced by 0 once, up front, so it can never travel through the dry copy that Bypass and Mix use
     // (the stages also guard themselves). Finite audio is not touched.

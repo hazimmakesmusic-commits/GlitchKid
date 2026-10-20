@@ -164,6 +164,15 @@ public:
     // seconds; APPLY then turns the finished analysis into new control values once, through the normal parameter calls. Nothing is changed
     // while listening, and nothing is ever applied automatically.
     glitchkid::analysis::VocalAnalyzer& getAnalyzer() { return analyzer; }
+
+    // SOURCES. The lead vocal is this track's own input. The instrumental is an OPTIONAL second input bus ("Instrumental", a sidechain-style input):
+    // it is only measured, never mixed into the output. The host must route something to it (see docs/SOURCES.md); a disabled bus is "not connected".
+    // "Connected, silent" means the bus is enabled but carries nothing: hosts deliver silence for an unrouted sidechain, so the two cannot be told apart.
+    enum class SourceStatus { notConnected, connectedSilent, live };
+    SourceStatus getInstrumentalStatus() const;
+    glitchkid::analysis::VocalAnalyzer& getInstrumentalAnalyzer() { return beatAnalyzer; }
+    void startSourceAnalysis(); // starts the lead and (if enabled) the instrumental analysis together
+    void stopSourceAnalysis();
     float getAutoIntensity() const;                      // 0..1, saved in the DAW session (default 0.6)
     void setAutoIntensity (float);
     glitchkid::automode::Result previewAutoMode (float intensity) const; // what APPLY would do with the last analysis (changes nothing)
@@ -209,6 +218,10 @@ private:
     void timerCallback() override { updateReportedLatency(); }
     void processChunk (juce::AudioBuffer<float>&);
     glitchkid::analysis::VocalAnalyzer analyzer;
+    glitchkid::analysis::VocalAnalyzer beatAnalyzer;
+    std::atomic<bool> beatBusOn { false };
+    std::atomic<float> beatSilentSeconds { 0.0f };
+    double beatSilentSamples = 0.0, sourceRate = 48000.0; // audio thread
     static constexpr const char* autoIntensityKey = "autoIntensity";
     void formantListen (const juce::AudioBuffer<float>&, int numChannels, int dryChannels, int numSamples);
 

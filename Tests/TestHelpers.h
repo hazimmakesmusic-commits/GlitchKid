@@ -43,6 +43,7 @@ inline void setLayout (juce::AudioProcessor& p, const juce::AudioChannelSet& set
 {
     juce::AudioProcessor::BusesLayout l;
     l.inputBuses.add (set);
+    l.inputBuses.add (juce::AudioChannelSet::disabled()); // the optional instrumental input stays off
     l.outputBuses.add (set);
     p.setBusesLayout (l);
 }

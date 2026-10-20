@@ -1,5 +1,6 @@
 #include "PluginEditor.h"
 #include "DSP/PitchCorrection/ScaleQuantizer.h"
+#include "AutoMode/SourceRelationship.h"
 
 namespace
 {
@@ -196,10 +197,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     autoAnalyzeButton.onClick = [this]
     {
         if (glitchProcessor.getAnalyzer().isListening())
-            glitchProcessor.getAnalyzer().stop();
+            glitchProcessor.stopSourceAnalysis();
         else
         {
-            glitchProcessor.getAnalyzer().start();
+            glitchProcessor.startSourceAnalysis();
             autoWaiting = true;
             autoSawListening = false;
         }
@@ -535,6 +536,11 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             l->setFont (glitchkid::ui::fontOf (12.0f));
             content.addAndMakeVisible (l);
         }
+        sourceLine.setJustificationType (juce::Justification::centredLeft);
+        sourceLine.setFont (glitchkid::ui::fontOf (11.0f, true));
+        sourceLine.setColour (juce::Label::textColourId, glitchkid::ui::textDim);
+        sourceLine.setTooltip ("What GlitchKid can actually hear. The lead is this track's input. The instrumental needs a sidechain/aux send from the beat's track (see docs/SOURCES.md). Ad-libs cannot be heard separately yet.");
+        content.addAndMakeVisible (sourceLine);
         detailDesc.setFont (glitchkid::ui::fontOf (15.0f, true));
         detailDesc.setColour (juce::Label::textColourId, glitchkid::ui::textBright);
         detailTags.setFont (glitchkid::ui::fontOf (11.5f, true));
@@ -1076,6 +1082,10 @@ void GlitchKidEditor::refreshAutoMode()
                 mood = glitchkid::ui::Mascot::Mood::ready;
                 text = "Ready: " + juce::String (a.activeSeconds, 1) + " s of vocal, peak " + juce::String (a.peakDb, 1) + " dB, level " + juce::String (a.rmsDb, 1)
                        + " dB" + (a.clippedSamples >= 3 ? ", CLIPPING found" : "") + ". Set INTENSITY, then APPLY.";
+                {
+                    const auto rel = glitchkid::automode::compare (a, glitchProcessor.getInstrumentalAnalyzer().fetch());
+                    text += rel.valid ? " BEAT: " + juce::String (rel.reasons.front()) : " BEAT: not analysed (" + juce::String (rel.unavailable) + ")";
+                }
                 break;
             case S::tooShort: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "Too short: only " + juce::String (a.activeSeconds, 1) + " s of vocal heard (needs 2 s). Nothing changed. Try again."; break;
             case S::tooQuiet: ring = glitchkid::ui::AutoState::error; mood = glitchkid::ui::Mascot::Mood::error;  text = "No usable vocal heard (silent or very quiet input). Nothing changed."; break;
@@ -1083,6 +1093,15 @@ void GlitchKidEditor::refreshAutoMode()
             case S::idle:
             case S::listening: text = "Press ANALYZE, then play the dry vocal for a few seconds."; break;
         }
+    }
+    {
+        using SS = GlitchKidProcessor::SourceStatus;
+        const auto st = glitchProcessor.getInstrumentalStatus();
+        const auto line = juce::String ("LEAD: this track's input (live)   |   INSTRUMENTAL: ")
+                          + (st == SS::live ? "LIVE" : st == SS::connectedSilent ? "CONNECTED, BUT SILENT" : "NOT CONNECTED") + "   |   AD-LIBS: NOT AVAILABLE";
+        if (line != sourceLine.getText())
+            sourceLine.setText (line, juce::dontSendNotification);
+        sourceLine.setColour (juce::Label::textColourId, st == SS::live ? glitchkid::ui::lime : glitchkid::ui::textDim);
     }
     autoAnalyzeButton.setState (ring, ringProgress);
     mascot.setMood (mood);
@@ -1596,7 +1615,8 @@ void GlitchKidEditor::layoutContent()
         show (detailSettings, { 64, 194, 660, 38 });
         show (detailStart, { 64, 232, 660, 34 });
         show (autoStatus, { 64, 266, 660, 32 });
-        show (scope, { 64, 300, 660, 30 });
+        show (sourceLine, { 64, 298, 660, 16 });
+        show (scope, { 64, 316, 660, 14 });
         show (autoStyleLabel, { 744, 194, 266, 14 });
         show (autoAnalyzeButton, { 744, 214, 108, 108 });
         show (autoIntensitySlider, { 858, 222, 152, 24 });
