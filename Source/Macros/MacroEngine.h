@@ -9,16 +9,17 @@ namespace glitchkid::macros
 //
 // A macro is a *gesture*: while it is dragged it writes the parameters listed below. Its position is read BACK from one primary parameter, so the
 // dial always agrees with the detailed controls (change the knobs by hand and the dial follows).
-enum class Macro { space, punch };
-constexpr int numMacros = 2;
+enum class Macro { space, punch, tone };
+constexpr int numMacros = 3;
 
-const char* macroName (Macro);        // "SPACE", "PUNCH"
+const char* macroName (Macro);        // "SPACE", "PUNCH", "TONE"
 const char* macroDescription (Macro); // plain English: what it moves
 
 // SPACE      echo_on, dim_on, dbl_on (on above 2 %), echo_mix 0..60 %, echo_fb 15..45 %, echo_width 20..75 %, dim_mix 0..45 %, dbl_amount 0..40 %.
 //            Primary (read back): echo_mix / 60 while Echo is on. There is no reverb in GlitchKid: this is delay + width.
 // PUNCH      comp_ratio 1..6, comp_thresh -12..-26 dB, comp_attack 15 ms, comp_release 110 ms, comp_knee 6 dB, comp_makeup min(4, 0.8 (ratio-1)) dB.
 //            Primary: (comp_ratio - 1) / 5.
+// TONE       eq_hi_gain -6..+6 dB (AIR), eq_b2_gain -1.5..+1.5 dB (PRESENCE); 0.5 = flat. Darker to brighter. Primary: (eq_hi_gain + 6) / 12.
 float read (Macro, const SoundState&);               // 0..1
 void apply (Macro, float value01, SoundState&);      // value is clamped to 0..1; non-finite is treated as 0
 

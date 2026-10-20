@@ -12,7 +12,7 @@ float lerp (float a, float b, float t) { return a + (b - a) * t; }
 
 const char* macroName (Macro m)
 {
-    switch (m) { case Macro::space: return "SPACE"; case Macro::punch: return "PUNCH"; }
+    switch (m) { case Macro::space: return "SPACE"; case Macro::punch: return "PUNCH"; case Macro::tone: return "TONE"; }
     return "";
 }
 
@@ -22,6 +22,7 @@ const char* macroDescription (Macro m)
     {
         case Macro::space:     return "More atmosphere: raises the echo, Dimension and Doubler together. (GlitchKid has no reverb: this is delay and width.)";
         case Macro::punch:     return "More control: raises the compressor ratio and lowers its threshold, with matching makeup gain.";
+        case Macro::tone:      return "Darker to brighter: moves the AIR (8 kHz) and PRESENCE (3 kHz) EQ gains together. The middle is flat.";
     }
     return "";
 }
@@ -32,6 +33,7 @@ float read (Macro m, const SoundState& s)
     {
         case Macro::space:     return s.get ("echo_on", 0.0f) >= 0.5f ? clamp01 (s.get ("echo_mix", 0.0f) / 60.0f) : 0.0f;
         case Macro::punch:     return clamp01 ((s.get ("comp_ratio", 1.0f) - 1.0f) / 5.0f);
+        case Macro::tone:      return clamp01 ((s.get ("eq_hi_gain", 0.0f) + 6.0f) / 12.0f);
     }
     return 0.0f;
 }
@@ -65,6 +67,10 @@ void apply (Macro m, float value, SoundState& s)
             s.set ("comp_makeup", std::fmin (4.0f, 0.8f * (ratio - 1.0f)));
             break;
         }
+        case Macro::tone:
+            s.set ("eq_hi_gain", lerp (-6.0f, 6.0f, v));
+            s.set ("eq_b2_gain", lerp (-1.5f, 1.5f, v));
+            break;
     }
 }
 

@@ -71,7 +71,8 @@ struct MacroTests : public juce::UnitTest
             const auto base = p.captureSoundState();
             const std::map<int, std::set<juce::String>> allowed = {
                 { 0, { "echo_on", "dim_on", "dbl_on", "echo_mix", "echo_fb", "echo_width", "dim_mix", "dbl_amount" } },
-                { 1, { "comp_ratio", "comp_thresh", "comp_attack", "comp_release", "comp_knee", "comp_makeup" } } };
+                { 1, { "comp_ratio", "comp_thresh", "comp_attack", "comp_release", "comp_knee", "comp_makeup" } },
+                { 2, { "eq_hi_gain", "eq_b2_gain" } } };
             for (int m = 0; m < glitchkid::macros::numMacros; ++m)
                 for (float v : { 0.0f, 0.1f, 0.33f, 0.5f, 0.77f, 1.0f, -3.0f, 9.0f, std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() })
                 {
@@ -189,12 +190,13 @@ struct MacroTests : public juce::UnitTest
             a.setUiFlag ("uiMotion", false);
             a.setUiInt ("uiPage", 2);
             a.setUiInt ("uiCategory", 3);
+            a.setUiInt ("uiProfile", 5);
             expectEquals ((int) a.captureSoundState().values.size(), (int) before.values.size());
             juce::MemoryBlock mb;
             a.getStateInformation (mb);
             GlitchKidProcessor b;
             b.setStateInformation (mb.getData(), (int) mb.getSize());
-            expect (! b.getUiFlag ("uiMotion", true) && b.getUiInt ("uiPage", 0) == 2 && b.getUiInt ("uiCategory", 0) == 3);
+            expect (! b.getUiFlag ("uiMotion", true) && b.getUiInt ("uiPage", 0) == 2 && b.getUiInt ("uiCategory", 0) == 3 && b.getUiInt ("uiProfile", -1) == 5);
             auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ui-" + juce::String::toHexString (juce::Random().nextInt64()));
             glitchkid::PresetController c (a, glitchkid::PresetStore (dir));
             c.loadFactory (0);
@@ -335,8 +337,8 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                 };
 
-                expect (visible ("NEXT  >") && visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
-                expect (visible ("1  TUNE") && visible ("2  AUTO") && visible ("3  MODIFY"), "the three steps are always shown");
+                expect (visible ("NEXT: AUTO  >") && visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
+                expect (visible ("TUNE") && visible ("AUTO") && visible ("MODIFY") && visible ("DRY") && visible ("PROCESSED"), "the three workspaces and DRY / PROCESSED are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
 
@@ -372,13 +374,14 @@ struct MacroTests : public juce::UnitTest
                     }
                     click ("Natural minor");
                     expectEquals (th::getParam (p, "tune_scale"), 2.0f);
+                    snapshot (*ed, "tune_active");
                     click ("Chromatic");
                     expectEquals (th::getParam (p, "tune_scale"), 0.0f);
                 }
 
-                click ("NEXT  >");
+                click ("NEXT: AUTO  >");
                 expectEquals (p.getUiInt ("uiPage", -1), 1);
-                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT  >") && ! visible ("HARD"));
+                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT: AUTO  >") && ! visible ("HARD"));
 
                 collectCards();
                 expectEquals ((int) cards.size(), 8, "all eight profiles are on one page");
@@ -391,6 +394,7 @@ struct MacroTests : public juce::UnitTest
                     const int first = cards[3]->getProfile();
                     cards[3]->triggerClick();
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    expectEquals (p.getUiInt ("uiProfile", -1), first, "the selected profile is remembered in the session");
                     expectEquals (th::getParam (p, "echo_mix"), 61.0f, "selecting a card only selects: nothing is loaded");
                     click ("LOAD PROFILE");
                     expectEquals (p.getPresetName(), juce::String (glitchkid::FactoryPresets::info (first).name));
@@ -422,6 +426,7 @@ struct MacroTests : public juce::UnitTest
                         moved += std::abs (e.value - sBefore.get (e.id, e.value)) > 0.06f ? 1 : 0;
                     expect (moved > 5, "the build really moved the parameters: " + juce::String (moved));
                     expect (findButton (*content, "WHAT CHANGED")->isEnabled() && findButton (*content, "BUILD AGAIN") != nullptr);
+                    snapshot (*ed, "auto_built");
                     expect (std::abs (th::getParam (p, "gain") + 2.0f) < 0.06f, "Gain is never touched");
                     expectEquals (th::getParam (p, "tune_key"), 2.0f); // key and scale stay the user's
                     click ("BACK TO MY SOUND");
@@ -445,26 +450,102 @@ struct MacroTests : public juce::UnitTest
 
                 click ("MODIFY  >");
                 expectEquals (p.getUiInt ("uiPage", -1), 2);
-                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && visible ("DARKER") && ! visible ("BUILD MY VOCAL MIX"));
+                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && ! visible ("BUILD MY VOCAL MIX"));
 
                 click ("PITCH & KEY");
                 expectEquals (p.getUiInt ("uiCategory", -1), 0);
                 expect (visible ("HARD"));
                 click ("TONE");
-                expect (! visible ("HARD") && visible ("DARKER") && visible ("RESET"), "the footer stays, the category controls change");
+                expect (! visible ("HARD") && visible ("RESET"), "the footer stays, the category controls change");
                 click ("DYNAMICS");
                 expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 click ("SPACE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 3);
 
-                const float before = th::getParam (p, "eq_hi_gain");
-                click ("DARKER");
-                expect (th::getParam (p, "eq_hi_gain") < before - 1.0f);
+                // detailed knobs are attached to the real (automatable) parameters, in both directions
+                {
+                    click ("TONE");
+                    juce::Slider* knob = nullptr;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag && knob == nullptr)
+                                knob = sl; // the first TONE knob is LOW (eq_lo_gain)
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    expect (knob != nullptr);
+                    if (knob != nullptr)
+                    {
+                        knob->setValue (-4.0, juce::sendNotificationSync);
+                        expectWithinAbsoluteError (th::getParam (p, "eq_lo_gain"), -4.0f, 0.06f);
+                        th::setParam (p, "eq_lo_gain", 3.0f);
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                        expectWithinAbsoluteError ((float) knob->getValue(), 3.0f, 0.06f);
+                        th::setParam (p, "eq_lo_gain", 0.0f);
+                    }
+                }
+
+                // the TONE high-level slider is a real control: it moves the AIR and PRESENCE gains together and reads back
+                {
+                    click ("TONE");
+                    juce::Slider* tone = nullptr;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::LinearHorizontal
+                                                                                 && sl->getTextBoxPosition() == juce::Slider::NoTextBox)
+                                tone = sl;
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    expect (tone != nullptr, "the TONE slider is shown");
+                    if (tone != nullptr)
+                    {
+                        tone->setValue (0.0, juce::sendNotificationSync);
+                        expect (th::getParam (p, "eq_hi_gain") < -5.5f && th::getParam (p, "eq_b2_gain") < -1.0f, "DARKER really lowers the EQ");
+                        tone->setValue (1.0, juce::sendNotificationSync);
+                        expect (th::getParam (p, "eq_hi_gain") > 5.5f, "BRIGHTER really raises the EQ");
+                        th::setParam (p, "eq_hi_gain", 0.0f);
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                        expectWithinAbsoluteError (tone->getValue(), 0.5, 0.02, "the slider follows the parameter");
+                    }
+                }
+
+                // the processing chain is a real control: clicking a stage opens its MODIFY category
+                {
+                    glitchkid::ui::ChainStrip* chain = nullptr;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* cs = dynamic_cast<glitchkid::ui::ChainStrip*> (ch))
+                                chain = cs;
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    expect (chain != nullptr && chain->isVisible(), "the chain is always shown");
+                    if (chain != nullptr)
+                    {
+                        click ("AUTO");
+                        const auto b = chain->nodeBounds (3); // DYNAMICS
+                        const juce::MouseEvent down (juce::Desktop::getInstance().getMainMouseSource(), b.getCentre().toFloat(), juce::ModifierKeys(), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, chain, chain,
+                                                     juce::Time::getCurrentTime(), b.getCentre().toFloat(), juce::Time::getCurrentTime(), 1, false);
+                        chain->mouseUp (down);
+                        expectEquals (p.getUiInt ("uiPage", -1), 2);
+                        expectEquals (p.getUiInt ("uiCategory", -1), 2);
+                    }
+                }
 
                 click ("<  BACK TO AUTO");
                 expect (visible ("TRY AGAIN"), "AUTO shows the build button (TRY AGAIN after the silent attempt)");
-                click ("1  TUNE");
-                expect (visible ("NEXT  >"));
+                click ("TUNE");
+                expect (visible ("NEXT: AUTO  >"));
             }
 
             {
