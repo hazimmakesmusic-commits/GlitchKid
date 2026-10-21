@@ -89,7 +89,7 @@ struct FactoryPresetTests : public juce::UnitTest
                 const auto again = capture (p);
                 expectEquals ((int) again.values.size(), (int) first.values.size());
                 for (const auto& e : first.values)
-                    if (! e.id.startsWith ("tune_") && e.id != "gain" && e.id != "mix") // tuning, Gain and Mix are yours: a profile keeps whatever you had
+                    if (! e.id.startsWith ("tune_") && ! e.id.startsWith ("air_") && e.id != "gain" && e.id != "mix") // tuning, Gain and Mix are yours: a profile keeps whatever you had
                         expectWithinAbsoluteError (again.get (e.id, -999.0f), e.value, 1.0e-3f);
             }
             dir.deleteRecursively();

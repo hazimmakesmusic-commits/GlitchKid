@@ -56,7 +56,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
 
     // ---- foundation: the profile's own values ----
     SoundState s = in.profile >= 0 && in.profile < FactoryPresets::count ? FactoryPresets::build (in.profile, in.factoryDefault) : in.factoryDefault;
-    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix" })
+    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "air_on", "air_presence", "air_air", "air_link", "air_mix", "air_trim" })
         s.set (keep, in.current.get (keep, in.factoryDefault.get (keep, 0.0f)));
     s.egoId = {};
     s.egoChaos = 0.0f;

@@ -15,7 +15,7 @@ Eight profiles: CLEAN & NATURAL, MODERN MELODIC RAP, HARD-TUNED RAP, DARK & ATMO
 BUILD MY VOCAL MIX listens while the host plays, then applies the selected profile plus bounded, explained adjustments (works without a beat). The button shows real state: ready, waiting for audio, analysing (progress follows the analysis time), failed. A status line, the input / vocal / instrumental status, MIX INTENSITY, and the RESULT block (what was applied, the first fitted settings with before/after values, WHAT CHANGED for all of it).
 
 ## 3 MODIFY
-PITCH & KEY (on/off, key, scale, style, strength, speed), TONE (a darker-to-brighter slider, the EQ response graph with draggable LOW / BODY / PRESENCE / AIR points, the selected band's FREQ / GAIN / Q knobs, WARMTH), DYNAMICS (a softer-to-more-upfront slider, compressor, output gain, IN / OUT / GR meters), SPACE (a dry-to-spacious slider, echo, width, doubler). BACK TO AUTO, RESET, SAVE PRESET. GlitchKid has no reverb: "space" is delay, width and doubling.
+PITCH & KEY (on/off, key, scale, style, strength, speed), TONE (a darker-to-brighter slider, the EQ response graph with draggable LOW / BODY / PRESENCE / AIR points, the selected band's FREQ / GAIN / Q knobs, WARMTH, and the AIR LAB strip: switch, LINK, PRESENCE and AIR, MIX, TRIM), DYNAMICS (a softer-to-more-upfront slider, compressor, output gain, IN / OUT / GR meters), SPACE (a dry-to-spacious slider, echo, width, doubler). BACK TO AUTO, RESET, SAVE PRESET. GlitchKid has no reverb: "space" is delay, width and doubling.
 
 ## High-level sliders (exact mappings, `Source/Macros/MacroEngine`)
 * TONE: eq_hi_gain -6..+6 dB, eq_b2_gain -1.5..+1.5 dB (0.5 = flat). Read back from eq_hi_gain.

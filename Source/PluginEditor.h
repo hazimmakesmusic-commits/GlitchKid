@@ -138,6 +138,14 @@ private:
     juce::OwnedArray<ParamKnob> eqKnobs[glitchkid::ui::EqGraph::numBands]; // each band's frequency, gain and (bells) Q; only the selected band's are shown
     juce::OwnedArray<ParamKnob> warmthKnob;
     juce::Label eqNote;
+    // AIR LAB strip (TONE): switch, LINK, PRESENCE and AIR (the two main controls), MIX and OUTPUT TRIM
+    juce::ToggleButton airOnButton { "AIR LAB" }, airLinkButton { "LINK" };
+    juce::Slider airPresenceSlider, airAirSlider, airMixSlider, airTrimSlider;
+    juce::Label airPresenceLabel { {}, "PRESENCE" }, airAirLabel { {}, "AIR" }, airMixLabel { {}, "MIX" }, airTrimLabel { {}, "TRIM" }, airHint;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> airPresenceAtt, airAirAtt, airMixAtt, airTrimAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> airOnAtt, airLinkAtt;
+    bool airLinkGuard = false;
+    void linkAir (juce::Slider& moved, juce::Slider& other);
     int eqBand = 2;
     void selectBand (int);
     void applyContentTransform (float dx = 0.0f);

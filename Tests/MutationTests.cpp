@@ -462,7 +462,7 @@ struct MutationTests : public juce::UnitTest
         {
             GlitchKidProcessor p;
             p.prepareToPlay (48000.0, 512);
-            expectEquals (p.getParameters().size(), 54);
+            expectEquals (p.getParameters().size(), 60);
             expectEquals (getParam (p, "mut_on"), 0.0f);
             expectWithinAbsoluteError (getParam (p, "mut_amount"), 40.0f, 0.01f);
             expectWithinAbsoluteError (getParam (p, "mut_character"), 50.0f, 0.01f);

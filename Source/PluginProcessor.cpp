@@ -152,6 +152,18 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { mixId, 1 }, "Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    // AIR LAB: appended after Mix so every existing parameter keeps its host index
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { airOnId, 1 }, "Air Lab On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airPresenceId, 1 }, "Air Lab Presence",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airAirId, 1 }, "Air Lab Air",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { airLinkId, 1 }, "Air Lab Link", true));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airMixId, 1 }, "Air Lab Mix",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airTrimId, 1 }, "Air Lab Trim",
+        NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+
     return layout;
 }
 
@@ -198,6 +210,9 @@ GlitchKidProcessor::GlitchKidProcessor()
     for (int i = 0; i < 5; ++i)
         tuneParams[i] = apvts.getRawParameterValue (tuneIds[i]);
     formantShift = apvts.getRawParameterValue (formantShiftId);
+    const char* airIds[] = { airOnId, airPresenceId, airAirId, airLinkId, airMixId, airTrimId };
+    for (int i = 0; i < 6; ++i)
+        airParams[i] = apvts.getRawParameterValue (airIds[i]);
 
     if (juce::MessageManager::existsAndIsCurrentThread())
         startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
@@ -206,6 +221,17 @@ GlitchKidProcessor::GlitchKidProcessor()
 GlitchKidProcessor::~GlitchKidProcessor()
 {
     stopTimer();
+}
+
+AirLab::Settings GlitchKidProcessor::readAirSettings() const
+{
+    AirLab::Settings s;
+    s.on = airParams[0]->load() >= 0.5f;
+    s.presence = airParams[1]->load() * 0.01f;
+    s.air = airParams[2]->load() * 0.01f;
+    s.mix = airParams[4]->load() * 0.01f;
+    s.trimDb = airParams[5]->load();
+    return s;
 }
 
 glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings() const
@@ -654,6 +680,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     saturation.setDriveDb (satDrive->load());
     saturation.prepare (sampleRate, juce::jmax (samplesPerBlock, 512));
     dryDelay.prepare (Saturation::latencySamples);
+    airLab.setSettings (readAirSettings());
+    airLab.prepare (sampleRate);
+    airLab.reset();
     stutter.prepare (sampleRate);
 
     pitchLatency = glitchkid::pitch::PitchCorrector::latencyFor (sampleRate);
@@ -882,6 +911,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         eq.reset();                 // settled bypass or 0 % mix: exact (delayed) dry signal, no processing cost
         compressor.reset();
         saturation.reset();
+        airLab.reset();
         stutter.reset();
         echo.reset();
         dimension.reset();
@@ -1000,6 +1030,10 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     saturation.setDriveDb (satDrive->load());
     saturation.process (buffer);
+
+    // AIR LAB: after the dynamics and the saturation (so the added highs are not compressed or re-saturated), before the time effects (echo and width share the tone)
+    airLab.setSettings (readAirSettings());
+    airLab.process (buffer);
 
     stutter.setSettings ({ stutterOn->load() >= 0.5f, (int) std::lround (stutterRate->load()),
                            stutterMix->load(), currentBpm });

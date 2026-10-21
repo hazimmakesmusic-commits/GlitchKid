@@ -3,6 +3,7 @@
 #include "DSP/ParametricEq.h"
 #include "DSP/Compressor.h"
 #include "DSP/Saturation.h"
+#include "DSP/AirLab.h"
 #include "DSP/FixedDelay.h"
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
@@ -46,6 +47,14 @@ public:
 
     static constexpr const char* satDriveId = "sat_drive"; // dB, 0 = off
     static constexpr const char* mixId      = "mix";       // percent processed (100) vs dry (0)
+
+    // AIR LAB (presence and air enhancement, after the saturation). Appended last in the layout, so older sessions keep every host automation index.
+    static constexpr const char* airOnId       = "air_on";       // off by default: an old session or preset sounds exactly as before
+    static constexpr const char* airPresenceId = "air_presence"; // percent
+    static constexpr const char* airAirId      = "air_air";      // percent
+    static constexpr const char* airLinkId     = "air_link";     // UI behaviour only (PRESENCE and AIR move together); no DSP effect
+    static constexpr const char* airMixId      = "air_mix";      // percent of the added content
+    static constexpr const char* airTrimId     = "air_trim";     // dB
     static constexpr const char* stutterOnId   = "stutter_on";   // Glitch Stutter on/off
     static constexpr const char* stutterRateId = "stutter_rate"; // 0..3 = 1/4, 1/8, 1/16, 1/32 note
     static constexpr const char* stutterMixId  = "stutter_mix";  // percent loop (100) vs live (0)
@@ -237,6 +246,8 @@ private:
     ParametricEq eq;
     Compressor compressor;
     Saturation saturation;
+    AirLab airLab;
+    std::atomic<float>* airParams[6] {}; // on, presence, air, link, mix, trim
     GlitchStutter stutter;
     std::atomic<float>* stutterOn = nullptr;
     std::atomic<float>* stutterRate = nullptr;
@@ -269,6 +280,7 @@ private:
     EchoSettings readEchoSettings() const;
     glitchkid::pitch::PitchCorrector pitch;
     glitchkid::pitch::PitchCorrector::Settings readTuneSettings() const;
+    AirLab::Settings readAirSettings() const;
     std::atomic<float>* tuneParams[5] {}; // on, key, scale, strength, speed
     FixedDelay pitchDryDelay;             // extra dry-path delay for Pitch Tune (used while it is on)
     juce::AudioBuffer<float> dryBuffer2, undelayedBuffer; // preallocated in prepareToPlay

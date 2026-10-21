@@ -408,6 +408,47 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     warmthKnob[0]->addTo (content);
     label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
     eqNote.setText ("The curve is calculated from your EQ settings. There is no live spectrum.", juce::dontSendNotification);
+
+    // AIR LAB strip
+    auto airSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
+    {
+        sl.setSliderStyle (juce::Slider::LinearHorizontal);
+        sl.setTextBoxStyle (juce::Slider::TextBoxRight, false, box, 20);
+        sl.setColour (juce::Slider::trackColourId, ui::violet);
+        sl.setTooltip (tip);
+        content.addAndMakeVisible (sl);
+    };
+    airSlider (airPresenceSlider, "PRESENCE: lifts the 2.5-5 kHz detail that makes words come forward. Reduced automatically on sibilant S sounds.", 52);
+    airSlider (airAirSlider, "AIR: openness above 9 kHz: a gentle lift plus new harmonics made from the presence band. Reduced automatically on sibilant S sounds.", 52);
+    airSlider (airMixSlider, "MIX: how much of the added presence and air is blended in. 0 % = your signal untouched.", 52);
+    airSlider (airTrimSlider, "OUTPUT TRIM: compensates for the loudness change (applies while AIR LAB is on).", 60);
+    airPresenceSlider.setDoubleClickReturnValue (true, 30.0);
+    airAirSlider.setDoubleClickReturnValue (true, 30.0);
+    airMixSlider.setDoubleClickReturnValue (true, 100.0);
+    airTrimSlider.setDoubleClickReturnValue (true, 0.0);
+    airPresenceAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::airPresenceId, airPresenceSlider);
+    airAirAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::airAirId, airAirSlider);
+    airMixAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::airMixId, airMixSlider);
+    airTrimAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::airTrimId, airTrimSlider);
+    airPresenceSlider.setTextValueSuffix (" %");
+    airAirSlider.setTextValueSuffix (" %");
+    airMixSlider.setTextValueSuffix (" %");
+    airTrimSlider.setTextValueSuffix (" dB");
+    airOnButton.setTooltip ("Switch AIR LAB on or off. Off = your signal passes through untouched (a click-free 20 ms crossfade). Use it to compare.");
+    airLinkButton.setTooltip ("LINK: moving PRESENCE also moves AIR, and the reverse.");
+    airOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::airOnId, airOnButton);
+    airLinkAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::airLinkId, airLinkButton);
+    for (auto* t : { &airOnButton, &airLinkButton })
+    {
+        t->setColour (juce::ToggleButton::tickColourId, ui::violet);
+        content.addAndMakeVisible (*t);
+    }
+    for (auto* l : { &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel })
+        label (*l, 11.0f, true, ui::textDim);
+    label (airHint, 11.0f, false, ui::textDim);
+    airHint.setText ("Presence and air that ease off on S sounds. Zero latency.", juce::dontSendNotification);
+    airPresenceSlider.onValueChange = [this] { linkAir (airPresenceSlider, airAirSlider); };
+    airAirSlider.onValueChange = [this] { linkAir (airAirSlider, airPresenceSlider); };
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compThresholdId, "THRESHOLD", " dB", ui::violet, "The level above which the compressor starts working. Lower = more compression."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compRatioId, "RATIO", ":1", ui::violet, "How firmly the level is held down above the threshold. 1:1 = off."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compAttackId, "ATTACK", " ms", ui::violet, "How quickly it reacts. Slower lets the start of words through."));
@@ -517,6 +558,16 @@ void GlitchKidEditor::applyMacroSlider (int m)
     glitchProcessor.applyParameterChanges (s);
 }
 
+// With LINK on, moving one of the two main controls by hand moves the other to the same value (host automation never triggers it).
+void GlitchKidEditor::linkAir (juce::Slider& moved, juce::Slider& other)
+{
+    if (airLinkGuard || ! airLinkButton.getToggleState() || ! moved.isMouseOverOrDragging())
+        return;
+    airLinkGuard = true;
+    other.setValue (moved.getValue(), juce::sendNotificationSync);
+    airLinkGuard = false;
+}
+
 void GlitchKidEditor::selectBand (int b)
 {
     eqBand = juce::jlimit (0, ui::EqGraph::numBands - 1, b);
@@ -573,7 +624,7 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
         if (! dry)
         {
             act[0] = fx::isActive (fx::pitchTune, all);
-            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all);
+            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f;
             act[2] = fx::isActive (fx::compressor, all);
             act[3] = fx::isActive (fx::echo, all) || fx::isActive (fx::dimension, all) || fx::isActive (fx::doubler, all);
         }
@@ -583,6 +634,12 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
                 legacy.add (juce::String (fx::info (e).name).toUpperCase());
         chain.setState (act, peak, outPeak, page == Page::modify ? category : -1, motionOn, legacy.joinIntoString (", "));
         chain.tick (dt);
+    }
+
+    {
+        const float a = all.get ("air_on", 0.0f) >= 0.5f ? 1.0f : 0.55f; // the controls stay usable while it is off; they just look inactive
+        for (auto* c : std::initializer_list<juce::Component*> { &airPresenceSlider, &airAirSlider, &airMixSlider, &airTrimSlider, &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel })
+            c->setAlpha (a);
     }
 
     // MODIFY: the high-level sliders follow the real parameters (unless being dragged)
@@ -1269,7 +1326,18 @@ void GlitchKidEditor::layoutContent()
                 break;
 
             case 1: // TONE: the real EQ response, the four bands, the selected band's knobs, warmth
-                show (*eqGraph, { 36, 192, 590, 296 });
+                show (*eqGraph, { 36, 192, 590, 204 });
+                show (airOnButton, { 44, 404, 120, 24 });
+                show (airLinkButton, { 176, 404, 76, 24 });
+                show (airHint, { 262, 404, 360, 24 });
+                show (airPresenceLabel, { 44, 432, 72, 24 });
+                show (airPresenceSlider, { 120, 432, 216, 24 });
+                show (airMixLabel, { 350, 432, 34, 24 });
+                show (airMixSlider, { 386, 432, 236, 24 });
+                show (airAirLabel, { 44, 460, 72, 24 });
+                show (airAirSlider, { 120, 460, 216, 24 });
+                show (airTrimLabel, { 350, 460, 34, 24 });
+                show (airTrimSlider, { 386, 460, 236, 24 });
                 for (int b = 0; b < ui::EqGraph::numBands; ++b)
                 {
                     show (bandButtons[b], { 646 + b * 70, 192, 64, 30 });

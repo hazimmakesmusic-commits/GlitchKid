@@ -562,6 +562,49 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
 
+                // AIR LAB: the switch and the sliders are attached to the real parameters, and the chain's TONE stage lights up while it is on
+                {
+                    click ("TONE");
+                    juce::ToggleButton* airOn = nullptr;
+                    std::vector<juce::Slider*> airSliders;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->isVisible() && tb->getButtonText() == "AIR LAB")
+                                airOn = tb;
+                            if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::LinearHorizontal
+                                                                                 && sl->getTextBoxPosition() == juce::Slider::TextBoxRight)
+                                airSliders.push_back (sl);
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    expect (airOn != nullptr && airSliders.size() == 4, "the AIR LAB switch and its four sliders are on the TONE page");
+                    if (airOn != nullptr && airSliders.size() == 4)
+                    {
+                        expectEquals (th::getParam (p, "air_on"), 0.0f);
+                        airOn->triggerClick();
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                        expectEquals (th::getParam (p, "air_on"), 1.0f);
+                        airSliders[0]->setValue (65.0, juce::sendNotificationSync);  // PRESENCE
+                        airSliders[2]->setValue (40.0, juce::sendNotificationSync);  // MIX
+                        airSliders[3]->setValue (-2.5, juce::sendNotificationSync);  // TRIM
+                        expectWithinAbsoluteError (th::getParam (p, "air_presence"), 65.0f, 0.1f);
+                        expectWithinAbsoluteError (th::getParam (p, "air_mix"), 40.0f, 0.1f);
+                        expectWithinAbsoluteError (th::getParam (p, "air_trim"), -2.5f, 0.1f);
+                        th::setParam (p, "air_air", 80.0f);
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                        expectWithinAbsoluteError ((float) airSliders[1]->getValue(), 80.0f, 0.1f); // AIR follows the parameter
+                        snapshot (*ed, "tone_air_lab");
+                        th::setParam (p, "air_on", 0.0f);
+                        th::setParam (p, "air_presence", 30.0f);
+                        th::setParam (p, "air_air", 30.0f);
+                        th::setParam (p, "air_mix", 100.0f);
+                        th::setParam (p, "air_trim", 0.0f);
+                    }
+                }
+
                 // the TONE high-level slider is a real control: it moves the AIR and PRESENCE gains together and reads back
                 {
                     click ("TONE");
