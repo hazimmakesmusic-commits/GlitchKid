@@ -30,7 +30,7 @@ void LevelMeter::pushPeak (float linearPeak)
 void LevelMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0b0d13));
+    g.setColour (juce::Colour (0xff0c0910));
     g.fillRoundedRectangle (r, 3.0f);
     g.setColour (ui::border);
     g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
@@ -55,11 +55,11 @@ void GainReductionMeter::pushReduction (float db)
 void GainReductionMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0b0d13));
+    g.setColour (juce::Colour (0xff0c0910));
     g.fillRoundedRectangle (r, 3.0f);
     g.setColour (ui::border);
     g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
-    g.setColour (ui::lime);
+    g.setColour (ui::pink);
     g.fillRoundedRectangle (r.withHeight (r.getHeight() * juce::jlimit (0.0f, 1.0f, shownDb / maxDb)).reduced (2.0f, 0.0f), 2.0f);
 }
 
@@ -156,6 +156,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
     // ---- header: name, workspaces, dry / processed, motion ----
     label (brandLabel, 19.0f, true, ui::textBright);
+    brandLabel.setBorderSize ({ 0, 0, 0, 0 }); // so the colour fringe in paint() lines up with the text
     label (brandSub, 11.0f, true, ui::violet);
     static const char* navText[3] = { "TUNE", "AUTO", "MODIFY" };
     static const char* navTip[3] = { "Set the key and scale of your beat and how firmly the voice is pulled to it.", "Pick a starting profile, then press BUILD MY VOCAL MIX.",
@@ -176,8 +177,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     style (dryButton, "Hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob.");
     style (processedButton, "Hear the processed sound.");
     dryButton.setColour (juce::TextButton::buttonOnColourId, ui::pink.darker (0.5f));
-    processedButton.setColour (juce::TextButton::buttonOnColourId, ui::lime);
-    processedButton.setColour (juce::TextButton::textColourOnId, ui::obsidian);
+    processedButton.setColour (juce::TextButton::buttonOnColourId, ui::violet);
     dryButton.onClick = [this] { setBypassFromUi (true); };
     processedButton.onClick = [this] { setBypassFromUi (false); };
     content.addAndMakeVisible (chain);
@@ -260,8 +260,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     label (keyLabel, 11.0f, true, ui::textDim);
     label (scaleCaption, 11.0f, true, ui::textDim);
     label (scopeCaption, 11.0f, true, ui::textDim);
-    label (tuneReadout, 14.0f, true, ui::cyan);
-    tuneOnButton.setColour (juce::ToggleButton::tickColourId, ui::lime);
+    label (tuneReadout, 14.0f, true, ui::pink);
+    tuneOnButton.setColour (juce::ToggleButton::tickColourId, ui::violet);
     tuneOnButton.setTooltip ("Vocal pitch correction for a single voice (adds about 31 ms of latency while on). Switch it off for a vocal that is already in tune.");
     tuneKeyBox.setTooltip ("The key (root note) of the song. GlitchKid does not detect your key.");
     tuneScaleBox.setTooltip ("Which notes the voice may be pulled to. Chromatic = any semitone.");
@@ -385,13 +385,29 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     label (macroName, 13.0f, true, ui::textBright);
     label (macroLow, 12.0f, false, ui::textDim, juce::Justification::centredRight);
     label (macroHigh, 12.0f, false, ui::textDim);
-    toneKnobs.add (new ParamKnob (p.apvts, "eq_lo_gain", "LOW", " dB", ui::violet, "Low shelf (100 Hz): more weight or less boom."));
-    toneKnobs.add (new ParamKnob (p.apvts, "eq_b1_gain", "BODY", " dB", ui::violet, "Bell around 400 Hz: cut a little if the vocal sounds muddy or boxy."));
-    toneKnobs.add (new ParamKnob (p.apvts, "eq_b2_gain", "PRESENCE", " dB", ui::violet, "Bell around 3 kHz: the words come forward."));
-    toneKnobs.add (new ParamKnob (p.apvts, "eq_hi_gain", "AIR", " dB", ui::violet, "High shelf (8 kHz): brightness and breath. Lower it if the S sounds are harsh."));
-    toneKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
-    for (auto* k : toneKnobs)
-        k->addTo (content);
+    eqGraph = std::make_unique<ui::EqGraph> (p.apvts, [&p] { return p.getSampleRate(); });
+    content.addAndMakeVisible (*eqGraph);
+    eqGraph->onBandSelected = [this] (int b) { selectBand (b); };
+    static const char* bandNames[ui::EqGraph::numBands] = { "LOW", "BODY", "PRESENCE", "AIR" };
+    static const char* bandTips[ui::EqGraph::numBands] = { "Low shelf: more weight or less boom.", "Bell: cut a little if the vocal sounds muddy or boxy.",
+                                                         "Bell: the words come forward.", "High shelf: brightness and breath. Lower it if the S sounds are harsh." };
+    for (int b = 0; b < ui::EqGraph::numBands; ++b)
+    {
+        bandButtons[b].setButtonText (bandNames[b]);
+        style (bandButtons[b], juce::String (bandTips[b]) + " Select it to edit its frequency, gain and Q.");
+        bandButtons[b].onClick = [this, b] { selectBand (b); };
+        const auto& ids = GlitchKidProcessor::eqIds[b];
+        eqKnobs[b].add (new ParamKnob (p.apvts, ids.freq, "FREQ", " Hz", ui::violet, "The band's centre or corner frequency."));
+        eqKnobs[b].add (new ParamKnob (p.apvts, ids.gain, "GAIN", " dB", ui::violet, "Boost or cut at this band."));
+        if (ids.q != nullptr)
+            eqKnobs[b].add (new ParamKnob (p.apvts, ids.q, "Q", "", ui::violet, "How narrow the bell is. Higher = narrower."));
+        for (auto* k : eqKnobs[b])
+            k->addTo (content);
+    }
+    warmthKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
+    warmthKnob[0]->addTo (content);
+    label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
+    eqNote.setText ("The curve is calculated from your EQ settings. There is no live spectrum.", juce::dontSendNotification);
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compThresholdId, "THRESHOLD", " dB", ui::violet, "The level above which the compressor starts working. Lower = more compression."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compRatioId, "RATIO", ":1", ui::violet, "How firmly the level is held down above the threshold. 1:1 = off."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compAttackId, "ATTACK", " ms", ui::violet, "How quickly it reacts. Slower lets the start of words through."));
@@ -399,7 +415,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compMakeupId, "MAKEUP", " dB", ui::violet, "Makes the compressed vocal louder again."));
     for (auto* k : compKnobs)
         k->addTo (content);
-    gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", ui::cyan, "The final level of the vocal."));
+    gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", ui::pink, "The final level of the vocal."));
     gainKnob[0]->addTo (content);
     for (auto* l : { &inLabel, &outLabel, &grLabel })
         label (*l, 11.0f, true, ui::textDim, juce::Justification::centred);
@@ -407,7 +423,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     choices (echoDivBox, GlitchKidProcessor::echoDivId);
     echoDivBox.setTooltip ("The echo's length as a note value of the host tempo.");
     for (auto* t : { &echoOnButton, &echoSyncButton, &dimOnButton, &dblOnButton })
-        t->setColour (juce::ToggleButton::tickColourId, ui::lime);
+        t->setColour (juce::ToggleButton::tickColourId, ui::violet);
     echoSyncButton.setTooltip ("On: the echo follows the host tempo (DIVISION). Off: it uses TIME.");
     echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoTimeId, "TIME", " ms", ui::violet, "Echo time when SYNC is off."));
     echoKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::echoFbId, "FEEDBACK", " %", ui::violet, "How many repeats."));
@@ -501,6 +517,18 @@ void GlitchKidEditor::applyMacroSlider (int m)
     glitchProcessor.applyParameterChanges (s);
 }
 
+void GlitchKidEditor::selectBand (int b)
+{
+    eqBand = juce::jlimit (0, ui::EqGraph::numBands - 1, b);
+    eqGraph->setSelectedBand (eqBand);
+    layoutContent();
+}
+
+void GlitchKidEditor::applyContentTransform (float dx)
+{
+    content.setTransform (juce::AffineTransform::scale (scaleFactor).translated (dx * scaleFactor, 0.0f));
+}
+
 // One 30 Hz tick: the real input level into the scope and the chain, the TUNE read-outs and the processing chain from the real parameters, the dry/processed
 // switch from the Bypass parameter. Nothing here touches the audio thread.
 void GlitchKidEditor::refreshState (float peak, float outPeak)
@@ -510,12 +538,20 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
     scope.push (peak);
     signalTicks = peak > 0.001f ? 0 : juce::jmin (signalTicks + 1, 10000);
     refreshTunePad();
+    {
+        int targetClass = -1; // the note Pitch Tune is really pulling the voice to (real detector output; none while it is off)
+        if (glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::tuneOnId)->load() >= 0.5f && glitchProcessor.getTuneTargetMidi() >= 0.0f)
+            targetClass = ((int) std::lround (glitchProcessor.getTuneTargetMidi()) % 12 + 12) % 12;
+        for (int i = 0; i < noteKeys.size(); ++i)
+            noteKeys[i]->setTarget (i == targetClass);
+    }
     for (auto* k : noteKeys)
         k->tick (dt);
     if (pageFade < 1.0f)
     {
         pageFade = juce::jmin (1.0f, pageFade + 0.2f);
         content.setAlpha (0.3f + 0.7f * pageFade);
+        applyContentTransform (pageFade < 1.0f ? (1.0f - pageFade) * 8.0f * ((int) (pageFade * 10.0f) % 2 == 0 ? 1.0f : -1.0f) : 0.0f); // a very short horizontal glitch
     }
     autoAnalyzeButton.setMotion (motionOn);
     autoAnalyzeButton.tick (dt);
@@ -761,7 +797,7 @@ void GlitchKidEditor::refreshAutoMode()
         title = juce::String (m.startsWith ("STARTING MIX") ? "PROFILE-ONLY MIX APPLIED" : m.startsWith ("BEAT INFORMED") ? "BEAT-INFORMED MIX APPLIED" : "VOCAL-ONLY MIX APPLIED")
                 + (glitchProcessor.isPresetModified() ? " (edited since)" : "");
         body = resultSummary;
-        titleColour = ui::lime;
+        titleColour = ui::pink;
     }
     else if (buildState == BuildState::built)
     {
@@ -772,7 +808,7 @@ void GlitchKidEditor::refreshAutoMode()
     {
         title = "MIX NOT BUILT";
         body = buildMessage;
-        titleColour = ui::pink;
+        titleColour = ui::errorRed;
     }
     else
     {
@@ -1005,6 +1041,8 @@ void GlitchKidEditor::timerCallback()
     outMeter.pushPeak (outPeak);
     refreshState (inPeak, outPeak);
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
+    if (eqGraph->isVisible())
+        eqGraph->refresh();
 
     const bool synced = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::echoSyncId)->load() >= 0.5f;
     echoKnobs[0]->setEnabled (! synced);
@@ -1035,31 +1073,55 @@ void GlitchKidEditor::timerCallback()
 
 void GlitchKidEditor::paint (juce::Graphics& g)
 {
-    constexpr float W = (float) designW;
+    constexpr float W = (float) designW, H = (float) designH;
     g.fillAll (ui::obsidian);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
-    // thin technical dividers: under the header and above the preset bar
+    // a faint technical grid behind the workspace
+    g.setColour (ui::border.withAlpha (0.22f));
+    for (float x = 16.0f; x < W; x += 32.0f)
+        g.fillRect (x, 100.0f, 1.0f, 462.0f);
+    for (float y = 100.0f; y < 562.0f; y += 32.0f)
+        g.fillRect (0.0f, y, W, 1.0f);
+
+    // header: fine scanlines, then an ultraviolet-to-pink signal line along its lower edge
+    g.setColour (ui::violet.withAlpha (0.05f));
+    for (float y = 2.0f; y < 43.0f; y += 3.0f)
+        g.fillRect (0.0f, y, W, 1.0f);
+    juce::ColourGradient line (ui::violet, 0.0f, 0.0f, ui::pink.withAlpha (0.0f), W, 0.0f, false);
+    line.addColour (0.55, ui::pink.withAlpha (0.8f));
+    g.setGradientFill (line);
+    g.fillRect (0.0f, 43.0f, W, 2.0f);
     g.setColour (ui::border);
-    g.fillRect (0.0f, 43.0f, W, 1.0f);
     g.fillRect (0.0f, 562.0f, W, 1.0f);
+
+    // the wordmark with a slight chromatic fringe (pink left, violet right)
+    {
+        const juce::Rectangle<float> r (16.0f, 5.0f, 170.0f, 26.0f);
+        g.setFont (ui::fontOf (19.0f, true));
+        g.setColour (ui::pink.withAlpha (0.55f));
+        g.drawText ("GLITCHKID", r.translated (-1.4f, 0.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::violet.withAlpha (0.55f));
+        g.drawText ("GLITCHKID", r.translated (1.4f, 0.0f), juce::Justification::centredLeft, false);
+    }
+
     if (page == Page::autoMix)
+    {
+        g.setColour (ui::border);
         g.fillRect (586.0f, 104.0f, 1.0f, 444.0f);
+        g.setColour (ui::violet);
+        g.fillRect (586.0f, 104.0f, 1.0f, 12.0f); // a short ultraviolet tick at the top of the divider
+    }
 
     for (const auto& r : panelRects)
-    {
-        const auto f = r.toFloat();
-        g.setColour (ui::panelBottom);
-        g.fillRoundedRectangle (f, 6.0f);
-        g.setColour (ui::border);
-        g.drawRoundedRectangle (f.reduced (0.5f), 6.0f, 1.0f);
-    }
+        ui::drawPanel (g, r.toFloat());
+    juce::ignoreUnused (H);
 }
 
 void GlitchKidEditor::resized()
 {
     scaleFactor = juce::jmin ((float) getWidth() / (float) designW, (float) getHeight() / (float) designH);
-    content.setTransform (juce::AffineTransform::scale (scaleFactor));
+    applyContentTransform();
     content.setBounds (0, 0, designW, designH);
     repaint();
 }
@@ -1206,9 +1268,17 @@ void GlitchKidEditor::layoutContent()
                 show (tuneReadout, { 440, 326, 480, 24 });
                 break;
 
-            case 1: // TONE
-                for (int i = 0; i < toneKnobs.size(); ++i)
-                    showK (*toneKnobs[i], { 36 + i * 176, 204, 168, 240 });
+            case 1: // TONE: the real EQ response, the four bands, the selected band's knobs, warmth
+                show (*eqGraph, { 36, 192, 590, 296 });
+                for (int b = 0; b < ui::EqGraph::numBands; ++b)
+                {
+                    show (bandButtons[b], { 646 + b * 70, 192, 64, 30 });
+                    bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
+                }
+                for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
+                    showK (*eqKnobs[eqBand][i], { 646 + i * 92, 236, 88, 130 });
+                showK (*warmthKnob[0], { 646, 376, 120, 112 });
+                show (eqNote, { 780, 384, 144, 96 });
                 break;
 
             case 2: // DYNAMICS

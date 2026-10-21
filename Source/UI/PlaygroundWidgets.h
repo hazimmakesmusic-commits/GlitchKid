@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <functional>
 
@@ -8,12 +9,13 @@
 // repaints unless something changed.
 namespace glitchkid::ui
 {
-// Palette (design tokens). Graphite surfaces; muted ultraviolet marks selection and secondary accents; acid lime is reserved for the primary action, active
-// processing and genuine success; cyan is only for signal information; pink marks "dry" and warnings; red means clipping or an error.
-const juce::Colour obsidian (0xff0a0b0f), panelBottom (0xff12141a), panelTop (0xff161922), border (0xff2a2e3a),
-                   violet (0xff8a5cf0), neon (0xffa98bff), lime (0xffb7ff3c), cyan (0xff36c6dc), pink (0xffff6b8f),
-                   textDim (0xff9aa2b5), textBright (0xffeef0f6), disabled (0xff454957), errorRed (0xffff496a),
-                   chrome (0xffeef0f6), chromeDark (0xff454957);
+// Palette (design tokens, locked brand colours). Void black window, deep graphite panels, ultraviolet for the primary accent (selection, focus, the main action,
+// EQ), cyber pink for secondary highlights (real processing activity, the note being tuned to, success), pale chrome for text, muted lavender-grey for secondary
+// text, divider violet for borders. Red means clipping or an error. The other colours are derived shades of these (hover, disabled, depth).
+const juce::Colour obsidian (0xff08060d), panelBottom (0xff15111b), panelTop (0xff1b1523), border (0xff392044),
+                   violet (0xffc026ff), neon (0xffd873ff), pink (0xffff3dae),
+                   textDim (0xff9b91a5), textBright (0xffe8ddf2), disabled (0xff4a4152), errorRed (0xffff4d5e),
+                   chrome (0xffe8ddf2), chromeDark (0xff4a4152);
 
 // Inter (SIL Open Font License, bundled in Assets/Fonts and compiled in, so it is the same on every machine). Falls back to the system font if loading fails.
 juce::Font fontOf (float height, bool bold = false);
@@ -45,12 +47,13 @@ public:
     explicit NoteKey (const juce::String& name) : juce::Button (name) { setWantsKeyboardFocus (true); }
     void setSelected (bool s) { if (s != selected) { selected = s; repaint(); } }
     void setInScale (bool s) { if (s != inScale) { inScale = s; repaint(); } }
+    void setTarget (bool t) { if (t != target) { target = t; repaint(); } } // the note Pitch Tune is really pulling the voice to right now
     void pulse (bool motion) { pulseT = motion ? 1.0f : 0.0f; repaint(); }
     bool tick (float dt);
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
-    bool selected = false, inScale = false;
+    bool selected = false, inScale = false, target = false;
     float pulseT = 0.0f;
 };
 
@@ -85,6 +88,51 @@ private:
     AutoState state = AutoState::idle;
     float progress = 0.0f, sweep = 0.0f;
     bool motion = true;
+};
+
+// A thin technical panel: dark fill, divider-violet outline and small ultraviolet corner brackets (top-left and bottom-right).
+void drawPanel (juce::Graphics&, juce::Rectangle<float> r);
+
+// The EQ response graph and its four points, built on the real EQ parameters (eq_*): the curve is the combined RBJ biquad response of the four bands, calculated
+// from the current parameter values with the same formulas the DSP uses (a test compares it with the real DSP output). There is no spectrum analyser in
+// GlitchKid, so none is drawn. Dragging a point writes the real frequency and gain parameters (with host change gestures); the mouse wheel changes the
+// selected bell's Q; double-click flattens a band. Changes made elsewhere (knobs, presets, automation, BUILD) move the points and curve via refresh().
+class EqGraph : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    static constexpr int numBands = 4; // LOW (shelf), BODY (bell), PRESENCE (bell), AIR (shelf)
+    EqGraph (juce::AudioProcessorValueTreeState&, std::function<double()> sampleRate);
+    int getSelectedBand() const { return selected; }
+    void setSelectedBand (int);
+    void refresh();                         // call from the editor's timer: repaints only if a parameter changed
+    std::function<void (int)> onBandSelected;
+    juce::Point<float> pointOf (int band) const;   // component coordinates of a band's handle
+    static float responseDb (const float freq[numBands], const float gain[numBands], const float q[numBands], float atHz, double sampleRate);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    float xOf (float hz) const;
+    float yOf (float db) const;
+    float hzAt (float x) const;
+    float dbAt (float y) const;
+    int bandNear (juce::Point<float>) const;
+    void readParams (float* f, float* g, float* q) const;
+    void setParam (const char* id, float value);
+    void rebuildCurve();
+    juce::AudioProcessorValueTreeState& apvts;
+    std::function<double()> sampleRate;
+    juce::Rectangle<float> plot;
+    juce::Path curve;
+    float shownF[numBands] {}, shownG[numBands] {}, shownQ[numBands] {};
+    int selected = 2, dragging = -1, hovered = -1;
+    bool haveCurve = false;
 };
 
 // The processing chain INPUT -> TUNE -> TONE -> DYNAMICS -> SPACE -> OUTPUT. The four middle stages are the real stages of the engine and their dots show whether

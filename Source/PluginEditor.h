@@ -133,7 +133,14 @@ private:
     juce::Slider macroSliders[3];
     juce::Label macroName, macroLow, macroHigh;
     void applyMacroSlider (int);
-    juce::OwnedArray<ParamKnob> toneKnobs; // LOW, BODY, PRESENCE, AIR, WARMTH
+    std::unique_ptr<glitchkid::ui::EqGraph> eqGraph; // the real EQ response (TONE)
+    juce::TextButton bandButtons[glitchkid::ui::EqGraph::numBands]; // LOW, BODY, PRESENCE, AIR
+    juce::OwnedArray<ParamKnob> eqKnobs[glitchkid::ui::EqGraph::numBands]; // each band's frequency, gain and (bells) Q; only the selected band's are shown
+    juce::OwnedArray<ParamKnob> warmthKnob;
+    juce::Label eqNote;
+    int eqBand = 2;
+    void selectBand (int);
+    void applyContentTransform (float dx = 0.0f);
     juce::OwnedArray<ParamKnob> compKnobs; // threshold, ratio, attack, release, makeup
     juce::OwnedArray<ParamKnob> gainKnob;
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, mix

@@ -3,6 +3,7 @@
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
 #include "../Source/Presets/FactoryPresets.h"
+#include "../Source/DSP/ParametricEq.h"
 #include <set>
 
 // Interactive playground UI: the non-visual logic (macros, quick commands, parameter application, UI flags) and a smoke test that builds the real
@@ -230,6 +231,45 @@ struct MacroTests : public juce::UnitTest
             custom.set ("tune_on", 0.0f);
             expectEquals (glitchkid::macros::readTuneStyle (custom), -1);
             expectEquals (glitchkid::macros::readTuneStyle (base), -1);
+        }
+
+        beginTest ("EQ graph: the calculated response matches the real ParametricEq output, and the locked palette tokens are in place");
+        {
+            const double fs = 48000.0;
+            const float F[4] = { 100.0f, 400.0f, 3000.0f, 8000.0f }, G[4] = { 5.0f, -4.0f, 6.0f, -5.0f }, Q[4] = { 0.7071f, 2.0f, 1.2f, 0.7071f };
+            for (float hz : { 60.0f, 150.0f, 400.0f, 1000.0f, 3000.0f, 6000.0f, 10000.0f })
+            {
+                ParametricEq eq;
+                eq.prepare (fs);
+                for (int b = 0; b < 4; ++b)
+                    eq.setBand (b, { F[b], G[b], Q[b] });
+                const int n = (int) fs * 2;
+                double inE = 0.0, outE = 0.0;
+                for (int pos = 0; pos < n; pos += 480)
+                {
+                    th::Buf buf (1, 480);
+                    for (int i = 0; i < 480; ++i)
+                        buf.setSample (0, i, 0.3f * (float) std::sin (2.0 * 3.14159265358979 * (double) hz * (double) (pos + i) / fs));
+                    eq.process (buf);
+                    if (pos > n * 3 / 4) // after the 20 ms settings smoothing and the filter transient
+                        for (int i = 0; i < 480; ++i)
+                        {
+                            const double x = 0.3 * std::sin (2.0 * 3.14159265358979 * (double) hz * (double) (pos + i) / fs);
+                            inE += x * x;
+                            outE += (double) buf.getSample (0, i) * (double) buf.getSample (0, i);
+                        }
+                }
+                const float measured = (float) (10.0 * std::log10 (outE / inE));
+                const float calculated = glitchkid::ui::EqGraph::responseDb (F, G, Q, hz, fs);
+                expectWithinAbsoluteError (calculated, measured, 0.15f, "response at " + juce::String (hz) + " Hz: graph " + juce::String (calculated) + " dB, DSP " + juce::String (measured) + " dB");
+            }
+            const float flat[4] = { 100.0f, 400.0f, 3000.0f, 8000.0f }, zero[4] = { 0, 0, 0, 0 };
+            expectEquals (glitchkid::ui::EqGraph::responseDb (flat, zero, Q, 1000.0f, fs), 0.0f);
+
+            namespace ui = glitchkid::ui;
+            expect (ui::obsidian == juce::Colour (0xff08060d) && ui::panelBottom == juce::Colour (0xff15111b) && ui::violet == juce::Colour (0xffc026ff)
+                    && ui::pink == juce::Colour (0xffff3dae) && ui::textBright == juce::Colour (0xffe8ddf2) && ui::textDim == juce::Colour (0xff9b91a5)
+                    && ui::border == juce::Colour (0xff392044), "the locked brand colours");
         }
 
         beginTest ("editor: builds, lays out and renders at several sizes; three pages, four MODIFY categories, eight profiles, BUILD end to end");
@@ -471,7 +511,7 @@ struct MacroTests : public juce::UnitTest
                         for (auto* ch : c.getChildren())
                         {
                             if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag && knob == nullptr)
-                                knob = sl; // the first TONE knob is LOW (eq_lo_gain)
+                                knob = sl; // the first TONE knob is the selected band's FREQ (default band: PRESENCE, eq_b2_freq)
                             walk (*ch);
                         }
                     };
@@ -479,12 +519,46 @@ struct MacroTests : public juce::UnitTest
                     expect (knob != nullptr);
                     if (knob != nullptr)
                     {
-                        knob->setValue (-4.0, juce::sendNotificationSync);
-                        expectWithinAbsoluteError (th::getParam (p, "eq_lo_gain"), -4.0f, 0.06f);
-                        th::setParam (p, "eq_lo_gain", 3.0f);
+                        knob->setValue (2500.0, juce::sendNotificationSync);
+                        expectWithinAbsoluteError (th::getParam (p, "eq_b2_freq"), 2500.0f, 2.0f);
+                        th::setParam (p, "eq_b2_freq", 4000.0f);
                         juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
-                        expectWithinAbsoluteError ((float) knob->getValue(), 3.0f, 0.06f);
-                        th::setParam (p, "eq_lo_gain", 0.0f);
+                        expectWithinAbsoluteError ((float) knob->getValue(), 4000.0f, 2.0f);
+                        th::setParam (p, "eq_b2_freq", 3000.0f);
+                    }
+
+                    // the EQ graph is a real control: dragging its PRESENCE point writes the real frequency and gain; the knobs and the graph agree
+                    glitchkid::ui::EqGraph* graph = nullptr;
+                    std::function<void (juce::Component&)> walkG = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* eg = dynamic_cast<glitchkid::ui::EqGraph*> (ch))
+                                graph = eg;
+                            walkG (*ch);
+                        }
+                    };
+                    walkG (*content);
+                    expect (graph != nullptr && graph->isVisible(), "the EQ graph is on the TONE page");
+                    if (graph != nullptr)
+                    {
+                        auto ev = [&] (juce::Point<float> pos, bool dragged)
+                        {
+                            return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), pos, juce::ModifierKeys(), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, graph, graph,
+                                                     juce::Time::getCurrentTime(), graph->pointOf (2), juce::Time::getCurrentTime(), 1, dragged);
+                        };
+                        const auto start = graph->pointOf (2);
+                        graph->mouseDown (ev (start, false));
+                        graph->mouseDrag (ev (start.translated (60.0f, -40.0f), true)); // up and to the right: more gain, higher frequency
+                        graph->mouseUp (ev (start.translated (60.0f, -40.0f), true));
+                        expect (th::getParam (p, "eq_b2_gain") > 3.0f, "dragging up raised the real gain: " + juce::String (th::getParam (p, "eq_b2_gain")));
+                        expect (th::getParam (p, "eq_b2_freq") > 3500.0f, "dragging right raised the real frequency: " + juce::String (th::getParam (p, "eq_b2_freq")));
+                        const auto moved = graph->pointOf (2);
+                        expect (moved.getDistanceFrom (start.translated (60.0f, -40.0f)) < 4.0f, "the point follows the parameters");
+                        snapshot (*ed, "tone_eq_dragged");
+                        graph->mouseDoubleClick (ev (moved, false)); // flatten the band
+                        expectEquals (th::getParam (p, "eq_b2_gain"), 0.0f);
+                        th::setParam (p, "eq_b2_freq", 3000.0f);
                     }
                 }
 
