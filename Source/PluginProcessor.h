@@ -4,6 +4,7 @@
 #include "DSP/Compressor.h"
 #include "DSP/Saturation.h"
 #include "DSP/AirLab.h"
+#include "DSP/CleanLab.h"
 #include "DSP/FixedDelay.h"
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
@@ -55,6 +56,13 @@ public:
     static constexpr const char* airLinkId     = "air_link";     // UI behaviour only (PRESENCE and AIR move together); no DSP effect
     static constexpr const char* airMixId      = "air_mix";      // percent of the added content
     static constexpr const char* airTrimId     = "air_trim";     // dB
+
+    // CLEAN LAB (rumble / low-mid / resonance cleanup after the user EQ, de-esser after the compressor). Appended after AIR LAB; off by default.
+    static constexpr const char* cleanOnId     = "clean_on";
+    static constexpr const char* cleanAmountId = "clean_amount"; // percent: how much of each section is allowed
+    static constexpr const char* cleanToneId   = "clean_tone";   // percent trim of the corrective EQ section
+    static constexpr const char* cleanResId    = "clean_res";    // percent trim of the resonance section
+    static constexpr const char* cleanEssId    = "clean_ess";    // percent trim of the de-esser
     static constexpr const char* stutterOnId   = "stutter_on";   // Glitch Stutter on/off
     static constexpr const char* stutterRateId = "stutter_rate"; // 0..3 = 1/4, 1/8, 1/16, 1/32 note
     static constexpr const char* stutterMixId  = "stutter_mix";  // percent loop (100) vs live (0)
@@ -207,6 +215,7 @@ public:
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
+    CleanLab::Applied getCleanApplied() const { return cleanLab.applied(); } // what CLEAN LAB is really applying right now (UI telemetry)
     float consumeGainReductionDb() { return gainReductionPeak.exchange (0.0f); } // positive dB
 
     // For the UI (and tests): tempo used by Glitch Stutter, and whether it came from the host.
@@ -247,6 +256,8 @@ private:
     Compressor compressor;
     Saturation saturation;
     AirLab airLab;
+    CleanLab cleanLab;
+    std::atomic<float>* cleanParams[5] {}; // on, amount, tone, res, ess
     std::atomic<float>* airParams[6] {}; // on, presence, air, link, mix, trim
     GlitchStutter stutter;
     std::atomic<float>* stutterOn = nullptr;
@@ -281,6 +292,7 @@ private:
     glitchkid::pitch::PitchCorrector pitch;
     glitchkid::pitch::PitchCorrector::Settings readTuneSettings() const;
     AirLab::Settings readAirSettings() const;
+    CleanLab::Settings readCleanSettings() const;
     std::atomic<float>* tuneParams[5] {}; // on, key, scale, strength, speed
     FixedDelay pitchDryDelay;             // extra dry-path delay for Pitch Tune (used while it is on)
     juce::AudioBuffer<float> dryBuffer2, undelayedBuffer; // preallocated in prepareToPlay

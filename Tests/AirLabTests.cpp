@@ -376,7 +376,7 @@ struct AirLabTests : public juce::UnitTest
         beginTest ("processor integration: new parameters appended with neutral defaults, AIR LAB off leaves the output identical, on changes it, no latency change, state round trip, old state loads neutral");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 60);
+            expectEquals (p.getParameters().size(), 65);
             expectEquals (th::getParam (p, "air_on"), 0.0f);
             expectEquals (th::getParam (p, "air_presence"), 30.0f);
             expectEquals (th::getParam (p, "air_air"), 30.0f);

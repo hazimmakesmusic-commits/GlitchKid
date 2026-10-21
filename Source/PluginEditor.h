@@ -60,7 +60,7 @@ private:
     // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
     static constexpr int designW = 960, designH = 600;
     enum class Page { tune = 0, autoMix = 1, modify = 2 };
-    static constexpr int numCategories = 4; // PITCH & KEY, TONE, DYNAMICS, SPACE
+    static constexpr int numCategories = 5; // PITCH & KEY, TONE, DYNAMICS, SPACE, CLEAN
     Page page = Page::tune;
     int category = 0;
     bool motionOn = true;
@@ -79,7 +79,7 @@ private:
     float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
     void startFade();
 
-    juce::TextButton navButtons[3], categoryButtons[4];
+    juce::TextButton navButtons[3], categoryButtons[5];
     juce::TextButton nextButton { "NEXT: AUTO  >" }, modifyButton { "MODIFY  >" }, backButton { "<  BACK TO AUTO" };
     juce::TextButton motionButton, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" };
     glitchkid::ui::ScopeStrip scope;
@@ -145,6 +145,17 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> airPresenceAtt, airAirAtt, airMixAtt, airTrimAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> airOnAtt, airLinkAtt;
     bool airLinkGuard = false;
+    // CLEAN (category 5): master switch and amount, a trim and live read-outs per section (everything shown comes from the DSP's own telemetry)
+    juce::ToggleButton cleanOnButton { "CLEAN LAB" };
+    juce::Slider cleanAmountSlider, cleanToneSlider, cleanResSlider, cleanEssSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> cleanAmountAtt, cleanToneAtt, cleanResAtt, cleanEssAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> cleanOnAtt;
+    juce::Label cleanAmountLabel { {}, "CLEAN" }, cleanHint, cleanLearn, cleanLevel, toneHead { {}, "CORRECTIVE EQ" }, resHead { {}, "RESONANCE" }, essHead { {}, "DE-ESSER" },
+                toneTrimLabel { {}, "AMOUNT" }, resTrimLabel { {}, "AMOUNT" }, essTrimLabel { {}, "AMOUNT" }, toneRead[2], resRead[3], essRead;
+    juce::TextButton cleanResetButton { "RESET CLEAN" };
+    glitchkid::ui::ReductionBar essBar;
+    void refreshClean (bool cleanOn);
+
     void linkAir (juce::Slider& moved, juce::Slider& other);
     int eqBand = 2;
     void selectBand (int);

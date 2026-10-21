@@ -215,9 +215,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     label (presetStatus, 11.5f, false, ui::textDim);
 
     // ---- MODIFY navigation and actions ----
-    static const char* catText[numCategories] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE" };
+    static const char* catText[numCategories] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE", "CLEAN" };
     static const char* catTip[numCategories] = { "Pitch Tune: on/off, key, scale, tuning style, strength and speed.", "A darker-to-brighter control, four EQ gains and warmth (saturation).",
-                                                 "A softer-to-more-upfront control, the compressor and the output level.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." };
+                                                 "A softer-to-more-upfront control, the compressor and the output level.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler.",
+                                                 "CLEAN LAB: rumble, low-mid build-up, resonances and S sounds, measured from your vocal while it plays." };
     for (int i = 0; i < numCategories; ++i)
     {
         categoryButtons[i].setButtonText (catText[i]);
@@ -407,7 +408,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     warmthKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
     warmthKnob[0]->addTo (content);
     label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
-    eqNote.setText ("The curve is calculated from your EQ settings. There is no live spectrum.", juce::dontSendNotification);
+    eqNote.setText ("Violet: your EQ. Pink: what CLEAN LAB is applying. Both are calculated from real settings; there is no live spectrum.", juce::dontSendNotification);
 
     // AIR LAB strip
     auto airSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
@@ -447,6 +448,54 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         label (*l, 11.0f, true, ui::textDim);
     label (airHint, 11.0f, false, ui::textDim);
     airHint.setText ("Presence and air that ease off on S sounds. Zero latency.", juce::dontSendNotification);
+    // ---- CLEAN (category 5) ----
+    auto cleanSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
+    {
+        sl.setSliderStyle (juce::Slider::LinearHorizontal);
+        sl.setTextBoxStyle (juce::Slider::TextBoxRight, false, box, 20);
+        sl.setColour (juce::Slider::trackColourId, ui::violet);
+        sl.setTextValueSuffix (" %");
+        sl.setTooltip (tip);
+        content.addAndMakeVisible (sl);
+    };
+    cleanSlider (cleanAmountSlider, "CLEAN: how much cleanup is allowed. 0 = CLEAN LAB does nothing. It never exceeds 3.5 dB on the low-mids, 6 dB per resonance or 9 dB of de-essing.", 56);
+    cleanSlider (cleanToneSlider, "Corrective EQ: scales the rumble and low-mid corrections (0 = off).", 52);
+    cleanSlider (cleanResSlider, "Resonance: scales the narrow resonance cuts (0 = off).", 52);
+    cleanSlider (cleanEssSlider, "De-esser: scales the S-sound reduction (0 = off).", 52);
+    cleanAmountAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::cleanAmountId, cleanAmountSlider);
+    cleanToneAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::cleanToneId, cleanToneSlider);
+    cleanResAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::cleanResId, cleanResSlider);
+    cleanEssAtt = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (p.apvts, GlitchKidProcessor::cleanEssId, cleanEssSlider);
+    cleanAmountSlider.setDoubleClickReturnValue (true, 50.0);
+    for (auto* sl : { &cleanToneSlider, &cleanResSlider, &cleanEssSlider })
+        sl->setDoubleClickReturnValue (true, 100.0);
+    cleanOnButton.setTooltip ("Switch CLEAN LAB on or off (a click-free 20 ms crossfade). Off = your signal passes through untouched. It learns your voice while it plays, so corrections appear after a few seconds.");
+    cleanOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::cleanOnId, cleanOnButton);
+    cleanOnButton.setColour (juce::ToggleButton::tickColourId, ui::violet);
+    content.addAndMakeVisible (cleanOnButton);
+    for (auto* l : { &cleanAmountLabel, &toneHead, &resHead, &essHead })
+        label (*l, 12.0f, true, ui::textBright);
+    for (auto* l : { &toneTrimLabel, &resTrimLabel, &essTrimLabel })
+        label (*l, 11.0f, true, ui::textDim);
+    for (auto* l : { &toneRead[0], &toneRead[1], &resRead[0], &resRead[1], &resRead[2], &essRead, &cleanLearn, &cleanLevel })
+        label (*l, 12.0f, false, ui::textBright);
+    label (cleanHint, 11.5f, false, ui::textDim, juce::Justification::topLeft);
+    cleanHint.setText ("CLEAN LAB measures your vocal while it plays and only acts on what it finds: rumble under 60 Hz, a low-mid build-up (150-400 Hz), narrow resonances above 1 kHz that persist while the voice moves, and S sounds. "
+                       "It sits after your EQ and before the compressor (the de-esser after it). The pink curve on TONE shows exactly what it is doing.", juce::dontSendNotification);
+    cleanLevel.setTooltip ("The level change CLEAN LAB is making right now. Use OUTPUT TRIM or Gain to compare at the same loudness; a quieter version can sound worse for that reason alone.");
+    style (cleanResetButton, "Put CLEAN LAB back to its defaults (off, 50 %, all sections at 100 %). Your other settings are not touched.");
+    cleanResetButton.onClick = [this]
+    {
+        for (const char* id : { GlitchKidProcessor::cleanOnId, GlitchKidProcessor::cleanAmountId, GlitchKidProcessor::cleanToneId, GlitchKidProcessor::cleanResId, GlitchKidProcessor::cleanEssId })
+            if (auto* prm = glitchProcessor.apvts.getParameter (id))
+            {
+                prm->beginChangeGesture();
+                prm->setValueNotifyingHost (prm->getDefaultValue());
+                prm->endChangeGesture();
+            }
+        showStatus ("CLEAN LAB reset to its defaults.");
+    };
+    content.addAndMakeVisible (essBar);
     airPresenceSlider.onValueChange = [this] { linkAir (airPresenceSlider, airAirSlider); };
     airAirSlider.onValueChange = [this] { linkAir (airAirSlider, airPresenceSlider); };
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compThresholdId, "THRESHOLD", " dB", ui::violet, "The level above which the compressor starts working. Lower = more compression."));
@@ -558,6 +607,42 @@ void GlitchKidEditor::applyMacroSlider (int m)
     glitchProcessor.applyParameterChanges (s);
 }
 
+// The CLEAN read-outs: every line comes from what the DSP reports it is applying (nothing is shown that was not measured and applied).
+void GlitchKidEditor::refreshClean (bool cleanOn)
+{
+    const auto a = glitchProcessor.getCleanApplied();
+    auto setText = [] (juce::Label& l, const juce::String& t, juce::Colour c)
+    {
+        if (l.getText() != t)
+            l.setText (t, juce::dontSendNotification);
+        l.setColour (juce::Label::textColourId, c);
+    };
+    auto kHz = [] (float hz) { return hz >= 1000.0f ? juce::String (hz / 1000.0f, 1) + " kHz" : juce::String ((int) std::lround (hz)) + " Hz"; };
+    auto cut = [&kHz] (float db, float hz) { return "-" + juce::String (db, 1) + " dB at " + kHz (hz); };
+    if (! cleanOn)
+    {
+        for (auto* l : { &toneRead[0], &toneRead[1], &resRead[0], &resRead[1], &resRead[2], &essRead, &cleanLearn, &cleanLevel })
+            setText (*l, l == &cleanLearn ? "CLEAN LAB is off: your signal passes through untouched." : juce::String(), ui::textDim);
+        essBar.push (0.0f);
+        return;
+    }
+    setText (toneRead[0], a.rumbleAmount > 0.02f ? "Rumble: 70 Hz high-pass, " + juce::String (juce::roundToInt (a.rumbleAmount * 100.0f)) + " % blended in" : "Rumble: none found", a.rumbleAmount > 0.02f ? ui::pink : ui::textDim);
+    setText (toneRead[1], a.mudDb > 0.05f ? "Low-mid build-up: " + cut (a.mudDb, a.mudHz) : "Low-mid build-up: none found", a.mudDb > 0.05f ? ui::pink : ui::textDim);
+    int shown = 0;
+    for (int i = 0; i < CleanLab::numRes; ++i)
+        if (a.resDb[i] > 0.05f && shown < 3)
+            setText (resRead[shown++], "Resonance: " + cut (a.resDb[i], a.resHz[i]), ui::pink);
+    if (shown == 0)
+        setText (resRead[shown++], a.learnedSeconds < 3.0f ? "Resonance: still listening to your voice..." : "Resonance: none found", ui::textDim);
+    for (int i = shown; i < 3; ++i)
+        setText (resRead[i], {}, ui::textDim);
+    essBar.push (a.essGrDb);
+    setText (essRead, "S sounds: " + (a.essGrDb > 0.05f ? "-" + juce::String (a.essGrDb, 1) + " dB now" : juce::String ("no reduction right now")), a.essGrDb > 0.05f ? ui::pink : ui::textDim);
+    setText (cleanLearn, a.learnedSeconds < 3.0f ? "Learning your voice: " + juce::String (a.learnedSeconds, 1) + " s heard (it needs a moving voice)"
+                                                  : "Learned from at least 3 s of voiced audio; it keeps adapting slowly", ui::textDim);
+    setText (cleanLevel, "Net level change: " + juce::String (a.levelChangeDb, 1) + " dB (compare at matched loudness)", ui::textDim);
+}
+
 // With LINK on, moving one of the two main controls by hand moves the other to the same value (host automation never triggers it).
 void GlitchKidEditor::linkAir (juce::Slider& moved, juce::Slider& other)
 {
@@ -621,11 +706,15 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
     // the processing chain: each stage lit only if it really does something right now (nothing is processed while DRY)
     {
         std::array<bool, ui::ChainStrip::numStages> act {};
+        const bool cleanOn = all.get ("clean_on", 0.0f) >= 0.5f && all.get ("clean_amount", 0.0f) > 0.05f;
+        const auto ca = glitchProcessor.getCleanApplied();
+        const bool cleanTone = cleanOn && (ca.rumbleAmount > 0.02f || ca.mudDb > 0.05f || ca.resDb[0] > 0.05f || ca.resDb[1] > 0.05f || ca.resDb[2] > 0.05f);
+        const bool cleanEss = cleanOn && all.get ("clean_ess", 0.0f) > 0.05f;
         if (! dry)
         {
             act[0] = fx::isActive (fx::pitchTune, all);
-            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f;
-            act[2] = fx::isActive (fx::compressor, all);
+            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f || cleanTone;
+            act[2] = fx::isActive (fx::compressor, all) || cleanEss;
             act[3] = fx::isActive (fx::echo, all) || fx::isActive (fx::dimension, all) || fx::isActive (fx::doubler, all);
         }
         juce::StringArray legacy; // effects the interface no longer offers but an older session may still have switched on
@@ -640,6 +729,19 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
         const float a = all.get ("air_on", 0.0f) >= 0.5f ? 1.0f : 0.55f; // the controls stay usable while it is off; they just look inactive
         for (auto* c : std::initializer_list<juce::Component*> { &airPresenceSlider, &airAirSlider, &airMixSlider, &airTrimSlider, &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel })
             c->setAlpha (a);
+    }
+
+    {
+        const bool cleanOn = all.get ("clean_on", 0.0f) >= 0.5f;
+        const float a = cleanOn ? 1.0f : 0.55f;
+        for (auto* c : std::initializer_list<juce::Component*> { &cleanAmountSlider, &cleanToneSlider, &cleanResSlider, &cleanEssSlider, &cleanAmountLabel })
+            c->setAlpha (a);
+        if (cleanAmountSlider.isVisible() || eqGraph->isVisible())
+        {
+            eqGraph->setCleanApplied (cleanOn && ! dry ? glitchProcessor.getCleanApplied() : CleanLab::Applied {});
+            if (cleanAmountSlider.isVisible())
+                refreshClean (cleanOn);
+        }
     }
 
     // MODIFY: the high-level sliders follow the real parameters (unless being dragged)
@@ -1292,7 +1394,7 @@ void GlitchKidEditor::layoutContent()
         show (savePresetButton, { 300, 506, 140, 40 });
 
         // categories 1..3 start with their high-level slider
-        if (category >= 1)
+        if (category >= 1 && category <= 3)
         {
             static const glitchkid::macros::Macro categoryMacro[numCategories] = { glitchkid::macros::Macro::tone, glitchkid::macros::Macro::tone, glitchkid::macros::Macro::punch, glitchkid::macros::Macro::space };
             static const char* lows[numCategories] = { "", "DARKER", "SOFTER", "DRY" };
@@ -1361,7 +1463,7 @@ void GlitchKidEditor::layoutContent()
                 show (outLabel, { 896, 438, 38, 16 });
                 break;
 
-            default: // SPACE
+            case 3: // SPACE
             {
                 const int y0 = 196, y1 = 296, y2 = 396;
                 show (echoTitle, { 36, y0, 140, 16 });
@@ -1379,6 +1481,34 @@ void GlitchKidEditor::layoutContent()
                 show (dblOnButton, { 36, y2 + 20, 100, 28 });
                 for (int i = 0; i < dblKnobs.size(); ++i)
                     showK (*dblKnobs[i], { 300 + i * 158, y2, 150, 98 });
+                break;
+            }
+
+            default: // CLEAN
+            {
+                show (cleanOnButton, { 36, 154, 130, 30 });
+                show (cleanAmountLabel, { 178, 154, 60, 30 });
+                show (cleanAmountSlider, { 240, 154, 520, 30 });
+                show (cleanResetButton, { 804, 154, 120, 30 });
+                show (cleanHint, { 36, 194, 880, 48 });
+                const int cx[3] = { 36, 336, 636 };
+                juce::Label* heads[3] = { &toneHead, &resHead, &essHead };
+                juce::Label* trims[3] = { &toneTrimLabel, &resTrimLabel, &essTrimLabel };
+                juce::Slider* sliders[3] = { &cleanToneSlider, &cleanResSlider, &cleanEssSlider };
+                for (int c = 0; c < 3; ++c)
+                {
+                    show (*heads[c], { cx[c], 252, 270, 18 });
+                    show (*trims[c], { cx[c], 276, 56, 24 });
+                    show (*sliders[c], { cx[c] + 58, 276, 212, 24 });
+                }
+                show (toneRead[0], { cx[0], 312, 280, 20 });
+                show (toneRead[1], { cx[0], 336, 280, 20 });
+                for (int i = 0; i < 3; ++i)
+                    show (resRead[i], { cx[1], 312 + i * 24, 280, 20 });
+                show (essBar, { cx[2], 312, 270, 16 });
+                show (essRead, { cx[2], 336, 280, 20 });
+                show (cleanLearn, { 36, 410, 440, 20 });
+                show (cleanLevel, { 500, 410, 420, 20 });
                 break;
             }
         }

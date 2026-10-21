@@ -166,6 +166,30 @@ void ScopeStrip::paint (juce::Graphics& g)
     }
 }
 
+// ---- ReductionBar ----------------------------------------------------------------------------------------------------------------------
+
+void ReductionBar::push (float db)
+{
+    db = juce::jlimit (0.0f, maxReduction, std::isfinite (db) ? db : 0.0f);
+    const float next = db > shown ? db : juce::jmax (db, shown - 0.4f); // falls about 12 dB/s at 30 Hz
+    if (! juce::approximatelyEqual (next, shown))
+    {
+        shown = next;
+        repaint();
+    }
+}
+
+void ReductionBar::paint (juce::Graphics& g)
+{
+    auto r = getLocalBounds().toFloat();
+    g.setColour (juce::Colour (0xff0c0910));
+    g.fillRoundedRectangle (r, 3.0f);
+    g.setColour (border);
+    g.drawRoundedRectangle (r.reduced (0.5f), 3.0f, 1.0f);
+    g.setColour (pink);
+    g.fillRoundedRectangle (r.withWidth (r.getWidth() * shown / maxReduction).reduced (2.0f, 2.0f), 2.0f);
+}
+
 // ---- BuildButton -----------------------------------------------------------------------------------------------------------------------
 
 void BuildButton::setState (AutoState s, float p)
@@ -380,8 +404,73 @@ void EqGraph::rebuildCurve()
     haveCurve = true;
 }
 
+namespace
+{
+std::complex<double> peakingH (double f, double q, double gainDb, double atHz, double fs)
+{
+    const double A = std::pow (10.0, gainDb / 40.0), w0 = 2.0 * juce::MathConstants<double>::pi * juce::jmin (f, 0.45 * fs) / fs, alpha = std::sin (w0) / (2.0 * q), c = std::cos (w0);
+    const double b0 = 1 + alpha * A, b1 = -2 * c, b2 = 1 - alpha * A, a0 = 1 + alpha / A, a1 = -2 * c, a2 = 1 - alpha / A;
+    const double w = 2.0 * juce::MathConstants<double>::pi * atHz / fs;
+    const auto z1 = std::polar (1.0, -w), z2 = std::polar (1.0, -2.0 * w);
+    return (b0 + b1 * z1 + b2 * z2) / (a0 + a1 * z1 + a2 * z2);
+}
+
+std::complex<double> highpassH (double f, double q, double atHz, double fs)
+{
+    const double w0 = 2.0 * juce::MathConstants<double>::pi * f / fs, c = std::cos (w0), alpha = std::sin (w0) / (2.0 * q), a0 = 1 + alpha;
+    const double b0 = (1 + c) * 0.5, b1 = -(1 + c), b2 = b0, a1 = -2 * c, a2 = 1 - alpha;
+    const double w = 2.0 * juce::MathConstants<double>::pi * atHz / fs;
+    const auto z1 = std::polar (1.0, -w), z2 = std::polar (1.0, -2.0 * w);
+    return (b0 + b1 * z1 + b2 * z2) / (a0 + a1 * z1 + a2 * z2);
+}
+}
+
+// The same filters as CleanLab (rumble: x + mix * (highpass(x) - x); bells: RBJ peaking), multiplied: this is what the corrective stage does to a steady tone.
+float EqGraph::cleanResponseDb (const CleanLab::Applied& a, float atHz, double fs)
+{
+    std::complex<double> h (1.0, 0.0);
+    if (a.rumbleAmount > 0.001f)
+        h *= 1.0 + (double) a.rumbleAmount * (highpassH (70.0, 0.7071, atHz, fs) - 1.0);
+    if (a.mudDb > 0.01f)
+        h *= peakingH (a.mudHz, a.mudQ, -a.mudDb, atHz, fs);
+    for (int i = 0; i < CleanLab::numRes; ++i)
+        if (a.resDb[i] > 0.01f)
+            h *= peakingH (a.resHz[i], a.resQ, -a.resDb[i], atHz, fs);
+    return (float) (20.0 * std::log10 (std::abs (h) + 1.0e-12));
+}
+
+void EqGraph::setCleanApplied (const CleanLab::Applied& a)
+{
+    clean = a;
+    refresh();
+}
+
 void EqGraph::refresh()
 {
+    {
+        bool changed = ! haveClean || ! juce::approximatelyEqual (clean.rumbleAmount, shownClean.rumbleAmount) || ! juce::approximatelyEqual (clean.mudDb, shownClean.mudDb)
+                       || ! juce::approximatelyEqual (clean.mudHz, shownClean.mudHz);
+        for (int i = 0; i < CleanLab::numRes; ++i)
+            changed = changed || ! juce::approximatelyEqual (clean.resDb[i], shownClean.resDb[i]) || ! juce::approximatelyEqual (clean.resHz[i], shownClean.resHz[i]);
+        if (changed && ! plot.isEmpty())
+        {
+            cleanCurve.clear();
+            const double fsr = sampleRate ? sampleRate() : 48000.0;
+            const int n = juce::jmax (8, (int) plot.getWidth() / 2);
+            for (int i = 0; i <= n; ++i)
+            {
+                const float x = plot.getX() + plot.getWidth() * (float) i / (float) n;
+                const float y = yOf (cleanResponseDb (clean, hzAt (x), fsr > 1000.0 ? fsr : 48000.0));
+                if (i == 0)
+                    cleanCurve.startNewSubPath (x, y);
+                else
+                    cleanCurve.lineTo (x, y);
+            }
+            shownClean = clean;
+            haveClean = true;
+            repaint();
+        }
+    }
     float f[numBands], g[numBands], q[numBands];
     readParams (f, g, q);
     bool changed = ! haveCurve;
@@ -433,6 +522,14 @@ void EqGraph::paint (juce::Graphics& g)
     g.strokePath (curve, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)); // a restrained glow under the line
     g.setColour (neon);
     g.strokePath (curve, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // CLEAN LAB's applied corrections (real, from the DSP's own smoothed values), only while any is applied
+    if (shownClean.mudDb > 0.05f || shownClean.rumbleAmount > 0.02f || shownClean.resDb[0] > 0.05f || shownClean.resDb[1] > 0.05f || shownClean.resDb[2] > 0.05f)
+    {
+        g.setColour (pink.withAlpha (0.95f));
+        g.strokePath (cleanCurve, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setFont (fontOf (10.5f, true));
+        g.drawText ("CLEAN LAB", juce::Rectangle<float> (plot.getRight() - 80.0f, plot.getY() + 2.0f, 78.0f, 13.0f), juce::Justification::centredRight, false);
+    }
     // the four points
     for (int i = 0; i < numBands; ++i)
     {

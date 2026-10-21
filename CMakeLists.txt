@@ -40,6 +40,7 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/Compressor.cpp
     Source/DSP/Saturation.cpp
     Source/DSP/AirLab.cpp
+    Source/DSP/CleanLab.cpp
     Source/DSP/GlitchStutter.cpp
     Source/DSP/LiquidEcho.cpp
     Source/DSP/Dimension.cpp
@@ -89,6 +90,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/CompressorTests.cpp
         Tests/SaturationTests.cpp
         Tests/AirLabTests.cpp
+        Tests/CleanLabTests.cpp
         Tests/MixTests.cpp
         Tests/StutterTests.cpp
         Tests/RobustnessTests.cpp
@@ -117,6 +119,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/DSP/Compressor.cpp
         Source/DSP/Saturation.cpp
         Source/DSP/AirLab.cpp
+        Source/DSP/CleanLab.cpp
         Source/DSP/GlitchStutter.cpp
         Source/DSP/LiquidEcho.cpp
         Source/DSP/Dimension.cpp

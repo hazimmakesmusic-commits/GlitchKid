@@ -308,7 +308,7 @@ struct MacroTests : public juce::UnitTest
             };
 
             for (int pg = 0; pg < 3; ++pg)
-                for (int cat = 0; cat < (pg == 2 ? 4 : 1); ++cat)
+                for (int cat = 0; cat < (pg == 2 ? 5 : 1); ++cat)
                 {
                     GlitchKidProcessor p;
                     p.setUiInt ("uiPage", pg);
@@ -501,6 +501,65 @@ struct MacroTests : public juce::UnitTest
                 expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 click ("SPACE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 3);
+
+                // CLEAN LAB: the switch, the amount and the section trims are attached to the real parameters; the read-outs say what is true; RESET CLEAN restores the defaults
+                {
+                    click ("CLEAN");
+                    expectEquals (p.getUiInt ("uiCategory", -1), 4);
+                    expect (visible ("RESET CLEAN") && ! visible ("HARD"), "the CLEAN page shows its own controls");
+                    juce::ToggleButton* cleanOn = nullptr;
+                    std::vector<juce::Slider*> sliders;
+                    std::vector<juce::Label*> labels;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->isVisible() && tb->getButtonText() == "CLEAN LAB")
+                                cleanOn = tb;
+                            if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::LinearHorizontal
+                                                                                 && sl->getTextBoxPosition() == juce::Slider::TextBoxRight)
+                                sliders.push_back (sl);
+                            if (auto* lb = dynamic_cast<juce::Label*> (ch); lb != nullptr && lb->isVisible())
+                                labels.push_back (lb);
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    expect (cleanOn != nullptr && sliders.size() == 4, "the switch and the amount plus three section trims are shown");
+                    auto labelWith = [&] (const juce::String& start)
+                    {
+                        for (auto* lb : labels)
+                            if (lb->getText().startsWith (start))
+                                return lb;
+                        return static_cast<juce::Label*> (nullptr);
+                    };
+                    expect (labelWith ("CLEAN LAB is off") != nullptr, "while off it says so");
+                    if (cleanOn != nullptr && sliders.size() == 4)
+                    {
+                        cleanOn->triggerClick();
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                        expectEquals (th::getParam (p, "clean_on"), 1.0f);
+                        sliders[0]->setValue (80.0, juce::sendNotificationSync); // CLEAN
+                        sliders[1]->setValue (40.0, juce::sendNotificationSync); // corrective EQ
+                        sliders[2]->setValue (30.0, juce::sendNotificationSync); // resonance
+                        sliders[3]->setValue (20.0, juce::sendNotificationSync); // de-esser
+                        expectWithinAbsoluteError (th::getParam (p, "clean_amount"), 80.0f, 0.1f);
+                        expectWithinAbsoluteError (th::getParam (p, "clean_tone"), 40.0f, 0.1f);
+                        expectWithinAbsoluteError (th::getParam (p, "clean_res"), 30.0f, 0.1f);
+                        expectWithinAbsoluteError (th::getParam (p, "clean_ess"), 20.0f, 0.1f);
+                        feedBlocks (p, 1.0, false); // a second of audio: CLEAN LAB can only say it is still learning
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
+                        labels.clear();
+                        walk (*content);
+                        expect (labelWith ("Learning your voice") != nullptr && labelWith ("Rumble: none found") != nullptr, "while on and still learning it says so and invents no correction");
+                        snapshot (*ed, "clean_page");
+                        click ("RESET CLEAN");
+                        expectEquals (th::getParam (p, "clean_on"), 0.0f);
+                        expectEquals (th::getParam (p, "clean_amount"), 50.0f);
+                        expectEquals (th::getParam (p, "clean_tone"), 100.0f);
+                    }
+                }
+                click ("SPACE");
 
                 // detailed knobs are attached to the real (automatable) parameters, in both directions
                 {

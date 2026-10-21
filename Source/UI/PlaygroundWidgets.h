@@ -3,6 +3,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <functional>
+#include "../DSP/CleanLab.h"
 
 // The GlitchKid "Vocal Lab" look: original, lightweight vector widgets (no images, no network). Everything here runs on the message thread; nothing touches
 // the audio thread. Animation is driven by the editor's single 30 Hz timer through tick(); with motion off everything jumps to its end state, and nothing
@@ -70,6 +71,18 @@ private:
     int head = 0;
 };
 
+// A horizontal bar for a measured gain reduction (dB, positive), 0..maxDb, falling at a fixed rate; it shows only what the DSP reports.
+class ReductionBar : public juce::Component
+{
+public:
+    explicit ReductionBar (float maxDb = 12.0f) : maxReduction (maxDb) {}
+    void push (float reductionDb);
+    void paint (juce::Graphics&) override;
+
+private:
+    float maxReduction, shown = 0.0f;
+};
+
 // What the main action is doing. Every state comes from the real analyzer / build state (nothing is simulated).
 enum class AutoState { idle, waiting, working, ready, error };
 
@@ -105,6 +118,10 @@ public:
     int getSelectedBand() const { return selected; }
     void setSelectedBand (int);
     void refresh();                         // call from the editor's timer: repaints only if a parameter changed
+    // CLEAN LAB's corrections that are really being applied (rumble high-pass, low-mid bell, up to three resonance bells), drawn as a second, pink curve.
+    // Nothing is drawn while none is applied. cleanResponseDb() uses the same filter formulas as CleanLab.
+    void setCleanApplied (const CleanLab::Applied&);
+    static float cleanResponseDb (const CleanLab::Applied&, float atHz, double sampleRate);
     std::function<void (int)> onBandSelected;
     juce::Point<float> pointOf (int band) const;   // component coordinates of a band's handle
     static float responseDb (const float freq[numBands], const float gain[numBands], const float q[numBands], float atHz, double sampleRate);
@@ -129,7 +146,9 @@ private:
     juce::AudioProcessorValueTreeState& apvts;
     std::function<double()> sampleRate;
     juce::Rectangle<float> plot;
-    juce::Path curve;
+    juce::Path curve, cleanCurve;
+    CleanLab::Applied clean, shownClean;
+    bool haveClean = false;
     float shownF[numBands] {}, shownG[numBands] {}, shownQ[numBands] {};
     int selected = 2, dragging = -1, hovered = -1;
     bool haveCurve = false;

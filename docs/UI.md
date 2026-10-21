@@ -17,6 +17,9 @@ BUILD MY VOCAL MIX listens while the host plays, then applies the selected profi
 ## 3 MODIFY
 PITCH & KEY (on/off, key, scale, style, strength, speed), TONE (a darker-to-brighter slider, the EQ response graph with draggable LOW / BODY / PRESENCE / AIR points, the selected band's FREQ / GAIN / Q knobs, WARMTH, and the AIR LAB strip: switch, LINK, PRESENCE and AIR, MIX, TRIM), DYNAMICS (a softer-to-more-upfront slider, compressor, output gain, IN / OUT / GR meters), SPACE (a dry-to-spacious slider, echo, width, doubler). BACK TO AUTO, RESET, SAVE PRESET. GlitchKid has no reverb: "space" is delay, width and doubling.
 
+## CLEAN (fifth MODIFY category)
+CLEAN LAB switch, CLEAN amount, three section trims (corrective EQ, resonance, de-esser) and RESET CLEAN. The read-outs (rumble blend, low-mid cut, up to three resonance cuts, S-sound gain reduction, net level change, learning status) come only from the DSP's telemetry. The EQ graph on TONE shows CLEAN LAB's applied corrections as a pink curve. See `docs/CLEAN_LAB_IMPLEMENTATION.md`.
+
 ## High-level sliders (exact mappings, `Source/Macros/MacroEngine`)
 * TONE: eq_hi_gain -6..+6 dB, eq_b2_gain -1.5..+1.5 dB (0.5 = flat). Read back from eq_hi_gain.
 * PUNCH: comp_ratio 1-6, comp_thresh -12..-26 dB, attack 15 ms, release 110 ms, knee 6 dB, makeup min(4, 0.8 (ratio-1)) dB. Read back from the ratio.

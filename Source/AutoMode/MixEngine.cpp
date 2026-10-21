@@ -56,7 +56,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
 
     // ---- foundation: the profile's own values ----
     SoundState s = in.profile >= 0 && in.profile < FactoryPresets::count ? FactoryPresets::build (in.profile, in.factoryDefault) : in.factoryDefault;
-    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "air_on", "air_presence", "air_air", "air_link", "air_mix", "air_trim" })
+    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "air_on", "air_presence", "air_air", "air_link", "air_mix", "air_trim", "clean_on", "clean_amount", "clean_tone", "clean_res", "clean_ess" })
         s.set (keep, in.current.get (keep, in.factoryDefault.get (keep, 0.0f)));
     s.egoId = {};
     s.egoChaos = 0.0f;
@@ -137,9 +137,14 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
     {
         put (id, clampf (get (id) + delta, -maxEqGain, maxEqGain), reason);
     };
-    if (lowShare > 0.30f)
+    // CLEAN LAB measures and corrects rumble, low-mid build-up and sibilance itself (after the EQ, from the actual signal); when it is on, BUILD leaves those three
+    // corrections to it, so the same fault is never corrected twice.
+    const bool cleanLab = in.current.get ("clean_on", 0.0f) >= 0.5f && in.current.get ("clean_amount", 0.0f) > 5.0f;
+    if (cleanLab && (lowShare > 0.30f || lowMid > 0.55f || sibilance > 0.35f))
+        p.evidence.add ("CLEAN LAB is on: BUILD left the low-end, low-mid and S-sound corrections to it, so nothing is corrected twice.");
+    if (lowShare > 0.30f && ! cleanLab)
         eqAdd ("eq_lo_gain", -2.0f, "A lot of the vocal's energy is under 120 Hz (" + juce::String (juce::roundToInt (lowShare * 100.0f)) + " %): low shelf lowered.");
-    if (lowMid > 0.55f)
+    if (lowMid > 0.55f && ! cleanLab)
         eqAdd ("eq_b1_gain", -1.5f, "The vocal is heavy in the low-mids (" + juce::String (juce::roundToInt (lowMid * 100.0f)) + " %): the 400 Hz bell was cut a little more.");
     if (presence < 0.06f)
     {
@@ -147,7 +152,10 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
         p.evidence.add ("Presence (2-5 kHz) is only " + juce::String (juce::roundToInt (presence * 100.0f)) + " % of the vocal's energy.");
     }
     if (sibilance > 0.35f)
-        eqAdd ("eq_hi_gain", -clampf ((sibilance - 0.35f) * 6.0f, 0.0f, 2.0f), "S sounds look strong (estimate): high shelf lowered.");
+    {
+        if (! cleanLab)
+            eqAdd ("eq_hi_gain", -clampf ((sibilance - 0.35f) * 6.0f, 0.0f, 2.0f), "S sounds look strong (estimate): high shelf lowered.");
+    }
     else if (air < 0.015f && presence < 0.12f)
         eqAdd ("eq_hi_gain", 1.0f, "The vocal is dark on top: high shelf raised a little.");
     if (air > 0.12f)

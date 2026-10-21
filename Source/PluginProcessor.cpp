@@ -164,6 +164,17 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airTrimId, 1 }, "Air Lab Trim",
         NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
+    // CLEAN LAB: appended after AIR LAB so every existing parameter keeps its host index
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { cleanOnId, 1 }, "Clean Lab On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { cleanAmountId, 1 }, "Clean Lab Amount",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 50.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { cleanToneId, 1 }, "Clean Lab Corrective EQ",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { cleanResId, 1 }, "Clean Lab Resonance",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { cleanEssId, 1 }, "Clean Lab De-esser",
+        NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+
     return layout;
 }
 
@@ -213,6 +224,9 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* airIds[] = { airOnId, airPresenceId, airAirId, airLinkId, airMixId, airTrimId };
     for (int i = 0; i < 6; ++i)
         airParams[i] = apvts.getRawParameterValue (airIds[i]);
+    const char* cleanIds[] = { cleanOnId, cleanAmountId, cleanToneId, cleanResId, cleanEssId };
+    for (int i = 0; i < 5; ++i)
+        cleanParams[i] = apvts.getRawParameterValue (cleanIds[i]);
 
     if (juce::MessageManager::existsAndIsCurrentThread())
         startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
@@ -221,6 +235,17 @@ GlitchKidProcessor::GlitchKidProcessor()
 GlitchKidProcessor::~GlitchKidProcessor()
 {
     stopTimer();
+}
+
+CleanLab::Settings GlitchKidProcessor::readCleanSettings() const
+{
+    CleanLab::Settings s;
+    s.on = cleanParams[0]->load() >= 0.5f;
+    s.amount = cleanParams[1]->load() * 0.01f;
+    s.tone = cleanParams[2]->load() * 0.01f;
+    s.res = cleanParams[3]->load() * 0.01f;
+    s.ess = cleanParams[4]->load() * 0.01f;
+    return s;
 }
 
 AirLab::Settings GlitchKidProcessor::readAirSettings() const
@@ -683,6 +708,8 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     airLab.setSettings (readAirSettings());
     airLab.prepare (sampleRate);
     airLab.reset();
+    cleanLab.setSettings (readCleanSettings());
+    cleanLab.prepare (sampleRate);
     stutter.prepare (sampleRate);
 
     pitchLatency = glitchkid::pitch::PitchCorrector::latencyFor (sampleRate);
@@ -912,6 +939,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         compressor.reset();
         saturation.reset();
         airLab.reset();
+        cleanLab.park(); // keeps what it has learned about the voice
         stutter.reset();
         echo.reset();
         dimension.reset();
@@ -1024,9 +1052,16 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
                          eqParams[b].q != nullptr ? eqParams[b].q->load() : 0.7071f });
     eq.process (buffer);
 
+    // CLEAN LAB, corrective part: after the user's EQ (its detectors see what the user already shaped, so a manual cut is not repeated) and before the compressor
+    cleanLab.setSettings (readCleanSettings());
+    cleanLab.processCorrective (buffer);
+
     compressor.setSettings (readCompressorSettings());
     compressor.process (buffer);
     raisePeak (gainReductionPeak, compressor.getGainReductionDb());
+
+    // CLEAN LAB, de-esser: after the compressor (compression raises the relative sibilance) and before the saturation and AIR LAB
+    cleanLab.processDeEss (buffer);
 
     saturation.setDriveDb (satDrive->load());
     saturation.process (buffer);
