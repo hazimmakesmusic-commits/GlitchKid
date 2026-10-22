@@ -2,7 +2,8 @@
 
 namespace glitchkid::ui
 {
-juce::Font labFont (float height) { return fontOf (height, true).withExtraKerningFactor (0.1f); }
+// Inter Bold set slightly condensed and tracked out: no other face may be bundled, so the "technical" character comes from proportion and spacing.
+juce::Font labFont (float height) { return fontOf (height, true).withHorizontalScale (0.94f).withExtraKerningFactor (0.12f); }
 
 void LabHeading::paint (juce::Graphics& g)
 {
@@ -164,16 +165,21 @@ void WorkspaceTile::setStatus (const juce::String& statusText, TileStatus k)
 void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
+    if (down)
+        r = r.translated (0.0f, 1.0f);
     const auto accent = kind == TileStatus::problem ? errorRed : kind == TileStatus::active ? pink : kind == TileStatus::ready ? violet : textDim;
     const auto shape = chamferPath (r, 12.0f);
     if (prominent || highlighted)
-        drawGlow (g, shape, prominent ? violet.withAlpha (0.55f) : violet.withAlpha (0.3f), 8.0f);
-    g.setColour (prominent ? juce::Colour (0xff2a1238) : (highlighted || down ? panelTop.brighter (0.05f) : panelBottom));
+        drawGlow (g, shape, prominent ? violet.withAlpha (0.9f) : violet.withAlpha (0.55f), 6.0f);
+    g.setGradientFill (juce::ColourGradient (prominent ? juce::Colour (0xff3a1363) : (highlighted ? panelTop.brighter (0.12f) : panelTop), 0.0f, r.getY(),
+                                             prominent ? juce::Colour (0xff1a0a2e) : panelBottom.darker (0.25f), 0.0f, r.getBottom(), false));
     g.fillPath (shape);
+    g.setColour (chrome.withAlpha (prominent ? 0.16f : 0.08f)); // the lit top edge
+    g.fillRect (r.getX() + 14.0f, r.getY() + 1.0f, r.getWidth() - 28.0f, 1.0f);
     g.setColour (prominent ? violet : (highlighted ? neon : border.brighter (0.15f)));
     g.strokePath (shape, juce::PathStrokeType (prominent ? 2.0f : 1.3f));
-    g.setColour (accent);
-    g.fillRect (r.getX() + 14.0f, r.getBottom() - 4.0f, 28.0f, 3.0f);
+    g.setGradientFill (juce::ColourGradient (accent, r.getX() + 14.0f, 0.0f, accent.withAlpha (0.0f), r.getX() + 80.0f, 0.0f, false)); // the status light
+    g.fillRect (r.getX() + 14.0f, r.getBottom() - 4.0f, 66.0f, 3.0f);
     auto in = r.toNearestInt().reduced (16, 12);
     g.setColour (chrome);
     g.setFont (labFont (prominent ? 18.0f : 15.0f));
@@ -202,6 +208,15 @@ void SpectrumView::setSampleRate (double sr)
         geometryDirty = true;
         changed = true;
     }
+}
+
+void SpectrumView::setBackdrop (const juce::Image& image, float strength)
+{
+    backdrop = image;
+    backdropScaled = {};
+    backdropStrength = strength;
+    changed = true;
+    commit();
 }
 
 void SpectrumView::setShowWave (bool b)
@@ -295,6 +310,18 @@ void SpectrumView::paint (juce::Graphics& g)
         rebuildGeometry();
     g.setColour (juce::Colour (0xff0a070f));
     g.fillPath (framePath);
+    if (backdrop.isValid())
+    {
+        // pre-scaled once per size so every frame is a 1:1 copy (the image is decorative and static)
+        const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        const int pw = std::max (1, (int) std::ceil (frame.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (frame.getHeight() * pixelScale));
+        if (! backdropScaled.isValid() || backdropScaled.getWidth() != pw || backdropScaled.getHeight() != ph)
+            backdropScaled = backdrop.rescaled (pw, ph, juce::Graphics::highResamplingQuality);
+        const juce::Graphics::ScopedSaveState keep (g);
+        g.reduceClipRegion (framePath);
+        g.setOpacity (backdropStrength);
+        g.drawImage (backdropScaled, frame);
+    }
     g.setColour (border);
     g.strokePath (framePath, juce::PathStrokeType (1.2f));
 
@@ -325,6 +352,11 @@ void SpectrumView::paint (juce::Graphics& g)
         fillPath.closeSubPath();
         g.setColour (colours[t].withAlpha (t == 1 ? 0.08f : 0.2f));
         g.fillPath (fillPath);
+        if (backdrop.isValid()) // a dark under-stroke keeps the line legible over the chrome
+        {
+            g.setColour (juce::Colour (0xff08060d).withAlpha (0.55f));
+            g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 3.6f : 4.0f, juce::PathStrokeType::curved));
+        }
         g.setColour (colours[t].withAlpha (0.95f));
         g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 1.4f : 1.8f, juce::PathStrokeType::curved));
     }
@@ -366,9 +398,17 @@ void SpectrumView::paint (juce::Graphics& g)
     }
     if (! any && ! wave)
     {
-        g.setColour (textDim);
-        g.setFont (labFont (showWave ? 13.0f : 12.0f));
-        g.drawText (showWave ? "NO SIGNAL - PLAY AUDIO THROUGH THE PLUG-IN" : "NO SIGNAL", plot, juce::Justification::centred, false);
+        const juce::String msg = showWave ? "NO SIGNAL - PLAY AUDIO THROUGH THE PLUG-IN" : "NO SIGNAL";
+        const auto font = labFont (showWave ? 13.0f : 12.0f);
+        const float tw = (float) juce::GlyphArrangement::getStringWidth (font, msg) + 28.0f;
+        const auto pill = juce::Rectangle<float> (tw, 26.0f).withCentre (plot.getCentre());
+        g.setColour (juce::Colour (0xff08060d).withAlpha (0.82f)); // the message sits on a dark plate so it stays readable over the backdrop
+        g.fillPath (chamferPath (pill, 6.0f));
+        g.setColour (border);
+        g.strokePath (chamferPath (pill, 6.0f), juce::PathStrokeType (1.0f));
+        g.setColour (textBright.withAlpha (0.9f));
+        g.setFont (font);
+        g.drawText (msg, pill, juce::Justification::centred, false);
     }
 }
 }

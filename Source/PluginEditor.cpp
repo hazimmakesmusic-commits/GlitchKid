@@ -40,6 +40,11 @@ void LevelMeter::paint (juce::Graphics& g)
     if (shownDb > 0.0f)
         g.setColour (ui::errorRed);
     g.fillRect (r.withTop (r.getBottom() - h).reduced (2.0f, 0.0f));
+    for (float db : { -48.0f, -36.0f, -24.0f, -12.0f })
+    {
+        g.setColour (ui::textDim.withAlpha (0.28f));
+        g.fillRect (r.getX(), r.getBottom() - r.getHeight() * juce::jmap (db, minDb, maxDb, 0.0f, 1.0f), r.getWidth() * 0.4f, 1.0f);
+    }
     const float y0 = r.getBottom() - r.getHeight() * juce::jmap (0.0f, minDb, maxDb, 0.0f, 1.0f);
     g.setColour (ui::textDim.withAlpha (0.7f));
     g.fillRect (r.getX(), y0, r.getWidth(), 1.0f);
@@ -166,6 +171,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     {
         navButtons[i].setButtonText (navText[i]);
         style (navButtons[i], juce::String (navTip[i]) + " Any workspace can be opened at any time; switching never changes your sound.");
+        navButtons[i].getProperties().set ("tab", true); // the look-and-feel draws the selected tab with a lit underline
         navButtons[i].onClick = [this, i] { showPage ((Page) i, true); };
     }
     style (undoButton, "Put back the sound you had before the last build, profile load or BEAT LOCK change.");
@@ -641,6 +647,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW * 7 / 10, designH * 7 / 10, designW * 3 / 2, designH * 3 / 2); // below ~70 % the smallest labels (9.5-11 pt) fall under about 7 px
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     visualTimer.onTick = [this] { visualTick(); };
+    relicLoader.start ([this] (const juce::Image& image) { homeView.setBackdrop (image, 0.6f); });
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -650,6 +657,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
 GlitchKidEditor::~GlitchKidEditor()
 {
+    relicLoader.stop();
     stopTimer();
     visualTimer.stopTimer();
     setLookAndFeel (nullptr);
@@ -1694,19 +1702,43 @@ void GlitchKidEditor::paint (juce::Graphics& g)
 {
     constexpr float W = (float) designW;
     g.fillAll (ui::obsidian);
+
+    // atmosphere: a violet haze top left, a pink haze bottom right and a dark vignette: light falls on the instrument, the edges fall away.
+    // Three full-window gradients cost about as much as the rest of the window together in software, so they are drawn once per window size and blitted.
+    if (! atmosphere.isValid() || atmosphere.getWidth() != getWidth() || atmosphere.getHeight() != getHeight())
+    {
+        atmosphere = juce::Image (juce::Image::ARGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), true);
+        juce::Graphics ag (atmosphere);
+        ag.addTransform (juce::AffineTransform::scale (scaleFactor));
+        juce::ColourGradient hazeA (ui::violet.withAlpha (0.11f), 150.0f, 70.0f, ui::violet.withAlpha (0.0f), 150.0f + 560.0f, 70.0f, true);
+        ag.setGradientFill (hazeA);
+        ag.fillRect (0.0f, 0.0f, W, 600.0f);
+        juce::ColourGradient hazeB (ui::pink.withAlpha (0.065f), 840.0f, 540.0f, ui::pink.withAlpha (0.0f), 840.0f - 480.0f, 540.0f, true);
+        ag.setGradientFill (hazeB);
+        ag.fillRect (0.0f, 0.0f, W, 600.0f);
+        juce::ColourGradient vignette (juce::Colours::black.withAlpha (0.0f), W * 0.5f, 300.0f, juce::Colours::black.withAlpha (0.5f), 0.0f, 0.0f, true);
+        vignette.addColour (0.55, juce::Colours::black.withAlpha (0.0f));
+        ag.setGradientFill (vignette);
+        ag.fillRect (0.0f, 0.0f, W, 600.0f);
+    }
+    g.drawImageAt (atmosphere, 0, 0);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
     // a faint technical grid behind the workspace
-    g.setColour (ui::border.withAlpha (0.22f));
+    g.setColour (ui::border.withAlpha (0.18f));
     for (float x = 16.0f; x < W; x += 32.0f)
         g.fillRect (x, 102.0f, 1.0f, 458.0f);
     for (float y = 102.0f; y < 562.0f; y += 32.0f)
         g.fillRect (0.0f, y, W, 1.0f);
 
-    // the persistent bar: fine scanlines, then an ultraviolet-to-pink signal line along its lower edge
-    g.setColour (ui::violet.withAlpha (0.05f));
+    // the persistent bar: a lit metal strip with fine scanlines, then an ultraviolet-to-pink signal line along its lower edge
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1d1627), 0.0f, 0.0f, juce::Colour (0xff0b0810), 0.0f, 44.0f, false));
+    g.fillRect (0.0f, 0.0f, W, 44.0f);
+    g.setColour (ui::violet.withAlpha (0.04f));
     for (float y = 2.0f; y < 43.0f; y += 3.0f)
         g.fillRect (0.0f, y, W, 1.0f);
+    g.setColour (ui::chrome.withAlpha (0.07f));
+    g.fillRect (0.0f, 0.0f, W, 1.0f);
     juce::ColourGradient line (ui::violet, 0.0f, 0.0f, ui::pink.withAlpha (0.0f), W, 0.0f, false);
     line.addColour (0.55, ui::pink.withAlpha (0.8f));
     g.setGradientFill (line);
@@ -1714,19 +1746,25 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.setColour (ui::border);
     g.fillRect (0.0f, 562.0f, W, 1.0f);
 
-    // the wordmark: bold, tracked out, with a slight chromatic fringe (pink left, violet right)
+    // the wordmark: liquid chrome with a hard horizon, a restrained pink / violet fringe (branding only) and a tracked-out sub line
     {
-        const juce::Rectangle<float> r (14.0f, 4.0f, 160.0f, 24.0f);
-        g.setFont (ui::labFont (18.0f));
-        g.setColour (ui::pink.withAlpha (0.6f));
-        g.drawText ("GLITCHKID", r.translated (-1.4f, 0.0f), juce::Justification::centredLeft, false);
-        g.setColour (ui::violet.withAlpha (0.6f));
-        g.drawText ("GLITCHKID", r.translated (1.4f, 0.0f), juce::Justification::centredLeft, false);
-        g.setColour (ui::textBright);
+        const juce::Rectangle<float> r (14.0f, 1.0f, 156.0f, 28.0f);
+        g.setFont (ui::labFont (22.0f));
+        g.setColour (ui::pink.withAlpha (0.55f));
+        g.drawText ("GLITCHKID", r.translated (-1.3f, 0.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::violet.withAlpha (0.55f));
+        g.drawText ("GLITCHKID", r.translated (1.3f, 0.0f), juce::Justification::centredLeft, false);
+        juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 4.0f, juce::Colour (0xff8a6fb8), 0.0f, r.getBottom() - 3.0f, false);
+        chromeFill.addColour (0.44, juce::Colour (0xffd9cbe8));
+        chromeFill.addColour (0.49, juce::Colour (0xff3a2650)); // the horizon
+        chromeFill.addColour (0.56, juce::Colour (0xffb98cf0));
+        g.setGradientFill (chromeFill);
         g.drawText ("GLITCHKID", r, juce::Justification::centredLeft, false);
-        g.setFont (ui::labFont (9.5f));
+        g.setFont (ui::labFont (9.0f));
         g.setColour (ui::violet);
-        g.drawText ("VOCAL LAB", juce::Rectangle<float> (15.0f, 27.0f, 120.0f, 13.0f), juce::Justification::centredLeft, false);
+        g.drawText ("VOCAL LAB", juce::Rectangle<float> (15.0f, 28.0f, 100.0f, 13.0f), juce::Justification::centredLeft, false);
+        g.setGradientFill (juce::ColourGradient (ui::pink, 78.0f, 0.0f, ui::pink.withAlpha (0.0f), 152.0f, 0.0f, false));
+        g.fillRect (78.0f, 34.0f, 74.0f, 1.0f);
     }
 
     if (page == Page::build)

@@ -97,6 +97,8 @@ void snapshot (juce::AudioProcessorEditor& ed, const juce::String& name)
     const juce::String dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
     if (dir.isEmpty())
         return;
+    if (auto* e = dynamic_cast<GlitchKidEditor*> (&ed))
+        e->uiWaitForRelicForTest();
     pump (150);
     auto img = ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
     juce::File f = juce::File (dir).getChildFile (name + ".png");

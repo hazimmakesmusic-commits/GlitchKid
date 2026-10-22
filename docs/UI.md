@@ -35,3 +35,6 @@ A slider overwrites its parameters while dragged and follows them otherwise. Nev
 ## Safety and testing
 Painting and animation run on the message thread (30 Hz timer); MOTION off makes everything still. Parameter IDs, state, presets, A/B and automation are unchanged; saved preferences are `uiLevel` (0-4; the older `uiPage` is ignored), `uiCategory` (0-3), `uiCleanAdv`, `uiMotion`, `uiProfile`.
 `Tests/MacroTests.cpp` builds the real editor, renders every page and category at several sizes and drives the real controls (see the audit). `GLITCHKID_SNAPSHOT_DIR=/folder` writes PNG renders; they show layout, not sound.
+
+## Visual system
+Surfaces, controls, typography and the Glitch Relic are described in `docs/VISUAL_TRANSFORMATION_IMPLEMENTATION.md`. The relic is decoration only: it sits behind the HOME spectrum at low strength, never behind text or controls, and carries no data.

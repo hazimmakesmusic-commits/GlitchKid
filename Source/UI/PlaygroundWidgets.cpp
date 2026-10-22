@@ -22,7 +22,13 @@ juce::Path chamferPath (juce::Rectangle<float> r, float c)
 
 void drawGlow (juce::Graphics& g, const juce::Path& shape, juce::Colour c, float radius)
 {
-    juce::DropShadow (c, juce::roundToInt (radius), { 0, 0 }).drawForPath (g, shape);
+    // A cheap glow (no blur, so it is safe to draw on many controls every frame): a few wide, faint strokes of the outline, widest and faintest first.
+    constexpr int steps = 4;
+    for (int i = steps; i >= 1; --i)
+    {
+        g.setColour (c.withMultipliedAlpha (0.30f / (float) i));
+        g.strokePath (shape, juce::PathStrokeType (1.0f + radius * (float) i / (float) steps * 1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
 }
 
 namespace
@@ -48,31 +54,73 @@ juce::Font fontOf (float height, bool bold)
 void drawDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, bool hover, bool focus)
 {
     const float d = juce::jmin (dial.getWidth(), dial.getHeight());
-    const float thick = juce::jmax (2.5f, d * 0.055f);
-    dial = juce::Rectangle<float> (d, d).withCentre (dial.getCentre()).reduced (thick * 0.5f + 2.0f); // the stroke is drawn on the arc's centre line
-    const auto c = dial.getCentre();
-    const float rad = dial.getWidth() * 0.5f;
+    const auto box = juce::Rectangle<float> (d, d).withCentre (dial.getCentre()).reduced (2.0f);
+    const auto c = box.getCentre();
+    const float R = box.getWidth() * 0.5f;
     pos = juce::jlimit (0.0f, 1.0f, pos);
-    juce::Path track, value;
-    track.addCentredArc (c.x, c.y, rad, rad, 0.0f, start, end, true);
-    value.addCentredArc (c.x, c.y, rad, rad, 0.0f, start, start + (end - start) * pos, true);
-    g.setColour (border.brighter (0.15f).withAlpha (alpha));
-    g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    if (pos > 0.002f)
+    auto fillGradient = [&] (const juce::ColourGradient& grad) { g.setGradientFill (grad); g.setOpacity (alpha); };
+
+    // 1. the bezel: dark machined metal lit from the top left, with a thin rim light
+    fillGradient (juce::ColourGradient (juce::Colour (0xff342a40), c.x - R * 0.7f, c.y - R * 0.9f, juce::Colour (0xff09070d), c.x + R * 0.7f, c.y + R * 0.95f, false));
+    g.fillEllipse (box);
     {
+        juce::Path rim;
+        rim.addCentredArc (c.x, c.y, R - 0.5f, R - 0.5f, 0.0f, -2.5f, -0.6f, true);
+        g.setColour (chrome.withAlpha (0.20f * alpha));
+        g.strokePath (rim, juce::PathStrokeType (1.2f));
+        g.setColour (juce::Colour (0xff050308).withAlpha (alpha));
+        g.drawEllipse (box, 1.0f);
+    }
+
+    // 2. the groove and the value arc, with a glow only where the control really is turned up
+    const float trackR = R * 0.80f, thick = juce::jmax (2.6f, R * 0.115f);
+    juce::Path track, value;
+    track.addCentredArc (c.x, c.y, trackR, trackR, 0.0f, start, end, true);
+    g.setColour (juce::Colour (0xff060409).withAlpha (alpha));
+    g.strokePath (track, juce::PathStrokeType (thick + 1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (border.brighter (0.1f).withAlpha (alpha));
+    g.strokePath (track, juce::PathStrokeType (thick * 0.55f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (pos > 0.004f)
+    {
+        value.addCentredArc (c.x, c.y, trackR, trackR, 0.0f, start, start + (end - start) * pos, true);
+        g.setColour (accent.withAlpha ((hover ? 0.34f : 0.22f) * alpha));
+        g.strokePath (value, juce::PathStrokeType (thick + 5.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setColour (accent.withAlpha (alpha));
         g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (accent.brighter (0.6f).withAlpha (0.9f * alpha));
+        g.strokePath (value, juce::PathStrokeType (thick * 0.32f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-    const float capR = rad - thick * 1.8f;
-    g.setColour (juce::Colour (0xff1b1523).withAlpha (alpha));
+
+    // 3. the cap: dark brushed chrome with a specular crescent
+    const float capR = R * 0.58f;
+    fillGradient (juce::ColourGradient (juce::Colour (0xff564a66), c.x - capR * 0.3f, c.y - capR * 0.55f, juce::Colour (0xff0f0b15), c.x + capR * 0.5f, c.y + capR * 0.9f, false));
     g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
-    g.setColour ((hover ? chrome.withAlpha (0.55f) : border.brighter (0.3f)).withAlpha (alpha));
+    g.setColour (juce::Colour (0xff050308).withAlpha (alpha));
     g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
+    {
+        juce::Path crescent;
+        crescent.addCentredArc (c.x, c.y, capR * 0.84f, capR * 0.84f, 0.0f, -2.7f, -1.0f, true);
+        g.setColour (chrome.withAlpha (0.26f * alpha));
+        g.strokePath (crescent, juce::PathStrokeType (1.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+
+    // 4. the indicator: a lit notch from the middle of the cap to its edge
     const float a = start + (end - start) * pos;
-    g.setColour (chrome.withAlpha (alpha));
-    g.drawLine (c.x + std::sin (a) * capR * 0.35f, c.y - std::cos (a) * capR * 0.35f, c.x + std::sin (a) * capR * 0.9f, c.y - std::cos (a) * capR * 0.9f, 2.0f);
+    const auto dir = juce::Point<float> (std::sin (a), -std::cos (a));
+    const auto from = c + dir * (capR * 0.30f), to = c + dir * (capR * 0.90f);
+    const auto notch = accent.interpolatedWith (chrome, 0.6f);
+    g.setColour (accent.withAlpha (0.35f * alpha));
+    g.drawLine (juce::Line<float> (from, to), 4.5f);
+    g.setColour (notch.withAlpha (alpha));
+    g.drawLine (juce::Line<float> (from, to), 2.2f);
+
+    if (hover)
+    {
+        g.setColour (accent.withAlpha (0.45f * alpha));
+        g.drawEllipse (box.expanded (1.0f), 1.2f);
+    }
     if (focus)
-        focusRing (g, dial, rad);
+        focusRing (g, box, R);
 }
 
 // ---- ProfileCard -----------------------------------------------------------------------------------------------------------------------
@@ -282,10 +330,14 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> r)
 {
-    g.setColour (panelBottom);
-    g.fillPath (chamferPath (r, 4.0f));
+    g.setColour (juce::Colour (0xff030206).withAlpha (0.45f)); // a short shadow under the plate
+    g.fillPath (chamferPath (r.translated (0.0f, 2.5f), 5.0f));
+    g.setGradientFill (juce::ColourGradient (panelTop, 0.0f, r.getY(), panelBottom.darker (0.15f), 0.0f, r.getBottom(), false));
+    g.fillPath (chamferPath (r, 5.0f));
     g.setColour (border);
-    g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
+    g.strokePath (chamferPath (r.reduced (0.5f), 5.0f), juce::PathStrokeType (1.0f));
+    g.setColour (chrome.withAlpha (0.07f)); // the lit top edge
+    g.fillRect (r.getX() + 6.0f, r.getY() + 1.0f, r.getWidth() - 12.0f, 1.0f);
     g.setColour (violet);
     const float L = 12.0f;
     g.fillRect (r.getX(), r.getY(), L, 2.0f);
@@ -770,8 +822,12 @@ void ChainStrip::paint (juce::Graphics& g)
         const bool stage = i >= 1 && i <= numStages;
         const bool on = stage && active[(size_t) (i - 1)];
         const bool sel = stage && selected == i - 1;
-        g.setColour (sel ? violet.withAlpha (0.2f) : panelTop);
+        if (sel)
+            drawGlow (g, chamferPath (r, 4.0f), violet.withAlpha (0.4f), 5.0f);
+        g.setGradientFill (juce::ColourGradient (sel ? juce::Colour (0xff35135a) : panelTop.brighter (0.05f), 0.0f, r.getY(), sel ? juce::Colour (0xff1a0a2c) : panelBottom.darker (0.2f), 0.0f, r.getBottom(), false));
         g.fillPath (chamferPath (r, 4.0f));
+        g.setColour (chrome.withAlpha (0.07f));
+        g.fillRect (r.getX() + 4.0f, r.getY() + 1.0f, r.getWidth() - 8.0f, 1.0f);
         g.setColour (sel ? violet : border);
         g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (sel ? 1.5f : 1.0f));
         g.setFont (fontOf (11.5f, true));
@@ -782,8 +838,12 @@ void ChainStrip::paint (juce::Graphics& g)
             const auto dot = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ r.getX() + 12.0f, r.getCentreY() });
             if (on)
             {
+                g.setColour (pink.withAlpha (0.28f)); // a lit LED: real stage activity only
+                g.fillEllipse (dot.expanded (3.5f));
                 g.setColour (pink);
                 g.fillEllipse (dot);
+                g.setColour (chrome.withAlpha (0.7f));
+                g.fillEllipse (dot.getX() + 1.5f, dot.getY() + 1.2f, 2.2f, 2.2f);
             }
             else
             {
@@ -841,13 +901,26 @@ void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
 {
     auto r = b.getLocalBounds().toFloat().reduced (1.0f);
     const bool on = b.getToggleState();
+    const bool tab = (bool) b.getProperties().getWithDefault ("tab", false);
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
     auto fill = on ? b.findColour (juce::TextButton::buttonOnColourId) : bg;
-    fill = down ? fill.darker (0.15f) : highlighted ? fill.brighter (0.12f) : fill;
-    g.setColour (fill.withAlpha (alpha));
-    g.fillPath (chamferPath (r, 4.0f));
-    g.setColour ((on ? fill.brighter (0.3f) : border.brighter (highlighted ? 0.35f : 0.1f)).withAlpha (alpha));
-    g.strokePath (chamferPath (r, 4.0f), juce::PathStrokeType (1.0f));
+    fill = down ? fill.darker (0.2f) : highlighted ? fill.brighter (0.1f) : fill;
+    if (down)
+        r = r.translated (0.0f, 1.0f);
+    const auto shape = chamferPath (r, 4.0f);
+    if (on && b.isEnabled() && (highlighted || tab || fill == violet)) // a restrained glow on a selected control
+        drawGlow (g, shape, fill.withAlpha (0.55f), 5.0f);
+    g.setGradientFill (juce::ColourGradient (fill.brighter (on ? 0.28f : 0.16f).withAlpha (alpha), 0.0f, r.getY(), fill.darker (on ? 0.28f : 0.3f).withAlpha (alpha), 0.0f, r.getBottom(), false));
+    g.fillPath (shape);
+    g.setColour (chrome.withAlpha ((on ? 0.28f : 0.10f) * alpha)); // the lit top edge
+    g.fillRect (r.getX() + 4.0f, r.getY() + 1.0f, r.getWidth() - 8.0f, 1.0f);
+    g.setColour ((on ? fill.brighter (0.45f) : border.brighter (highlighted ? 0.45f : 0.12f)).withAlpha (alpha));
+    g.strokePath (shape, juce::PathStrokeType (1.0f));
+    if (tab && on) // the selected workspace tab carries a lit underline
+    {
+        g.setGradientFill (juce::ColourGradient (pink, r.getX(), 0.0f, violet, r.getRight(), 0.0f, false));
+        g.fillRect (r.getX() + 6.0f, r.getBottom() - 3.0f, r.getWidth() - 12.0f, 2.0f);
+    }
     if (b.hasKeyboardFocus (true))
         focusRing (g, r, 5.0f);
 }
@@ -856,13 +929,20 @@ void PlaygroundLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleBut
 {
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
     const bool on = b.getToggleState();
-    const auto sw = juce::Rectangle<float> (34.0f, 18.0f).withCentre ({ 20.0f, (float) b.getHeight() * 0.5f });
-    g.setColour ((on ? violet.withAlpha (0.22f) : juce::Colour (0xff0c0910)).withAlpha (alpha));
-    g.fillPath (chamferPath (sw, 4.0f));
+    const auto sw = juce::Rectangle<float> (36.0f, 18.0f).withCentre ({ 21.0f, (float) b.getHeight() * 0.5f });
+    const auto shape = chamferPath (sw, 4.0f);
+    if (on && b.isEnabled())
+        drawGlow (g, shape, violet.withAlpha (0.45f), 5.0f);
+    g.setGradientFill (juce::ColourGradient ((on ? juce::Colour (0xff3a1260) : juce::Colour (0xff05030a)).withAlpha (alpha), 0.0f, sw.getY(),
+                                             (on ? juce::Colour (0xff22093b) : juce::Colour (0xff120d19)).withAlpha (alpha), 0.0f, sw.getBottom(), false));
+    g.fillPath (shape);
     g.setColour ((on ? violet : (highlighted ? border.brighter (0.5f) : border.brighter (0.2f))).withAlpha (alpha));
-    g.strokePath (chamferPath (sw, 4.0f), juce::PathStrokeType (1.2f));
-    g.setColour ((on ? violet : disabled).withAlpha (alpha));
-    g.fillEllipse (on ? sw.getRight() - 15.0f : sw.getX() + 3.0f, sw.getY() + 2.0f, 14.0f, 14.0f);
+    g.strokePath (shape, juce::PathStrokeType (1.2f));
+    const auto knob = juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ on ? sw.getRight() - 10.0f : sw.getX() + 10.0f, sw.getCentreY() });
+    g.setGradientFill (juce::ColourGradient ((on ? chrome : juce::Colour (0xff8a7f9c)).withAlpha (alpha), 0.0f, knob.getY(), (on ? juce::Colour (0xff6a2aa0) : juce::Colour (0xff2c2438)).withAlpha (alpha), 0.0f, knob.getBottom(), false));
+    g.fillPath (chamferPath (knob, 3.0f));
+    g.setColour (juce::Colour (0xff050308).withAlpha (alpha));
+    g.strokePath (chamferPath (knob, 3.0f), juce::PathStrokeType (0.8f));
     g.setColour ((on ? textBright : textDim).withAlpha (alpha));
     g.setFont (fontOf (juce::jlimit (12.0f, 14.0f, (float) b.getHeight() * 0.4f), true));
     g.drawFittedText (b.getButtonText(), b.getLocalBounds().withTrimmedLeft (46), juce::Justification::centredLeft, 1, 0.8f);
@@ -885,16 +965,32 @@ void PlaygroundLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, i
     }
     const auto accent = s.findColour (juce::Slider::trackColourId);
     const float alpha = s.isEnabled() ? 1.0f : 0.4f;
+    const bool hot = s.isMouseOverOrDragging();
     const float cy = (float) y + (float) h * 0.5f;
-    g.setColour (border.brighter (0.15f).withAlpha (alpha));
-    g.fillRoundedRectangle ((float) x, cy - 2.0f, (float) w, 4.0f, 2.0f);
-    g.setColour (accent.withAlpha (alpha));
-    g.fillRoundedRectangle ((float) x, cy - 2.0f, pos - (float) x, 4.0f, 2.0f);
-    g.setColour (chrome.withAlpha (alpha));
-    g.fillEllipse (pos - 7.0f, cy - 7.0f, 14.0f, 14.0f);
-    g.setColour (accent.withAlpha (alpha));
-    g.drawEllipse (pos - 7.0f, cy - 7.0f, 14.0f, 14.0f, 1.5f);
+    const auto groove = juce::Rectangle<float> ((float) x, cy - 3.0f, (float) w, 6.0f);
+    g.setColour (juce::Colour (0xff060409).withAlpha (alpha)); // an inset groove
+    g.fillPath (chamferPath (groove.expanded (0.0f, 1.0f), 3.0f));
+    g.setColour (border.withAlpha (alpha));
+    g.strokePath (chamferPath (groove.expanded (0.0f, 1.0f), 3.0f), juce::PathStrokeType (0.8f));
+    const auto fill = groove.withRight (juce::jmax (groove.getX(), pos)).reduced (0.0f, 1.0f);
+    if (fill.getWidth() > 1.0f)
+    {
+        if (hot)
+            drawGlow (g, chamferPath (fill, 2.0f), accent.withAlpha (0.45f), 4.0f);
+        g.setGradientFill (juce::ColourGradient (accent.darker (0.5f).withAlpha (alpha), fill.getX(), 0.0f, accent.brighter (0.15f).withAlpha (alpha), fill.getRight(), 0.0f, false));
+        g.fillPath (chamferPath (fill, 2.0f));
+    }
+    // the thumb: a small chrome bar with a hard horizon
+    const auto thumb = juce::Rectangle<float> (11.0f, 21.0f).withCentre ({ pos, cy });
+    g.setGradientFill (juce::ColourGradient (chrome.withAlpha (alpha), 0.0f, thumb.getY(), juce::Colour (0xff8a7f9c).withAlpha (alpha), 0.0f, thumb.getCentreY(), false));
+    g.fillRect (thumb.withBottom (thumb.getCentreY()));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1c1426).withAlpha (alpha), 0.0f, thumb.getCentreY(), juce::Colour (0xff5a4c70).withAlpha (alpha), 0.0f, thumb.getBottom(), false));
+    g.fillRect (thumb.withTop (thumb.getCentreY()));
+    g.setColour ((hot ? accent : juce::Colour (0xff050308)).withAlpha (alpha));
+    g.drawRect (thumb, 1.2f);
+    g.setColour (juce::Colour (0xff050308).withAlpha (0.55f * alpha));
+    g.fillRect (thumb.getCentreX() - 0.5f, thumb.getY() + 5.0f, 1.0f, thumb.getHeight() - 10.0f);
     if (s.hasKeyboardFocus (false))
-        focusRing (g, { pos - 7.0f, cy - 7.0f, 14.0f, 14.0f }, 7.0f);
+        focusRing (g, thumb, 3.0f);
 }
 }

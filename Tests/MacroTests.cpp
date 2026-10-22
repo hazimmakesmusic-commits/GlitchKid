@@ -1,5 +1,6 @@
 #include "TestHelpers.h"
 #include "../Source/UI/LabKit.h"
+#include "../Source/PluginEditor.h"
 #include "../Source/Macros/MacroEngine.h"
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
@@ -278,6 +279,8 @@ struct MacroTests : public juce::UnitTest
             const juce::String outDir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             auto snapshot = [&] (juce::AudioProcessorEditor& ed, const juce::String& shot)
             {
+                if (auto* e = dynamic_cast<GlitchKidEditor*> (&ed))
+                    e->uiWaitForRelicForTest();
                 juce::MessageManager::getInstance()->runDispatchLoopUntil (200);
                 auto img = ed.createComponentSnapshot (ed.getLocalBounds(), true, 1.0f);
                 expect (img.isValid() && img.getWidth() == ed.getWidth());

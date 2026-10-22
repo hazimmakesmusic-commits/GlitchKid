@@ -60,6 +60,7 @@ target_sources(GlitchKid PRIVATE
     Source/Macros/MacroEngine.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/LabKit.cpp
+    Source/UI/GlitchRelic.cpp
     Source/Analysis/DisplaySpectrum.cpp
     Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
@@ -116,6 +117,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/OutputLimiterTests.cpp
         Tests/UiPerfTests.cpp
         Tests/UiBehaviourTests.cpp
+        Tests/VisualTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -148,6 +150,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Macros/MacroEngine.cpp
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/LabKit.cpp
+        Source/UI/GlitchRelic.cpp
         Source/Analysis/DisplaySpectrum.cpp
         Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp

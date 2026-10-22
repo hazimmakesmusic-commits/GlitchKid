@@ -89,6 +89,8 @@ public:
     void commit();
     void setSampleRate (double sr);
     void setShowWave (bool b);
+    // The decorative backdrop (the Glitch Relic), drawn dimmed behind the grid and traces. It carries no data; pass an empty image for none.
+    void setBackdrop (const juce::Image& image, float strength);
     int getPaintCountForTest() const { return paintCount; }
     int getRepaintRequestsForTest() const { return repaintRequests; } // how many times a change asked for a redraw
     void paint (juce::Graphics&) override;
@@ -102,6 +104,8 @@ private:
     double sampleRate = 48000.0;
     bool showWave = true, changed = false, geometryDirty = true;
     int paintCount = 0, repaintRequests = 0;
+    juce::Image backdrop, backdropScaled;
+    float backdropStrength = 0.0f;
     // cached geometry (rebuilt only when the size, the sample rate or the wave strip changes)
     juce::Rectangle<float> frame, plot, labelRow, legendRow, waveArea;
     std::array<float, analysis::DisplaySpectrum::columns> columnX {};

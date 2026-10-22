@@ -6,6 +6,7 @@
 #include "AutoMode/BeatLock.h"
 #include "UI/PlaygroundWidgets.h"
 #include "UI/LabKit.h"
+#include "UI/GlitchRelic.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -61,6 +62,7 @@ public:
     void resized() override;
     void uiShowWorkspaceForTest (int workspace, int categoryIndex = 0) { showCategory (categoryIndex, false); showPage ((Page) workspace, false); } // tests and profiling only
     void uiTickForTest() { timerCallback(); refreshDisplays (1.0f / 30.0f); } // runs one refresh of both timers now (tests and profiling only)
+    void uiWaitForRelicForTest() { relicLoader.waitForTest(); }
     bool uiVisualTimerRunningForTest() const { return visualTimer.isTimerRunning(); }
     bool uiTransitionRunningForTest() const { return transition < 1.0f; }
     void paintOverChildren (juce::Graphics&) override;
@@ -209,6 +211,8 @@ private:
     glitchkid::ui::LabHeading homeTitle { "SESSION", 15.0f }, homeSource { "REAL-TIME SIGNAL", 11.0f, glitchkid::ui::textDim };
     juce::Label homeHint;
     glitchkid::ui::SpectrumView homeView, beatView;
+    juce::Image atmosphere; // cached background haze and vignette, rebuilt when the window size changes
+    glitchkid::ui::GlitchRelicLoader relicLoader; // declared after the views it feeds; stopped first in the destructor
     glitchkid::analysis::DisplaySpectrum specIn, specOut, specBeat;
     glitchkid::analysis::WaveColumns waveIn, waveOut;
     std::array<bool, 4> stageActive {};
