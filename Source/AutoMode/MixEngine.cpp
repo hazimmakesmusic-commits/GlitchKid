@@ -171,26 +171,16 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
             p.mode = MixMode::beatInformed;
             for (const auto& r : rel.reasons)
                 p.evidence.add ("BEAT: " + juce::String (r));
-            float clutter = 1.0f;
-            if (rel.worstBand >= 2)
+            for (const auto& m : beatMoves (rel))
             {
-                const float risk = rel.maskRisk[(size_t) rel.worstBand];
-                eqAdd ("eq_b2_gain", clampf (risk * 2.0f, 0.0f, 2.5f), "The beat competes with the voice at " + juce::String (bandName (rel.worstBand)) + ": presence raised so the words stay clear.");
-                clutter *= 0.85f;
+                if (m.scale)
+                {
+                    if (s.has (m.id.c_str()) && get (m.id.c_str()) > 0.0f)
+                        put (m.id.c_str(), get (m.id.c_str()) * m.factor, m.reason);
+                }
+                else
+                    eqAdd (m.id.c_str(), m.delta, m.reason);
             }
-            if (rel.maskRisk[1] > 0.35f)
-            {
-                eqAdd ("eq_b1_gain", -1.0f, "The beat is busy in the low-mids: the 400 Hz bell was cut a little.");
-                eqAdd ("eq_lo_gain", -1.0f, "The beat is busy in the low-mids: low shelf lowered.");
-            }
-            if (rel.beatLowEndHeavy)
-                eqAdd ("eq_lo_gain", -1.5f, "The beat is heavy under 120 Hz: the lead's low end was kept light.");
-            if (rel.beatVeryLoud)
-                clutter *= 0.9f;
-            if (clutter < 0.999f)
-                for (const char* id : { "echo_mix", "dim_mix" })
-                    if (s.has (id) && get (id) > 0.0f)
-                        put (id, get (id) * clutter, "The beat is crowded: this ambience was reduced so the vocal does not get lost.");
             p.evidence.add ("The lead is " + f1 (rel.vocalMinusBeatDb) + " dB relative to the beat on this track; balance the levels in your mixer (GlitchKid does not change the beat or your fader).");
         }
     }

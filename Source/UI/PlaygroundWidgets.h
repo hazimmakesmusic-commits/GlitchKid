@@ -5,7 +5,7 @@
 #include <functional>
 #include "../DSP/CleanLab.h"
 
-// The GlitchKid "Vocal Lab" look: original, lightweight vector widgets (no images, no network). Everything here runs on the message thread; nothing touches
+// The GlitchKid "Vocal Lab" 8-bit look: original, lightweight widgets (stepped corners, pixel segments; see PixelKit.h) (no images, no network). Everything here runs on the message thread; nothing touches
 // the audio thread. Animation is driven by the editor's single 30 Hz timer through tick(); with motion off everything jumps to its end state, and nothing
 // repaints unless something changed.
 namespace glitchkid::ui
@@ -24,7 +24,7 @@ juce::Font fontOf (float height, bool bold = false);
 // The GlitchKid dial: a thin value arc over a track around a dark cap with a pointer. `start`/`end` are JUCE rotary angles; pos is 0..1.
 void drawDial (juce::Graphics&, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, bool hover, bool focus);
 
-// One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small lime dot.
+// One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small pink square.
 class ProfileCard : public juce::Button
 {
 public:
@@ -86,7 +86,7 @@ private:
 // What the main action is doing. Every state comes from the real analyzer / build state (nothing is simulated).
 enum class AutoState { idle, waiting, working, ready, error };
 
-// BUILD MY VOCAL MIX: the strongest element of AUTO. idle/ready = solid lime; waiting for audio = a sweeping highlight; working = a progress fill that follows the
+// BUILD MY VOCAL MIX: the strongest element of the BUILD level. idle/ready = solid ultraviolet; waiting for audio = a sweeping highlight; working = a progress fill that follows the
 // real analysis time; error = pink outline. It is an ordinary TextButton (text, clicks, focus).
 class BuildButton : public juce::TextButton
 {
@@ -155,7 +155,7 @@ private:
 };
 
 // The processing chain INPUT -> TUNE -> TONE -> DYNAMICS -> SPACE -> OUTPUT. The four middle stages are the real stages of the engine and their dots show whether
-// each is really doing something (from the actual parameters); clicking one opens its MODIFY category. INPUT and OUTPUT show the real peak level. While a
+// each is really doing something (from the actual parameters); clicking one opens its FINAL TOUCH category. INPUT and OUTPUT show the real peak level. While a
 // signal is really arriving and motion is on, a small dot travels along the line.
 class ChainStrip : public juce::Component, public juce::SettableTooltipClient
 {

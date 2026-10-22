@@ -1,4 +1,5 @@
 #include "TestHelpers.h"
+#include "../Source/UI/PixelKit.h"
 #include "../Source/Macros/MacroEngine.h"
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
@@ -186,10 +187,10 @@ struct MacroTests : public juce::UnitTest
         beginTest ("UI preferences: saved with the session, default when absent, not part of a sound, preset or A/B");
         {
             GlitchKidProcessor a;
-            expect (a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiPage", 0) == 0 && a.getUiInt ("uiCategory", 0) == 0);
+            expect (a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiLevel", 0) == 0 && a.getUiInt ("uiCategory", 0) == 0);
             const auto before = a.captureSoundState();
             a.setUiFlag ("uiMotion", false);
-            a.setUiInt ("uiPage", 2);
+            a.setUiInt ("uiLevel", 2);
             a.setUiInt ("uiCategory", 3);
             a.setUiInt ("uiProfile", 5);
             expectEquals ((int) a.captureSoundState().values.size(), (int) before.values.size());
@@ -197,11 +198,11 @@ struct MacroTests : public juce::UnitTest
             a.getStateInformation (mb);
             GlitchKidProcessor b;
             b.setStateInformation (mb.getData(), (int) mb.getSize());
-            expect (! b.getUiFlag ("uiMotion", true) && b.getUiInt ("uiPage", 0) == 2 && b.getUiInt ("uiCategory", 0) == 3 && b.getUiInt ("uiProfile", -1) == 5);
+            expect (! b.getUiFlag ("uiMotion", true) && b.getUiInt ("uiLevel", 0) == 2 && b.getUiInt ("uiCategory", 0) == 3 && b.getUiInt ("uiProfile", -1) == 5);
             auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-ui-" + juce::String::toHexString (juce::Random().nextInt64()));
             glitchkid::PresetController c (a, glitchkid::PresetStore (dir));
             c.loadFactory (0);
-            expect (! a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiPage", 0) == 2, "loading a preset leaves the UI preferences alone");
+            expect (! a.getUiFlag ("uiMotion", true) && a.getUiInt ("uiLevel", 0) == 2, "loading a preset leaves the UI preferences alone");
             dir.deleteRecursively();
         }
 
@@ -272,7 +273,7 @@ struct MacroTests : public juce::UnitTest
                     && ui::border == juce::Colour (0xff392044), "the locked brand colours");
         }
 
-        beginTest ("editor: builds, lays out and renders at several sizes; three pages, four MODIFY categories, eight profiles, BUILD end to end");
+        beginTest ("editor: builds, lays out and renders at several sizes; level select, four levels, four FINAL TOUCH categories, eight profiles, BUILD end to end");
         {
             const juce::String outDir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             auto snapshot = [&] (juce::AudioProcessorEditor& ed, const juce::String& shot)
@@ -307,21 +308,21 @@ struct MacroTests : public juce::UnitTest
                 }
             };
 
-            for (int pg = 0; pg < 3; ++pg)
-                for (int cat = 0; cat < (pg == 2 ? 5 : 1); ++cat)
+            for (int pg = 0; pg < 5; ++pg)
+                for (int cat = 0; cat < (pg == 4 ? 4 : 1); ++cat)
                 {
                     GlitchKidProcessor p;
-                    p.setUiInt ("uiPage", pg);
+                    p.setUiInt ("uiLevel", pg);
                     p.setUiInt ("uiCategory", cat);
                     p.prepareToPlay (48000.0, 480);
                     std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
                     expect (ed != nullptr);
-                    snapshot (*ed, "page" + juce::String (pg) + (pg == 2 ? "_cat" + juce::String (cat) : juce::String()));
+                    snapshot (*ed, "level" + juce::String (pg) + (pg == 4 ? "_cat" + juce::String (cat) : juce::String()));
                 }
 
             {
                 GlitchKidProcessor p;
-                p.setUiInt ("uiPage", 2);
+                p.setUiInt ("uiLevel", 4);
                 p.setUiInt ("uiCategory", 3);
                 std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
                 const int w0 = ed->getWidth(), h0 = ed->getHeight();
@@ -377,10 +378,60 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                 };
 
-                expect (visible ("NEXT: AUTO  >") && visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
-                expect (visible ("TUNE") && visible ("AUTO") && visible ("MODIFY") && visible ("DRY") && visible ("PROCESSED"), "the three workspaces and DRY / PROCESSED are always shown");
+                auto levelCards = [&]
+                {
+                    std::vector<glitchkid::ui::LevelCard*> out;
+                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (auto* lc = dynamic_cast<glitchkid::ui::LevelCard*> (ch); lc != nullptr && lc->isVisible())
+                                out.push_back (lc);
+                            walk (*ch);
+                        }
+                    };
+                    walk (*content);
+                    return out;
+                };
+                auto openLevel = [&] (int level) // 1..4, from anywhere, through the real "< LEVELS" button and the real card
+                {
+                    if (visible ("<  LEVELS") && levelCards().empty())
+                        click ("<  LEVELS");
+                    const auto cards4 = levelCards();
+                    expectEquals ((int) cards4.size(), 4, "the level-select screen shows four cards");
+                    if (cards4.size() == 4)
+                    {
+                        cards4[(size_t) (level - 1)]->triggerClick();
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    }
+                };
+
+                // the level-select screen: four cards in order, always open (nothing locked), statuses read from the real state
+                {
+                    const auto cards4 = levelCards();
+                    expectEquals ((int) cards4.size(), 4);
+                    if (cards4.size() == 4)
+                    {
+                        expectEquals (cards4[0]->getTitle(), juce::String ("CLEAN LAB"));
+                        expectEquals (cards4[1]->getTitle(), juce::String ("BEAT LOCK"));
+                        expectEquals (cards4[2]->getTitle(), juce::String ("BUILD MY VOCAL MIX"));
+                        expectEquals (cards4[3]->getTitle(), juce::String ("FINAL TOUCH"));
+                        expect (cards4[0]->getStatusText().startsWith ("OFF"), "CLEAN LAB is off by default: " + cards4[0]->getStatusText());
+                        expect (cards4[1]->getStatusText().contains ("NO BEAT INPUT"), cards4[1]->getStatusText());
+                        expect (cards4[2]->getStatusText().contains ("NOT BUILT"), cards4[2]->getStatusText());
+                        expect (cards4[3]->getStatusText().contains ("STAGES"), cards4[3]->getStatusText());
+                        for (auto* c : cards4)
+                            expect (c->isEnabled(), "no level is locked");
+                    }
+                }
+                expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
+                expect (visible ("<  LEVELS") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the persistent bar is always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
+                expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
+                openLevel (4);
+                expectEquals (p.getUiInt ("uiLevel", -1), 4);
+                expect (visible ("HARD") && visible ("PITCH & KEY") && ! visible ("CLEAN"), "FINAL TOUCH opens on PITCH & KEY; CLEAN is its own level now");
 
                 click ("HARD");
                 expectEquals (th::getParam (p, "tune_on"), 1.0f);
@@ -419,9 +470,15 @@ struct MacroTests : public juce::UnitTest
                     expectEquals (th::getParam (p, "tune_scale"), 0.0f);
                 }
 
-                click ("NEXT: AUTO  >");
-                expectEquals (p.getUiInt ("uiPage", -1), 1);
-                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("MODIFY  >") && visible ("DRY") && ! visible ("NEXT: AUTO  >") && ! visible ("HARD"));
+                openLevel (3);
+                expectEquals (p.getUiInt ("uiLevel", -1), 3);
+                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("DRY") && ! visible ("HARD"));
+                {
+                    click ("<  LEVELS");
+                    const auto c4 = levelCards();
+                    expect (c4.size() == 4 && c4[2]->getStatusText().contains ("NOT BUILT"), "opening a level never marks it complete");
+                    openLevel (3);
+                }
 
                 collectCards();
                 expectEquals ((int) cards.size(), 8, "all eight profiles are on one page");
@@ -488,9 +545,9 @@ struct MacroTests : public juce::UnitTest
                 click ("PROCESSED");
                 expectEquals (th::getParam (p, "bypass"), 0.0f);
 
-                click ("MODIFY  >");
-                expectEquals (p.getUiInt ("uiPage", -1), 2);
-                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO AUTO") && visible ("RESET") && visible ("SAVE PRESET") && ! visible ("BUILD MY VOCAL MIX"));
+                click ("FINAL TOUCH  >");
+                expectEquals (p.getUiInt ("uiLevel", -1), 4);
+                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO BUILD") && visible ("RESET") && visible ("SAVE PRESET") && ! visible ("BUILD MY VOCAL MIX"));
 
                 click ("PITCH & KEY");
                 expectEquals (p.getUiInt ("uiCategory", -1), 0);
@@ -504,9 +561,9 @@ struct MacroTests : public juce::UnitTest
 
                 // CLEAN LAB: the switch, the amount and the section trims are attached to the real parameters; the read-outs say what is true; RESET CLEAN restores the defaults
                 {
-                    click ("CLEAN");
-                    expectEquals (p.getUiInt ("uiCategory", -1), 4);
-                    expect (visible ("RESET CLEAN") && ! visible ("HARD"), "the CLEAN page shows its own controls");
+                    openLevel (1);
+                    expectEquals (p.getUiInt ("uiLevel", -1), 1);
+                    expect (visible ("RESET CLEAN") && ! visible ("HARD"), "the CLEAN LAB level shows its own controls");
                     juce::ToggleButton* cleanOn = nullptr;
                     std::vector<juce::Slider*> sliders;
                     std::vector<juce::Label*> labels;
@@ -559,6 +616,7 @@ struct MacroTests : public juce::UnitTest
                         expectEquals (th::getParam (p, "clean_tone"), 100.0f);
                     }
                 }
+                openLevel (4);
                 click ("SPACE");
 
                 // detailed knobs are attached to the real (automatable) parameters, in both directions
@@ -708,25 +766,25 @@ struct MacroTests : public juce::UnitTest
                     expect (chain != nullptr && chain->isVisible(), "the chain is always shown");
                     if (chain != nullptr)
                     {
-                        click ("AUTO");
+                        click ("<  LEVELS");
                         const auto b = chain->nodeBounds (3); // DYNAMICS
                         const juce::MouseEvent down (juce::Desktop::getInstance().getMainMouseSource(), b.getCentre().toFloat(), juce::ModifierKeys(), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, chain, chain,
                                                      juce::Time::getCurrentTime(), b.getCentre().toFloat(), juce::Time::getCurrentTime(), 1, false);
                         chain->mouseUp (down);
-                        expectEquals (p.getUiInt ("uiPage", -1), 2);
+                        expectEquals (p.getUiInt ("uiLevel", -1), 4);
                         expectEquals (p.getUiInt ("uiCategory", -1), 2);
                     }
                 }
 
-                click ("<  BACK TO AUTO");
-                expect (visible ("TRY AGAIN"), "AUTO shows the build button (TRY AGAIN after the silent attempt)");
-                click ("TUNE");
-                expect (visible ("NEXT: AUTO  >"));
+                click ("<  BACK TO BUILD");
+                expect (visible ("TRY AGAIN"), "BUILD shows the build button (TRY AGAIN after the silent attempt)");
+                click ("<  LEVELS");
+                expectEquals ((int) levelCards().size(), 4);
             }
 
             {
                 GlitchKidProcessor p;
-                p.setUiInt ("uiPage", 1);
+                p.setUiInt ("uiLevel", 3);
                 p.prepareToPlay (48000.0, 480);
                 std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
                 snapshot (*ed, "auto_idle");

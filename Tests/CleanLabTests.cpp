@@ -558,7 +558,7 @@ struct CleanLabTests : public juce::UnitTest
             th::setParam (p, "clean_amount", 100.0f);
             th::setParam (p, "comp_ratio", 3.0f);
             th::setParam (p, "comp_thresh", -24.0f);
-            p.setUiInt ("uiPage", 2);
+            p.setUiInt ("uiLevel", 4);
             p.setUiInt ("uiCategory", 1);
             p.prepareToPlay (fs, 480);
             juce::MidiBuffer midi;

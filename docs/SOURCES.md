@@ -14,6 +14,9 @@ A plug-in on one track hears only what the host sends to it. This is the truth f
 - `LIVE`: audio is arriving on the bus.
 - "The beat has been analysed" is only shown (as a BEAT: finding) after ANALYZE listened to real instrumental audio.
 
+## BEAT LOCK
+BEAT LOCK (level 2) uses exactly these two analyses. With no beat on the Instrumental input it measures nothing about a beat and says so. A stereo input that already holds vocal and beat mixed together is measured as "the vocal": it cannot be split into two signals. The suggestions only change this vocal's own EQ, echo and width amounts. They do not process the instrumental or move your mixer faders (the balance line is advice only) and GlitchKid has no reverb to recommend.
+
 ## FL Studio (to test; do not assume)
 FL Studio can send a mixer track to a plug-in's sidechain input, but this has NOT been verified with GlitchKid. The intended routing is: put GlitchKid on the vocal track, then in the mixer route the beat's track to it as a sidechain send and pick it as the "Instrumental" input in the plug-in's wrapper settings. Press ANALYZE and play the whole section. If the status stays NOT CONNECTED, the host did not enable the bus.
 Fallbacks if it does not work (not built): a rendered-reference file analyser, or a small companion utility.

@@ -55,8 +55,10 @@ target_sources(GlitchKid PRIVATE
     Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
     Source/AutoMode/MixEngine.cpp
+    Source/AutoMode/BeatLock.cpp
     Source/Macros/MacroEngine.cpp
     Source/UI/PlaygroundWidgets.cpp
+    Source/UI/PixelKit.cpp
     Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
     Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -107,6 +109,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/ProfileTests.cpp
         Tests/SourceTests.cpp
         Tests/MixEngineTests.cpp
+        Tests/BeatLockTests.cpp
+        Tests/LevelUiTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -134,8 +138,10 @@ if(GLITCHKID_BUILD_TESTS)
         Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
     Source/AutoMode/MixEngine.cpp
+    Source/AutoMode/BeatLock.cpp
         Source/Macros/MacroEngine.cpp
         Source/UI/PlaygroundWidgets.cpp
+        Source/UI/PixelKit.cpp
         Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp
         Source/PluginProcessor.cpp

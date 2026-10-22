@@ -3,7 +3,9 @@
 #include "Presets/PresetController.h"
 #include "Macros/MacroEngine.h"
 #include "AutoMode/MixEngine.h"
+#include "AutoMode/BeatLock.h"
 #include "UI/PlaygroundWidgets.h"
+#include "UI/PixelKit.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -46,22 +48,24 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
 };
 
-// The three workspaces: TUNE (key, scale, tuning style), AUTO (pick a profile, BUILD MY VOCAL MIX, read the result) and MODIFY (Pitch & Key, Tone, Dynamics, Space).
-// A header (name, workspaces, DRY / PROCESSED, MOTION), the real processing chain and the preset bar are always shown.
+// The level-select interface: a home screen with four levels (CLEAN LAB, BEAT LOCK, BUILD MY VOCAL MIX, FINAL TOUCH). A persistent bar (back to the levels, the
+// current stage, the real vocal and output levels, DRY / PROCESSED, UNDO, MOTION), the real processing chain and the preset bar are always shown.
+// Nothing is locked: every level opens from the home screen at any time, and a level card's status is read from the plug-in's real state.
 class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     explicit GlitchKidEditor (GlitchKidProcessor&);
     ~GlitchKidEditor() override;
     void paint (juce::Graphics&) override;
+    void paintOverChildren (juce::Graphics&) override;
     void resized() override;
 
 private:
     // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
     static constexpr int designW = 960, designH = 600;
-    enum class Page { tune = 0, autoMix = 1, modify = 2 };
-    static constexpr int numCategories = 5; // PITCH & KEY, TONE, DYNAMICS, SPACE, CLEAN
-    Page page = Page::tune;
+    enum class Page { levels = 0, clean = 1, beat = 2, build = 3, finalTouch = 4 };
+    static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
+    Page page = Page::levels;
     int category = 0;
     bool motionOn = true;
     glitchkid::ui::PlaygroundLookAndFeel lookAndFeel; // declared first: it must outlive every control that uses it
@@ -79,15 +83,16 @@ private:
     float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
     void startFade();
 
-    juce::TextButton navButtons[3], categoryButtons[5];
-    juce::TextButton nextButton { "NEXT: AUTO  >" }, modifyButton { "MODIFY  >" }, backButton { "<  BACK TO AUTO" };
+    juce::TextButton categoryButtons[numCategories];
+    juce::TextButton levelsButton { "<  LEVELS" }, undoButton { "UNDO" };
+    juce::TextButton finalButton { "FINAL TOUCH  >" }, backButton { "<  BACK TO BUILD" };
     juce::TextButton motionButton, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" };
     glitchkid::ui::ScopeStrip scope;
     glitchkid::ui::ChainStrip chain;
     juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" };
     juce::String shownCompareText;
     float inPeakShown = 0.0f, outPeakShown = 0.0f;
-    juce::Label brandLabel { {}, "GLITCHKID" }, brandSub { {}, "VOCAL LAB" }, scopeCaption { {}, "INPUT SIGNAL" }, keyLabel { {}, "KEY" }, scaleCaption { {}, "SCALE" };
+    juce::Label ioLabel, scopeCaption { {}, "INPUT SIGNAL" }, keyLabel { {}, "KEY" }, scaleCaption { {}, "SCALE" };
 
     // TUNE note pad and scale chips: they drive the same Tune Key / Tune Scale parameters as the boxes on MODIFY.
     juce::OwnedArray<glitchkid::ui::NoteKey> noteKeys;
@@ -103,7 +108,7 @@ private:
 
     // AUTO: the eight profiles, the build button, the result
     juce::OwnedArray<glitchkid::ui::ProfileCard> profileCards;
-    juce::Label profileHeading { {}, "1  STARTING PROFILE" }, buildHeading { {}, "2  BUILD" }, resultHeading { {}, "3  RESULT" };
+    glitchkid::ui::PixelLabel profileHeading { "1 STARTING PROFILE" }, buildHeading { "2 BUILD" }, resultHeading { "3 RESULT" };
     juce::Label detailDesc, detailSettings, detailStart, sourceLine, autoStatus, resultTitle, resultBody, autoStyleLabel { {}, "MIX INTENSITY" };
     glitchkid::ui::BuildButton autoAnalyzeButton;   // BUILD MY VOCAL MIX (listens, then builds)
     juce::TextButton autoApplyButton { "WHAT CHANGED" }, loadButton { "LOAD PROFILE" }, backToMineButton { "BACK TO MY SOUND" };
@@ -150,8 +155,8 @@ private:
     juce::Slider cleanAmountSlider, cleanToneSlider, cleanResSlider, cleanEssSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> cleanAmountAtt, cleanToneAtt, cleanResAtt, cleanEssAtt;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> cleanOnAtt;
-    juce::Label cleanAmountLabel { {}, "CLEAN" }, cleanHint, cleanLearn, cleanLevel, toneHead { {}, "CORRECTIVE EQ" }, resHead { {}, "RESONANCE" }, essHead { {}, "DE-ESSER" },
-                toneTrimLabel { {}, "AMOUNT" }, resTrimLabel { {}, "AMOUNT" }, essTrimLabel { {}, "AMOUNT" }, toneRead[2], resRead[3], essRead;
+    glitchkid::ui::PixelLabel toneHead { "CORRECTIVE EQ" }, resHead { "RESONANCE" }, essHead { "DE-ESSER" };
+    juce::Label cleanAmountLabel { {}, "CLEAN" }, cleanHint, cleanLearn, cleanLevel, toneTrimLabel { {}, "AMOUNT" }, resTrimLabel { {}, "AMOUNT" }, essTrimLabel { {}, "AMOUNT" }, toneRead[2], resRead[3], essRead;
     juce::TextButton cleanResetButton { "RESET CLEAN" };
     glitchkid::ui::ReductionBar essBar;
     void refreshClean (bool cleanOn);
@@ -167,11 +172,43 @@ private:
     juce::OwnedArray<ParamKnob> dblKnobs;  // amount, width
     LevelMeter inMeter, outMeter;
     GainReductionMeter grMeter;
-    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, grLabel { {}, "GR" }, echoTitle { {}, "ECHO" }, echoDivLabel { {}, "DIVISION" }, dimTitle { {}, "WIDTH" },
-                dblTitle { {}, "DOUBLER" };
+    juce::Label inLabel { {}, "IN" }, outLabel { {}, "OUT" }, grLabel { {}, "GR" }, echoDivLabel { {}, "DIVISION" };
+    glitchkid::ui::PixelLabel echoTitle { "ECHO" }, dimTitle { "WIDTH" }, dblTitle { "DOUBLER" };
     juce::ToggleButton echoOnButton { "ON" }, echoSyncButton { "SYNC" }, dimOnButton { "ON" }, dblOnButton { "ON" };
     juce::ComboBox echoDivBox;
     juce::ToggleButton bypassButton { "Bypass" }; // (attached to the Bypass parameter; never shown: DRY / PROCESSED is the interface to it)
+
+    // ---- level select (home) and the persistent bar ----
+    glitchkid::ui::LevelCard levelCards[4];
+    glitchkid::ui::PixelLabel homeTitle { "SELECT A LEVEL", 3, glitchkid::ui::chrome };
+    juce::Label homeHint, homeInLabel { {}, "VOCAL IN" }, homeOutLabel { {}, "OUTPUT" };
+    glitchkid::ui::PixelBar homeIn, homeOut;
+    juce::String stageText;
+    std::array<bool, 4> stageActive {};
+    int clipTicks = 0;      // frames left to show CLIP after the output really reached full scale
+    float inDbShown = -100.0f, outDbShown = -100.0f; // held peaks for the persistent bar's read-out
+    void refreshLevels (float inPeak, float outPeak);
+
+    // ---- BEAT LOCK (level 2) ----
+    glitchkid::ui::PixelLabel beatHeading { "BEAT INPUT" }, suggestHeading { "SUGGESTED CHANGES" };
+    juce::Label beatStatus, beatLevels, beatRouting, beatProgress, beatChanges, vocalBarLabel { {}, "VOCAL" }, beatBarLabel { {}, "BEAT" };
+    glitchkid::ui::PixelBar vocalBar, beatBar;
+    glitchkid::ui::BandCompare bandCompare;
+    juce::TextButton analyzeBeatButton { "ANALYZE BEAT" }, applyBeatButton { "APPLY SELECTED" }, undoBeatButton { "UNDO BEAT LOCK" }, vocalOnlyButton { "VOCAL-ONLY: BUILD MY MIX  >" };
+    static constexpr int beatRows = 7;
+    juce::ToggleButton beatTicks[beatRows];
+    juce::Label beatTitles[beatRows], beatReasons[beatRows];
+    glitchkid::automode::BeatLockResult beatResult;
+    std::vector<bool> beatSelected;
+    bool beatListening = false, beatStopSent = false, beatApplied = false;
+    int beatStartCount = 0, beatAppliedCount = 0;
+    float beatVocalPeakDb = -100.0f, beatBeatPeakDb = -100.0f; // the last real peaks seen (for the read-out)
+    juce::String shownBeatText;
+    void refreshBeatLock (float inPeak, float beatPk);
+    void startBeatAnalysis();
+    void finishBeatAnalysis();
+    void applyBeatSelection();
+    void rebuildBeatRows();
 
     GlitchKidProcessor& glitchProcessor;
 

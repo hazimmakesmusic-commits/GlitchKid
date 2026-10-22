@@ -802,6 +802,7 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
             for (int i = 0; i < aux.getNumSamples(); ++i)
                 peak = juce::jmax (peak, std::isfinite (x[i]) ? std::abs (x[i]) : 0.0f);
         }
+        raisePeak (beatPeak, peak);
         beatSilentSamples = peak > 1.0e-4f ? 0.0 : beatSilentSamples + (double) aux.getNumSamples();
         beatSilentSeconds.store ((float) (beatSilentSamples / juce::jmax (1.0, sourceRate)), std::memory_order_relaxed);
         beatBusOn.store (true, std::memory_order_relaxed);

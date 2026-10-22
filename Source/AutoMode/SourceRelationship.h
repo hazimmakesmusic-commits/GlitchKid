@@ -21,6 +21,17 @@ struct Relationship
     std::string unavailable;        // when !valid: why, in plain words
 };
 
+// What the relationship suggests changing, as plain moves (shared by BUILD MY VOCAL MIX and BEAT LOCK, so the two never disagree): an EQ gain delta, or a
+// factor for an ambience amount. category: PRESENCE, CLARITY or SPACE. Pure and deterministic; the caller clamps to real ranges.
+struct BeatMove
+{
+    std::string id, category, reason;
+    float delta = 0.0f;      // added to the current value (EQ gains, dB)
+    bool scale = false;      // true: multiply the current value by `factor` instead (echo and width amounts)
+    float factor = 1.0f;
+};
+
 const char* bandName (int band);
+std::vector<BeatMove> beatMoves (const Relationship&);
 Relationship compare (const analysis::VocalAnalysis& lead, const analysis::VocalAnalysis& beat);
 }
