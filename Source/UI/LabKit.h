@@ -78,21 +78,36 @@ private:
 
 // The central real-time display: spectrum traces (vocal input before processing, output after it, and the Instrumental input only when it is really live) and a
 // waveform strip of the vocal input and the output. All data comes from DisplaySpectrum / WaveColumns (the audio taps); with no signal it says so.
+// Cost control: setTrace / setWave only store (and note whether anything changed); commit() repaints once, and only if something did change, so a silent or
+// frozen display costs nothing. The frequency-axis positions and the grid are computed once per size / sample rate and reused by every paint.
 class SpectrumView : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     using Levels = std::array<float, analysis::DisplaySpectrum::columns>;
     void setTrace (int index, const Levels& levels, bool shown); // 0 = vocal input, 1 = output, 2 = instrumental input
     void setWave (const analysis::WaveColumns& input, const analysis::WaveColumns& output);
-    void setSampleRate (double sr) { sampleRate = sr; }
-    void setShowWave (bool b) { showWave = b; }
+    void commit();
+    void setSampleRate (double sr);
+    void setShowWave (bool b);
+    int getPaintCountForTest() const { return paintCount; }
+    int getRepaintRequestsForTest() const { return repaintRequests; } // how many times a change asked for a redraw
     void paint (juce::Graphics&) override;
+    void resized() override { geometryDirty = true; }
 
 private:
+    void rebuildGeometry();
     std::array<Levels, 3> traces {};
     std::array<bool, 3> shownTrace { { false, false, false } };
     analysis::WaveColumns waveIn, waveOut;
     double sampleRate = 48000.0;
-    bool showWave = true;
+    bool showWave = true, changed = false, geometryDirty = true;
+    int paintCount = 0, repaintRequests = 0;
+    // cached geometry (rebuilt only when the size, the sample rate or the wave strip changes)
+    juce::Rectangle<float> frame, plot, labelRow, legendRow, waveArea;
+    std::array<float, analysis::DisplaySpectrum::columns> columnX {};
+    juce::Path gridPath, framePath;
+    struct GridLabel { juce::String text; juce::Rectangle<float> box; bool left; };
+    std::vector<GridLabel> gridLabels;
+    juce::Path linePath, fillPath; // reused by every trace, every paint
 };
 }

@@ -194,133 +194,181 @@ void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 // ---- SpectrumView ----------------------------------------------------------------------------------------------------------------------
 
+void SpectrumView::setSampleRate (double sr)
+{
+    if (! juce::approximatelyEqual (sr, sampleRate))
+    {
+        sampleRate = sr;
+        geometryDirty = true;
+        changed = true;
+    }
+}
+
+void SpectrumView::setShowWave (bool b)
+{
+    if (b != showWave)
+    {
+        showWave = b;
+        geometryDirty = true;
+        changed = true;
+    }
+}
+
 void SpectrumView::setTrace (int index, const Levels& levels, bool shown)
 {
-    traces[(size_t) index] = levels;
+    auto& t = traces[(size_t) index];
+    if (shown != shownTrace[(size_t) index] || (shown && ! std::equal (t.begin(), t.end(), levels.begin())))
+        changed = true;
     shownTrace[(size_t) index] = shown;
-    repaint();
+    if (shown)
+        t = levels;
 }
 
 void SpectrumView::setWave (const analysis::WaveColumns& in, const analysis::WaveColumns& out)
 {
+    if (! showWave)
+        return;
+    if (in.hasSignal != waveIn.hasSignal || out.hasSignal != waveOut.hasSignal || (in.hasSignal && (in.lo != waveIn.lo || in.hi != waveIn.hi))
+        || (out.hasSignal && (out.lo != waveOut.lo || out.hi != waveOut.hi)))
+        changed = true;
     waveIn = in;
     waveOut = out;
-    repaint();
 }
 
-void SpectrumView::paint (juce::Graphics& g)
+void SpectrumView::commit()
+{
+    if (changed)
+    {
+        changed = false;
+        ++repaintRequests;
+        repaint();
+    }
+}
+
+void SpectrumView::rebuildGeometry()
 {
     using DS = analysis::DisplaySpectrum;
-    auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0a070f));
-    g.fillPath (chamferPath (r, 10.0f));
-    g.setColour (border);
-    g.strokePath (chamferPath (r.reduced (0.5f), 10.0f), juce::PathStrokeType (1.2f));
-    auto area = r.reduced (12.0f, 10.0f);
-    juce::Rectangle<float> waveArea;
+    geometryDirty = false;
+    frame = getLocalBounds().toFloat();
+    framePath = chamferPath (frame, 10.0f);
+    auto area = frame.reduced (12.0f, 10.0f);
+    waveArea = {};
     if (showWave)
     {
         waveArea = area.removeFromBottom (juce::jmin (64.0f, area.getHeight() * 0.28f));
         area.removeFromBottom (6.0f);
     }
-    auto labels = area.removeFromBottom (14.0f);
-    const auto plot = area.withTrimmedTop (16.0f);
-
-    // frequency grid (log, 20 Hz to the top of the display) and level grid (-90 .. -6 dBFS)
+    labelRow = area.removeFromBottom (14.0f);
+    legendRow = area.removeFromTop (14.0f);
+    plot = area.withTrimmedTop (2.0f);
     const float topHz = (float) std::min (20000.0, 0.45 * sampleRate);
     auto xOf = [&] (float hz) { return plot.getX() + plot.getWidth() * std::log (hz / 20.0f) / std::log (topHz / 20.0f); };
-    g.setFont (fontOf (10.5f));
+    for (int c = 0; c < DS::columns; ++c)
+        columnX[(size_t) c] = xOf (DS::columnHz (c, sampleRate));
+    gridPath.clear();
+    gridLabels.clear();
     for (float hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
     {
         if (hz >= topHz)
             continue;
         const float x = xOf (hz);
-        g.setColour (border.withAlpha (0.7f));
-        g.fillRect (x, plot.getY(), 1.0f, plot.getHeight());
-        g.setColour (textDim);
-        g.drawText (hz >= 1000.0f ? juce::String (hz / 1000.0f, 0) + "k" : juce::String ((int) hz), juce::Rectangle<float> (x - 20.0f, labels.getY(), 40.0f, labels.getHeight()), juce::Justification::centred, false);
+        gridPath.addRectangle (x, plot.getY(), 1.0f, plot.getHeight());
+        gridLabels.push_back ({ hz >= 1000.0f ? juce::String (hz / 1000.0f, 0) + "k" : juce::String ((int) hz), { x - 20.0f, labelRow.getY(), 40.0f, labelRow.getHeight() }, false });
     }
     for (float db : { -72.0f, -54.0f, -36.0f, -18.0f })
     {
         if (plot.getHeight() < 100.0f && db > -72.0f && db < -18.0f)
             continue;
         const float y = plot.getBottom() - plot.getHeight() * (db + 90.0f) / 84.0f;
-        g.setColour (border.withAlpha (0.55f));
-        g.fillRect (plot.getX(), y, plot.getWidth(), 1.0f);
-        g.setColour (textDim.withAlpha (0.8f));
-        g.drawText (juce::String ((int) db), juce::Rectangle<float> (plot.getX() + 2.0f, y - 12.0f, 28.0f, 12.0f), juce::Justification::centredLeft, false);
+        gridPath.addRectangle (plot.getX(), y, plot.getWidth(), 1.0f);
+        gridLabels.push_back ({ juce::String ((int) db), { plot.getX() + 2.0f, y - 12.0f, 28.0f, 12.0f }, true });
     }
+    linePath.preallocateSpace (3 * DS::columns + 16);
+    fillPath.preallocateSpace (3 * DS::columns + 16);
+}
+
+void SpectrumView::paint (juce::Graphics& g)
+{
+    using DS = analysis::DisplaySpectrum;
+    ++paintCount;
+    if (geometryDirty)
+        rebuildGeometry();
+    g.setColour (juce::Colour (0xff0a070f));
+    g.fillPath (framePath);
+    g.setColour (border);
+    g.strokePath (framePath, juce::PathStrokeType (1.2f));
+
+    g.setColour (border.withAlpha (0.6f));
+    g.fillPath (gridPath);
+    g.setFont (fontOf (10.5f));
+    g.setColour (textDim.withAlpha (0.85f));
+    for (const auto& l : gridLabels)
+        g.drawText (l.text, l.box, l.left ? juce::Justification::centredLeft : juce::Justification::centred, false);
 
     static const juce::Colour colours[3] = { violet, pink, juce::Colour (0xff9b91a5) };
     static const char* names[3] = { "VOCAL INPUT", "OUTPUT", "INSTRUMENTAL INPUT" };
     bool any = false;
-    float legendX = plot.getX();
     for (int t : { 2, 0, 1 }) // the beat behind, then the vocal, then the output
     {
         if (! shownTrace[(size_t) t])
             continue;
         any = true;
-        juce::Path line;
+        linePath.clear();
         for (int c = 0; c < DS::columns; ++c)
         {
-            const float x = xOf (DS::columnHz (c, sampleRate)), y = plot.getBottom() - plot.getHeight() * traces[(size_t) t][(size_t) c];
-            c == 0 ? line.startNewSubPath (x, y) : line.lineTo (x, y);
+            const float x = columnX[(size_t) c], y = plot.getBottom() - plot.getHeight() * traces[(size_t) t][(size_t) c];
+            c == 0 ? linePath.startNewSubPath (x, y) : linePath.lineTo (x, y);
         }
-        juce::Path fill (line);
-        fill.lineTo (plot.getRight(), plot.getBottom());
-        fill.lineTo (plot.getX(), plot.getBottom());
-        fill.closeSubPath();
+        fillPath = linePath;
+        fillPath.lineTo (plot.getRight(), plot.getBottom());
+        fillPath.lineTo (plot.getX(), plot.getBottom());
+        fillPath.closeSubPath();
         g.setColour (colours[t].withAlpha (t == 1 ? 0.08f : 0.2f));
-        g.fillPath (fill);
+        g.fillPath (fillPath);
         g.setColour (colours[t].withAlpha (0.95f));
-        g.strokePath (line, juce::PathStrokeType (t == 1 ? 1.4f : 1.8f, juce::PathStrokeType::curved));
+        g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 1.4f : 1.8f, juce::PathStrokeType::curved));
     }
+    float legendX = legendRow.getX();
     for (int t : { 0, 1, 2 })
         if (shownTrace[(size_t) t])
         {
             g.setColour (colours[t]);
-            g.fillRect (legendX, area.getY() + 3.0f, 8.0f, 8.0f);
+            g.fillRect (legendX, legendRow.getY() + 3.0f, 8.0f, 8.0f);
             g.setFont (labFont (10.5f));
-            g.drawText (names[t], juce::Rectangle<float> (legendX + 12.0f, area.getY(), 150.0f, 14.0f), juce::Justification::centredLeft, false);
+            g.drawText (names[t], juce::Rectangle<float> (legendX + 12.0f, legendRow.getY(), 150.0f, 14.0f), juce::Justification::centredLeft, false);
             legendX += 24.0f + (float) juce::GlyphArrangement::getStringWidth (labFont (10.5f), names[t]);
         }
 
     // waveform strip: the vocal input (violet) and the output (pink), newest on the right
-    if (! showWave)
+    bool wave = false;
+    if (showWave)
     {
-        if (! any)
+        g.setColour (juce::Colour (0xff0c0910));
+        g.fillRect (waveArea);
+        g.setColour (border.withAlpha (0.8f));
+        g.drawRect (waveArea, 1.0f);
+        const float cy = waveArea.getCentreY(), half = waveArea.getHeight() * 0.5f - 2.0f;
+        g.setColour (border);
+        g.fillRect (waveArea.getX(), cy, waveArea.getWidth(), 1.0f);
+        wave = waveIn.hasSignal || waveOut.hasSignal;
+        if (wave)
         {
-            g.setColour (textDim);
-            g.setFont (labFont (12.0f));
-            g.drawText ("NO SIGNAL", plot, juce::Justification::centred, false);
-        }
-        return;
-    }
-    g.setColour (juce::Colour (0xff0c0910));
-    g.fillRect (waveArea);
-    g.setColour (border.withAlpha (0.8f));
-    g.drawRect (waveArea, 1.0f);
-    const float cy = waveArea.getCentreY(), half = waveArea.getHeight() * 0.5f - 2.0f;
-    g.setColour (border);
-    g.fillRect (waveArea.getX(), cy, waveArea.getWidth(), 1.0f);
-    const bool wave = waveIn.hasSignal || waveOut.hasSignal;
-    if (wave)
-    {
-        const float step = waveArea.getWidth() / (float) analysis::WaveColumns::columns;
-        for (int c = 0; c < analysis::WaveColumns::columns; ++c)
-        {
-            const float x = waveArea.getX() + (float) c * step;
-            g.setColour (pink.withAlpha (0.55f));
-            g.fillRect (x, cy - waveOut.hi[(size_t) c] * half, juce::jmax (1.0f, step - 0.5f), juce::jmax (1.0f, (waveOut.hi[(size_t) c] - waveOut.lo[(size_t) c]) * half));
-            g.setColour (violet.withAlpha (0.9f));
-            g.fillRect (x, cy - waveIn.hi[(size_t) c] * half, juce::jmax (1.0f, step - 0.5f), juce::jmax (1.0f, (waveIn.hi[(size_t) c] - waveIn.lo[(size_t) c]) * half));
+            const float step = waveArea.getWidth() / (float) analysis::WaveColumns::columns;
+            for (int c = 0; c < analysis::WaveColumns::columns; ++c)
+            {
+                const float x = waveArea.getX() + (float) c * step;
+                g.setColour (pink.withAlpha (0.55f));
+                g.fillRect (x, cy - waveOut.hi[(size_t) c] * half, juce::jmax (1.0f, step - 0.5f), juce::jmax (1.0f, (waveOut.hi[(size_t) c] - waveOut.lo[(size_t) c]) * half));
+                g.setColour (violet.withAlpha (0.9f));
+                g.fillRect (x, cy - waveIn.hi[(size_t) c] * half, juce::jmax (1.0f, step - 0.5f), juce::jmax (1.0f, (waveIn.hi[(size_t) c] - waveIn.lo[(size_t) c]) * half));
+            }
         }
     }
     if (! any && ! wave)
     {
         g.setColour (textDim);
-        g.setFont (labFont (13.0f));
-        g.drawText ("NO SIGNAL - PLAY AUDIO THROUGH THE PLUG-IN", plot, juce::Justification::centred, false);
+        g.setFont (labFont (showWave ? 13.0f : 12.0f));
+        g.drawText (showWave ? "NO SIGNAL - PLAY AUDIO THROUGH THE PLUG-IN" : "NO SIGNAL", plot, juce::Justification::centred, false);
     }
 }
 }

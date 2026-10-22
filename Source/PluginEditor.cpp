@@ -638,8 +638,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     // Everything lives in `content`, which is laid out at the design size and scaled to fit the window.
     addAndMakeVisible (content);
     setResizable (true, true);
-    setResizeLimits (designW * 3 / 5, designH * 3 / 5, designW * 3 / 2, designH * 3 / 2); // below ~60 % the text is too small to read
+    setResizeLimits (designW * 7 / 10, designH * 7 / 10, designW * 3 / 2, designH * 3 / 2); // below ~70 % the smallest labels (9.5-11 pt) fall under about 7 px
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
+    visualTimer.onTick = [this] { visualTick(); };
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -650,13 +651,68 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 GlitchKidEditor::~GlitchKidEditor()
 {
     stopTimer();
+    visualTimer.stopTimer();
     setLookAndFeel (nullptr);
 }
 
-void GlitchKidEditor::startFade()
+void GlitchKidEditor::startTransition()
 {
-    pageFade = motionOn ? 0.0f : 1.0f;
-    content.setAlpha (motionOn ? 0.3f : 1.0f);
+    transition = motionOn ? 0.0f : 1.0f;
+    lastVisualMs = juce::Time::getMillisecondCounterHiRes();
+    updateVisualTimer();
+}
+
+bool GlitchKidEditor::needsDisplays() const
+{
+    return page == Page::home || page == Page::clean || page == Page::beat || (page == Page::finalTouch && category == 1);
+}
+
+void GlitchKidEditor::updateVisualTimer()
+{
+    const bool want = needsDisplays() || transition < 1.0f;
+    if (want && ! visualTimer.isTimerRunning())
+    {
+        lastVisualMs = juce::Time::getMillisecondCounterHiRes();
+        visualTimer.startTimerHz (60);
+    }
+    else if (! want && visualTimer.isTimerRunning())
+        visualTimer.stopTimer();
+}
+
+// The scan line of a workspace transition sits over a band of the workspace area; only that band is repainted each frame.
+void GlitchKidEditor::repaintTransitionBand (float t)
+{
+    const float y = 102.0f + juce::jlimit (0.0f, 1.0f, t) * 458.0f;
+    repaint (juce::Rectangle<int> (0, (int) ((y - 20.0f) * scaleFactor), getWidth(), (int) (42.0f * scaleFactor) + 2));
+}
+
+void GlitchKidEditor::visualTick()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes();
+    const float dt = juce::jlimit (0.004f, 0.1f, (float) ((now - lastVisualMs) * 0.001));
+    lastVisualMs = now;
+    if (transition < 1.0f)
+    {
+        const float before = transition;
+        transition = juce::jmin (1.0f, transition + dt / 0.1f); // 100 ms
+        repaintTransitionBand (before);
+        repaintTransitionBand (transition);
+    }
+    refreshDisplays (dt);
+    updateVisualTimer();
+}
+
+void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
+{
+    if (transition >= 1.0f)
+        return;
+    g.addTransform (juce::AffineTransform::scale (scaleFactor));
+    const float y = 102.0f + transition * 458.0f;
+    juce::ColourGradient glow (ui::violet.withAlpha (0.0f), 0.0f, y - 18.0f, ui::pink.withAlpha (0.28f), 0.0f, y, false);
+    g.setGradientFill (glow);
+    g.fillRect (0.0f, y - 18.0f, (float) designW, 18.0f);
+    g.setColour (ui::pink.withAlpha (0.9f));
+    g.fillRect (0.0f, y, (float) designW, 2.0f);
 }
 
 void GlitchKidEditor::refreshTunePad()
@@ -679,8 +735,7 @@ void GlitchKidEditor::refreshTunePad()
 
 void GlitchKidEditor::showPage (Page p, bool remember)
 {
-    if (p != page)
-        startFade();
+    const bool changedPage = p != page;
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
@@ -688,17 +743,24 @@ void GlitchKidEditor::showPage (Page p, bool remember)
         navButtons[i].setToggleState (i == (int) page, juce::dontSendNotification);
     layoutContent();
     repaint();
+    if (changedPage)
+        startTransition();
+    else
+        updateVisualTimer();
 }
 
 void GlitchKidEditor::showCategory (int c, bool remember)
 {
-    if (juce::jlimit (0, numCategories - 1, c) != category)
-        startFade();
+    const bool changedCategory = juce::jlimit (0, numCategories - 1, c) != category;
     category = juce::jlimit (0, numCategories - 1, c);
     if (remember)
         glitchProcessor.setUiInt ("uiCategory", category);
     layoutContent();
     repaint();
+    if (changedCategory)
+        startTransition();
+    else
+        updateVisualTimer();
 }
 
 void GlitchKidEditor::applyMacroSlider (int m)
@@ -784,12 +846,6 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
     }
     for (auto* k : noteKeys)
         k->tick (dt);
-    if (pageFade < 1.0f)
-    {
-        pageFade = juce::jmin (1.0f, pageFade + 0.2f);
-        content.setAlpha (0.3f + 0.7f * pageFade);
-        applyContentTransform (pageFade < 1.0f ? (1.0f - pageFade) * 8.0f * ((int) (pageFade * 10.0f) % 2 == 0 ? 1.0f : -1.0f) : 0.0f); // a very short horizontal glitch
-    }
     autoAnalyzeButton.setMotion (motionOn);
     autoAnalyzeButton.tick (dt);
 
@@ -1256,14 +1312,14 @@ void GlitchKidEditor::refreshStatus (float inPeak, float outPeak)
 
 // The real-time views: the newest audio from the processor's taps (the vocal input before processing, the output after it, the Instrumental input), a windowed FFT
 // and a min/max waveform, all computed here on the message thread from bounded copies. Nothing is drawn without a signal.
-void GlitchKidEditor::refreshDisplays()
+void GlitchKidEditor::refreshDisplays (float dt)
 {
     using SS = GlitchKidProcessor::SourceStatus;
     const bool onHome = page == Page::home, onBeat = page == Page::beat, onClean = page == Page::clean, onTone = page == Page::finalTouch && category == 1;
     if (! (onHome || onBeat || onClean || onTone))
         return;
     const double sr = glitchProcessor.getSampleRate() > 8000.0 ? glitchProcessor.getSampleRate() : 48000.0;
-    specIn.update (glitchProcessor.getInputTap(), sr);
+    specIn.update (glitchProcessor.getInputTap(), sr, dt);
     if (onClean || onTone)
     {
         const float top = (float) juce::jmin (20000.0, 0.45 * sr);
@@ -1274,17 +1330,18 @@ void GlitchKidEditor::refreshDisplays()
     }
     if (onHome)
     {
-        specOut.update (glitchProcessor.getOutputTap(), sr);
-        waveIn.update (glitchProcessor.getInputTap(), 2400);
-        waveOut.update (glitchProcessor.getOutputTap(), 2400);
+        specOut.update (glitchProcessor.getOutputTap(), sr, dt);
+        waveIn.update (glitchProcessor.getInputTap(), 2400, dt);
+        waveOut.update (glitchProcessor.getOutputTap(), 2400, dt);
         const bool beatLive = glitchProcessor.getInstrumentalStatus() == SS::live;
         if (beatLive)
-            specBeat.update (glitchProcessor.getBeatTap(), sr);
+            specBeat.update (glitchProcessor.getBeatTap(), sr, dt);
         homeView.setSampleRate (sr);
         homeView.setTrace (0, specIn.levels(), specIn.hasSignal());
         homeView.setTrace (1, specOut.levels(), specOut.hasSignal());
         homeView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
         homeView.setWave (waveIn, waveOut);
+        homeView.commit(); // repaints only if something changed
         const juce::String hint = beatLive ? "VOCAL INPUT before processing, OUTPUT after it, INSTRUMENTAL INPUT as received" : "VOCAL INPUT before processing, OUTPUT after it";
         if (hint != homeHint.getText())
             homeHint.setText (hint, juce::dontSendNotification);
@@ -1293,13 +1350,13 @@ void GlitchKidEditor::refreshDisplays()
     {
         const bool beatLive = glitchProcessor.getInstrumentalStatus() == SS::live;
         if (beatLive)
-            specBeat.update (glitchProcessor.getBeatTap(), sr);
+            specBeat.update (glitchProcessor.getBeatTap(), sr, dt);
         beatView.setSampleRate (sr);
         beatView.setShowWave (false);
         beatView.setTrace (0, specIn.levels(), specIn.hasSignal());
         beatView.setTrace (1, specOut.levels(), false);
         beatView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
-        beatView.setWave (glitchkid::analysis::WaveColumns {}, glitchkid::analysis::WaveColumns {});
+        beatView.commit();
     }
 }
 
@@ -1601,7 +1658,6 @@ void GlitchKidEditor::timerCallback()
     refreshState (inPeak, outPeak);
     refreshBeatLock (inPeak, glitchProcessor.consumeBeatPeak());
     refreshStatus (inPeak, outPeak);
-    refreshDisplays();
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
     limGrBar.push (glitchProcessor.consumeLimiterGainReductionDb());
     if (eqGraph->isVisible())

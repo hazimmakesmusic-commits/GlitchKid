@@ -114,6 +114,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/BeatLockTests.cpp
         Tests/LevelUiTests.cpp
         Tests/OutputLimiterTests.cpp
+        Tests/UiPerfTests.cpp
+        Tests/UiBehaviourTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp

@@ -74,7 +74,7 @@ public:
 private:
     static constexpr int numBars = 120;
     std::array<float, numBars> bars {};
-    int head = 0;
+    int head = 0, nonZero = 0;
 };
 
 // A horizontal bar for a measured gain reduction (dB, positive), 0..maxDb, falling at a fixed rate; it shows only what the DSP reports.

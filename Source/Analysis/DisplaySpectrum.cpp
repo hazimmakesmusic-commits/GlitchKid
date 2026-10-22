@@ -21,10 +21,19 @@ float DisplaySpectrum::columnHz (int c, double sr)
     return minHz * std::pow (hi / minHz, (float) std::clamp (c, 0, columns - 1) / (float) (columns - 1));
 }
 
-void DisplaySpectrum::update (const DisplayTap& tap, double sr)
+void DisplaySpectrum::update (const DisplayTap& tap, double sr, float dt)
 {
     if (sr < 8000.0)
         return;
+    const bool live = freshness.update (tap, dt);
+    const float fall = 1.2f * std::clamp (dt, 0.001f, 0.2f); // 1.2 per second: the same fall as 0.04 per 30 Hz frame
+    if (! live) // nothing is being written: the display decays to empty instead of freezing on the last frame
+    {
+        signal = false;
+        for (auto& s : shown)
+            s = std::max (0.0f, s - fall);
+        return;
+    }
     tap.copyLatest (samples.data(), fftSize);
     float peak = 0.0f;
     for (int i = 0; i < fftSize; ++i)
@@ -54,12 +63,19 @@ void DisplaySpectrum::update (const DisplayTap& tap, double sr)
             level = std::clamp ((db + 90.0f) / 84.0f, 0.0f, 1.0f);
         }
         float& s = shown[(size_t) c];
-        s = level > s ? level : std::max (level, s - 0.04f);
+        s = level > s ? level : std::max (level, s - fall);
     }
 }
 
-void WaveColumns::update (const DisplayTap& tap, int n)
+void WaveColumns::update (const DisplayTap& tap, int n, float dt)
 {
+    if (! freshness.update (tap, dt))
+    {
+        lo.fill (0.0f);
+        hi.fill (0.0f);
+        hasSignal = false;
+        return;
+    }
     n = std::clamp (n, columns, (int) DisplayTap::size);
     std::array<float, DisplayTap::size> tmp;
     tap.copyLatest (tmp.data(), n);

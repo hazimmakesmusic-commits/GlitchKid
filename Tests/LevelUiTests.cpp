@@ -248,13 +248,22 @@ struct LevelUiTests : public juce::UnitTest
             std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
             pump (100);
             snapshot (*ed, "home_nosignal");
-            const auto voice = lead (5.85); // ends inside a note, so the newest samples are not silence
-            stream (p, voice, nullptr, 0);
-            pump (200);
+            const auto voice = lead (12.0);
+            size_t pos = 0;
+            auto play = [&] (double seconds) // audio keeps arriving while the interface refreshes, as in a running host
+            {
+                const size_t n = (size_t) (seconds * fs) / blockSize * blockSize;
+                const std::vector<float> part (voice.begin() + (long) pos, voice.begin() + (long) (pos + n));
+                stream (p, part, nullptr, 0);
+                pos += n;
+            };
+            play (5.0);
+            for (int i = 0; i < 12; ++i) { play (0.06); pump (16); }
             snapshot (*ed, "home_signal");
             auto* content = ed->getChildComponent (0);
             findButton (*content, "CLEAN LAB")->triggerClick();
-            pump (200);
+            pump (60);
+            for (int i = 0; i < 12; ++i) { play (0.06); pump (16); }
             snapshot (*ed, "clean_signal");
         }
 

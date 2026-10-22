@@ -161,9 +161,13 @@ void NoteKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 void ScopeStrip::push (float peak)
 {
-    bars[(size_t) head] = peakToLevel (peak);
+    const float v = peakToLevel (peak);
+    const bool wasEmpty = nonZero == 0;
+    nonZero += (v > 0.001f ? 1 : 0) - (bars[(size_t) head] > 0.001f ? 1 : 0);
+    bars[(size_t) head] = v;
     head = (head + 1) % numBars;
-    repaint();
+    if (nonZero > 0 || ! wasEmpty) // an empty strip that stays empty looks identical: no repaint
+        repaint();
 }
 
 void ScopeStrip::paint (juce::Graphics& g)
@@ -452,6 +456,8 @@ void EqGraph::setSpectrum (const float* levels, int n, float topHz)
             repaint();
         return;
     }
+    if ((int) spec.size() == n && juce::approximatelyEqual (specTop, topHz) && std::equal (spec.begin(), spec.end(), levels))
+        return; // nothing changed: nothing to redraw
     spec.assign (levels, levels + n);
     specTop = topHz;
     repaint();

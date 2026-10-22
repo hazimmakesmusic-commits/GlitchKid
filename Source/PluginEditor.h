@@ -59,6 +59,11 @@ public:
     ~GlitchKidEditor() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    void uiShowWorkspaceForTest (int workspace, int categoryIndex = 0) { showCategory (categoryIndex, false); showPage ((Page) workspace, false); } // tests and profiling only
+    void uiTickForTest() { timerCallback(); refreshDisplays (1.0f / 30.0f); } // runs one refresh of both timers now (tests and profiling only)
+    bool uiVisualTimerRunningForTest() const { return visualTimer.isTimerRunning(); }
+    bool uiTransitionRunningForTest() const { return transition < 1.0f; }
+    void paintOverChildren (juce::Graphics&) override;
 
 private:
     // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
@@ -78,10 +83,22 @@ private:
     void timerCallback() override;
     void refreshState (float peak, float outPeak);
     void setBypassFromUi (bool bypassed);
-    juce::TooltipWindow tooltipWindow { this, 500 }; // the controls' tooltips need one to be shown at all
+    juce::TooltipWindow tooltipWindow { this, 400 }; // the controls' tooltips need one to be shown at all (400 ms: quick enough to be useful, slow enough not to flash while moving between controls)
 
-    float pageFade = 1.0f; // 0..1: a short fade-in whenever the page or category changes
-    void startFade();
+    // The spectrum and waveform refresh on their own ~60 Hz timer, running only while a view that needs them (or a workspace transition) is visible; the 30 Hz
+    // timer keeps the state and the meters. A transition is a brief scan-line wipe (MOTION on); the new workspace is fully drawn and usable from the first frame.
+    struct VisualTimer : juce::Timer
+    {
+        std::function<void()> onTick;
+        void timerCallback() override { if (onTick) onTick(); }
+    } visualTimer;
+    double lastVisualMs = 0.0;
+    float transition = 1.0f; // 0..1; 1 = no transition running
+    void startTransition();
+    void visualTick();
+    void updateVisualTimer();
+    bool needsDisplays() const;
+    void repaintTransitionBand (float t);
 
     juce::TextButton categoryButtons[numCategories];
     juce::TextButton navButtons[5], undoButton { "UNDO" };
@@ -198,7 +215,7 @@ private:
     int clipTicks = 0;      // frames left to show CLIP after the output really reached full scale
     float inDbShown = -100.0f, outDbShown = -100.0f; // held peaks for the persistent bar's read-out
     void refreshStatus (float inPeak, float outPeak);
-    void refreshDisplays();
+    void refreshDisplays (float dtSeconds);
 
     // ---- BEAT LOCK ----
     glitchkid::ui::LabHeading beatHeading { "BEAT INPUT" }, suggestHeading { "SUGGESTED CHANGES" };

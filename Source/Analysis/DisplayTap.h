@@ -28,6 +28,9 @@ public:
         writePos.store (w + (std::uint32_t) numSamples, std::memory_order_release);
     }
 
+    // How many samples have ever been written (wraps at 2^32). The reader compares it between looks: a count that stops moving means nothing is arriving.
+    std::uint32_t writeCount() const noexcept { return writePos.load (std::memory_order_acquire); }
+
     // The newest `n` samples (n <= size), oldest first. Samples that were never written are 0.
     void copyLatest (float* dst, int n) const noexcept
     {

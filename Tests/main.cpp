@@ -321,7 +321,18 @@ int main()
     juce::ScopedJuceInitialiser_GUI init;
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
-    runner.runAllTests();
+    // GLITCHKID_TEST_ONLY=<text> runs only the test groups whose name contains the text (for quick measurements); without it everything runs.
+    const auto only = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_TEST_ONLY", {});
+    if (only.isEmpty())
+        runner.runAllTests();
+    else
+    {
+        juce::Array<juce::UnitTest*> chosen;
+        for (auto* t : juce::UnitTest::getAllTests())
+            if (t->getName().containsIgnoreCase (only))
+                chosen.add (t);
+        runner.runTests (chosen);
+    }
 
     int failures = 0;
     for (int i = 0; i < runner.getNumResults(); ++i)
