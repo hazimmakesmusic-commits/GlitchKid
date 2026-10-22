@@ -803,6 +803,7 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
                 peak = juce::jmax (peak, std::isfinite (x[i]) ? std::abs (x[i]) : 0.0f);
         }
         raisePeak (beatPeak, peak);
+        beatTap.push (aux.getReadPointer (0), aux.getNumChannels() > 1 ? aux.getReadPointer (1) : nullptr, aux.getNumSamples());
         beatSilentSamples = peak > 1.0e-4f ? 0.0 : beatSilentSamples + (double) aux.getNumSamples();
         beatSilentSeconds.store ((float) (beatSilentSamples / juce::jmax (1.0, sourceRate)), std::memory_order_relaxed);
         beatBusOn.store (true, std::memory_order_relaxed);
@@ -850,6 +851,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     const float inMag = buffer.getMagnitude (0, numSamples);
     raisePeak (inputPeak, inMag);
+    inputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 
     // Dry copy, delayed by the saturation latency. Kept current on every block so that bypass and the
     // bypass crossfade stay time-aligned with the processed path.
@@ -954,6 +956,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
         raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
+        outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
         return;
     }
 
@@ -1110,6 +1113,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         }
 
     raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
+    outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 }
 
 juce::AudioProcessorEditor* GlitchKidProcessor::createEditor()

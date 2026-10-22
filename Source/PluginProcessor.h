@@ -1,4 +1,5 @@
 #pragma once
+#include "Analysis/DisplayTap.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/ParametricEq.h"
 #include "DSP/Compressor.h"
@@ -215,6 +216,10 @@ public:
     // Peak meters: the audio thread raises these (linear, pre-/post-processing); the UI reads and resets them.
     float consumeInputPeak()  { return inputPeak.exchange (0.0f); }
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
+    // The newest audio for the interface's waveform and spectrum views (the vocal input before processing, the output after it, and the Instrumental input).
+    const glitchkid::analysis::DisplayTap& getInputTap() const { return inputTap; }
+    const glitchkid::analysis::DisplayTap& getOutputTap() const { return outputTap; }
+    const glitchkid::analysis::DisplayTap& getBeatTap() const { return beatTap; }
     float consumeBeatPeak() { return beatPeak.exchange (0.0f); } // peak of the Instrumental input since the last call (0 when none is connected)
     CleanLab::Applied getCleanApplied() const { return cleanLab.applied(); } // what CLEAN LAB is really applying right now (UI telemetry)
     float consumeGainReductionDb() { return gainReductionPeak.exchange (0.0f); } // positive dB
@@ -313,6 +318,7 @@ private:
     std::atomic<float>* satDrive = nullptr;
     std::atomic<float>* mixPercent = nullptr;
     juce::AudioBuffer<float> dryBuffer; // preallocated in prepareToPlay, used for the bypass crossfade
+    glitchkid::analysis::DisplayTap inputTap, outputTap, beatTap;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
     juce::SmoothedValue<float> wetMix { 1.0f };       // 1 = processed, 0 = dry (bypass)

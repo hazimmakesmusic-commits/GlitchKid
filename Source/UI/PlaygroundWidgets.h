@@ -3,13 +3,19 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include <array>
 #include <functional>
+#include <vector>
 #include "../DSP/CleanLab.h"
 
-// The GlitchKid "Vocal Lab" 8-bit look: original, lightweight widgets (stepped corners, pixel segments; see PixelKit.h) (no images, no network). Everything here runs on the message thread; nothing touches
+// The GlitchKid "Vocal Lab" look: original, lightweight vector widgets (no images, no network). Everything here runs on the message thread; nothing touches
 // the audio thread. Animation is driven by the editor's single 30 Hz timer through tick(); with motion off everything jumps to its end state, and nothing
 // repaints unless something changed.
 namespace glitchkid::ui
 {
+// A rectangle with its top-left and bottom-right corners cut diagonally by `c` (the interface's sharp, technical corner), and a restrained neon glow
+// (a soft, low-alpha shadow of the accent colour; use sparingly).
+juce::Path chamferPath (juce::Rectangle<float>, float c);
+void drawGlow (juce::Graphics&, const juce::Path&, juce::Colour, float radius);
+
 // Palette (design tokens, locked brand colours). Void black window, deep graphite panels, ultraviolet for the primary accent (selection, focus, the main action,
 // EQ), cyber pink for secondary highlights (real processing activity, the note being tuned to, success), pale chrome for text, muted lavender-grey for secondary
 // text, divider violet for borders. Red means clipping or an error. The other colours are derived shades of these (hover, disabled, depth).
@@ -24,7 +30,7 @@ juce::Font fontOf (float height, bool bold = false);
 // The GlitchKid dial: a thin value arc over a track around a dark cap with a pointer. `start`/`end` are JUCE rotary angles; pos is 0..1.
 void drawDial (juce::Graphics&, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, bool hover, bool focus);
 
-// One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small pink square.
+// One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small lime dot.
 class ProfileCard : public juce::Button
 {
 public:
@@ -86,7 +92,7 @@ private:
 // What the main action is doing. Every state comes from the real analyzer / build state (nothing is simulated).
 enum class AutoState { idle, waiting, working, ready, error };
 
-// BUILD MY VOCAL MIX: the strongest element of the BUILD level. idle/ready = solid ultraviolet; waiting for audio = a sweeping highlight; working = a progress fill that follows the
+// BUILD MY VOCAL MIX: the strongest element of AUTO. idle/ready = solid lime; waiting for audio = a sweeping highlight; working = a progress fill that follows the
 // real analysis time; error = pink outline. It is an ordinary TextButton (text, clicks, focus).
 class BuildButton : public juce::TextButton
 {
@@ -122,6 +128,10 @@ public:
     // Nothing is drawn while none is applied. cleanResponseDb() uses the same filter formulas as CleanLab.
     void setCleanApplied (const CleanLab::Applied&);
     static float cleanResponseDb (const CleanLab::Applied&, float atHz, double sampleRate);
+    // The real spectrum of the vocal input, drawn faintly behind the curve: `n` levels (0..1) at log-spaced frequencies from 20 Hz to `topHz`. Pass n = 0 (or call
+    // clearSpectrum) when there is no signal: nothing is drawn.
+    void setSpectrum (const float* levels01, int n, float topHz);
+    void clearSpectrum() { setSpectrum (nullptr, 0, 20000.0f); }
     std::function<void (int)> onBandSelected;
     juce::Point<float> pointOf (int band) const;   // component coordinates of a band's handle
     static float responseDb (const float freq[numBands], const float gain[numBands], const float q[numBands], float atHz, double sampleRate);
@@ -147,6 +157,8 @@ private:
     std::function<double()> sampleRate;
     juce::Rectangle<float> plot;
     juce::Path curve, cleanCurve;
+    std::vector<float> spec;
+    float specTop = 20000.0f;
     CleanLab::Applied clean, shownClean;
     bool haveClean = false;
     float shownF[numBands] {}, shownG[numBands] {}, shownQ[numBands] {};

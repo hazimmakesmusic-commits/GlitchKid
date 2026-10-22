@@ -33,17 +33,16 @@ void LevelMeter::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff0c0910));
     g.fillRect (r);
     g.setColour (ui::border);
-    g.drawRect (r, 2.0f);
-    r = r.reduced (3.0f);
-    const int seg = juce::jmax (4, (int) (r.getHeight() / 6.0f));
-    const float h = r.getHeight() / (float) seg;
-    const int lit = (int) std::lround (juce::jlimit (0.0f, 1.0f, juce::jmap (shownDb, minDb, maxDb, 0.0f, 1.0f)) * (float) seg);
-    const int zero = (int) std::lround (juce::jmap (0.0f, minDb, maxDb, 0.0f, 1.0f) * (float) seg); // the 0 dBFS segment
-    for (int i = 0; i < seg; ++i)
-    {
-        g.setColour (i >= lit ? ui::border.withAlpha (0.45f) : (i >= zero ? ui::errorRed : (i >= seg * 3 / 4 ? ui::pink : ui::violet)));
-        g.fillRect (r.getX(), r.getBottom() - (float) (i + 1) * h, r.getWidth(), h - 1.5f);
-    }
+    g.drawRect (r, 1.0f);
+    const float h = r.getHeight() * juce::jmap (shownDb, minDb, maxDb, 0.0f, 1.0f);
+    juce::ColourGradient grad (ui::pink, 0.0f, r.getY(), ui::violet, 0.0f, r.getBottom(), false);
+    g.setGradientFill (grad);
+    if (shownDb > 0.0f)
+        g.setColour (ui::errorRed);
+    g.fillRect (r.withTop (r.getBottom() - h).reduced (2.0f, 0.0f));
+    const float y0 = r.getBottom() - r.getHeight() * juce::jmap (0.0f, minDb, maxDb, 0.0f, 1.0f);
+    g.setColour (ui::textDim.withAlpha (0.7f));
+    g.fillRect (r.getX(), y0, r.getWidth(), 1.0f);
 }
 
 void GainReductionMeter::pushReduction (float db)
@@ -62,16 +61,9 @@ void GainReductionMeter::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff0c0910));
     g.fillRect (r);
     g.setColour (ui::border);
-    g.drawRect (r, 2.0f);
-    r = r.reduced (3.0f);
-    const int seg = juce::jmax (4, (int) (r.getHeight() / 6.0f));
-    const float h = r.getHeight() / (float) seg;
-    const int lit = (int) std::lround (juce::jlimit (0.0f, 1.0f, shownDb / maxDb) * (float) seg);
-    for (int i = 0; i < seg; ++i) // grows downward from the top
-    {
-        g.setColour (i < lit ? ui::pink : ui::border.withAlpha (0.45f));
-        g.fillRect (r.getX(), r.getY() + (float) i * h, r.getWidth(), h - 1.5f);
-    }
+    g.drawRect (r, 1.0f);
+    g.setColour (ui::pink);
+    g.fillRect (r.withHeight (r.getHeight() * juce::jlimit (0.0f, 1.0f, shownDb / maxDb)).reduced (2.0f, 0.0f));
 }
 
 ParamKnob::ParamKnob (juce::AudioProcessorValueTreeState& apvts, const char* paramId, const juce::String& name,
@@ -131,7 +123,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     using namespace glitchkid;
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
-    page = (Page) juce::jlimit (0, 4, p.getUiInt ("uiLevel", 0)); // first launch: the level-select screen
+    page = (Page) juce::jlimit (0, 4, p.getUiInt ("uiLevel", 0)); // first launch: HOME
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
     if (browsedProfile < 0 || browsedProfile >= FactoryPresets::count)
@@ -166,8 +158,16 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     };
 
     // ---- the persistent bar: back to the levels, the stage (drawn in paint), the real vocal / output levels, dry / processed, undo, motion ----
-    style (levelsButton, "Back to the level-select screen. Nothing is locked: every level can be opened at any time.");
-    levelsButton.onClick = [this] { showPage (Page::levels, true); };
+    static const char* navText[5] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH" };
+    static const char* navTip[5] = { "The session: the real-time signal and shortcuts.", "Corrective EQ, resonance suppression and de-essing for the vocal itself.",
+                                     "How the vocal sits against your beat (needs the beat on the Instrumental input).", "Pick a starting profile and build a starting mix from your vocal.",
+                                     "Pitch & key, tone, dynamics and space, control by control." };
+    for (int i = 0; i < 5; ++i)
+    {
+        navButtons[i].setButtonText (navText[i]);
+        style (navButtons[i], juce::String (navTip[i]) + " Any workspace can be opened at any time; switching never changes your sound.");
+        navButtons[i].onClick = [this, i] { showPage ((Page) i, true); };
+    }
     style (undoButton, "Put back the sound you had before the last build, profile load or BEAT LOCK change.");
     undoButton.onClick = [this] { backToMine(); };
     undoButton.setEnabled (false);
@@ -485,8 +485,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* l : { &toneRead[0], &toneRead[1], &resRead[0], &resRead[1], &resRead[2], &essRead, &cleanLearn, &cleanLevel })
         label (*l, 12.0f, false, ui::textBright);
     label (cleanHint, 11.5f, false, ui::textDim, juce::Justification::topLeft);
-    cleanHint.setText ("CLEAN LAB measures your vocal while it plays and only acts on what it finds: rumble under 60 Hz, a low-mid build-up (150-400 Hz), narrow resonances above 1 kHz that persist while the voice moves, and S sounds. "
-                       "It sits after your EQ and before the compressor (the de-esser after it). The pink curve below shows exactly what it is doing. Switch CLEAN LAB off and on (a click-free crossfade) to hear before and after.", juce::dontSendNotification);
+    cleanHint.setText ("CLEAN LAB measures your vocal while it plays and only acts on what it finds: rumble, a low-mid build-up, narrow resonances that persist while the voice moves, and S sounds. "
+                       "It sits after your EQ and before the compressor (the de-esser after it). Switch it off and on to hear before and after.", juce::dontSendNotification);
     cleanLevel.setTooltip ("The level change CLEAN LAB is making right now. Use OUTPUT TRIM or Gain to compare at the same loudness; a quieter version can sound worse for that reason alone.");
     style (cleanResetButton, "Put CLEAN LAB back to its defaults (off, 50 %, all sections at 100 %). Your other settings are not touched.");
     cleanResetButton.onClick = [this]
@@ -499,6 +499,17 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                 prm->endChangeGesture();
             }
         showStatus ("CLEAN LAB reset to its defaults.");
+    };
+    content.addAndMakeVisible (cleanAdvButton);
+    cleanAdvButton.setColour (juce::ToggleButton::tickColourId, ui::violet);
+    cleanAdvButton.setTooltip ("Show the three section trims (corrective EQ, resonance, de-esser). They keep their values when hidden.");
+    cleanAdvanced = glitchProcessor.getUiFlag ("uiCleanAdv", false);
+    cleanAdvButton.setToggleState (cleanAdvanced, juce::dontSendNotification);
+    cleanAdvButton.onClick = [this]
+    {
+        cleanAdvanced = cleanAdvButton.getToggleState();
+        glitchProcessor.setUiFlag ("uiCleanAdv", cleanAdvanced);
+        layoutContent();
     };
     content.addAndMakeVisible (essBar);
     airPresenceSlider.onValueChange = [this] { linkAir (airPresenceSlider, airAirSlider); };
@@ -540,34 +551,33 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         content.addAndMakeVisible (*l);
     addAll ({ &echoOnButton, &echoSyncButton, &echoDivBox, &dimOnButton, &dblOnButton });
 
-    // ---- the level-select screen ----
+    // ---- HOME / SESSION ----
     {
         static const char* names[4] = { "CLEAN LAB", "BEAT LOCK", "BUILD MY VOCAL MIX", "FINAL TOUCH" };
         static const char* descs[4] = {
-            "Takes out rumble, low-mid mud, harsh resonances and sharp S sounds. It listens to your vocal while it plays and only acts on what it finds.",
-            "Compares your vocal with your beat and suggests a few optional, explained changes. It needs the beat on the Instrumental input.",
-            "Pick a starting profile, then GlitchKid builds a mix from what it hears in your vocal (and your beat, when it has one).",
-            "Pitch and key, tone, dynamics and space: every control, by hand." };
-        static const char* tips[4] = { "Open CLEAN LAB.", "Open BEAT LOCK.", "Open BUILD MY VOCAL MIX.", "Open FINAL TOUCH." };
+            "Rumble, mud, harsh resonances and sharp S sounds, found while your vocal plays.",
+            "How your vocal sits against the beat, with optional, explained changes.",
+            "Pick a profile; GlitchKid builds a starting mix from what it hears.",
+            "Pitch & key, tone, dynamics and space, control by control." };
+        static const int targets[4] = { 1, 2, 3, 4 };
         for (int i = 0; i < 4; ++i)
         {
-            levelCards[i].setContent ("LEVEL 0" + juce::String (i + 1), names[i], descs[i]);
-            levelCards[i].setStatus ("...", ui::LevelStatus::idle);
-            levelCards[i].setTooltip (juce::String (tips[i]) + " The line at the bottom is read from the plug-in's real state.");
-            levelCards[i].onClick = [this, i] { showPage ((Page) (i + 1), true); };
-            content.addAndMakeVisible (levelCards[i]);
+            tiles[i].setContent (names[i], descs[i], i == 2);
+            tiles[i].setStatus ("...", ui::TileStatus::idle);
+            tiles[i].setTooltip (juce::String ("Open ") + names[i] + ". The line at the bottom is read from the plug-in's real state.");
+            tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
+            content.addAndMakeVisible (tiles[i]);
         }
-        content.addAndMakeVisible (homeTitle);
-        label (homeHint, 12.0f, false, ui::textDim);
-        homeHint.setText ("Open any level, in any order. Nothing is locked, and a card's status line only reports what is really happening.", juce::dontSendNotification);
-        label (homeInLabel, 11.0f, true, ui::textDim);
-        label (homeOutLabel, 11.0f, true, ui::textDim);
-        addAll ({ &homeIn, &homeOut });
+        addAll ({ &homeTitle, &homeSource, &homeView });
+        label (homeHint, 11.5f, false, ui::textDim, juce::Justification::centredRight);
+        homeView.setTooltip ("Spectrum (log frequency) and waveform of the audio this plug-in really receives (VOCAL INPUT, before processing) and returns (OUTPUT). The instrumental trace appears only "
+                             "when a beat is really arriving on the Instrumental input. Nothing is drawn without a signal.");
     }
 
     // ---- BEAT LOCK ----
     {
-        addAll ({ &beatHeading, &suggestHeading, &vocalBar, &beatBar, &bandCompare });
+        addAll ({ &beatHeading, &suggestHeading, &vocalBar, &beatBar, &bandCompare, &beatView });
+        beatView.setTooltip ("Spectrum of the vocal input (violet) and, only while a beat really arrives on the Instrumental input, the beat (grey). Nothing is drawn without a signal.");
         label (beatStatus, 12.5f, false, ui::textBright, juce::Justification::topLeft);
         label (beatLevels, 11.5f, false, ui::textDim);
         label (beatRouting, 11.0f, false, ui::textDim, juce::Justification::topLeft);
@@ -575,8 +585,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         label (beatChanges, 11.5f, false, ui::textBright, juce::Justification::topLeft);
         label (vocalBarLabel, 11.0f, true, ui::textDim);
         label (beatBarLabel, 11.0f, true, ui::textDim);
-        beatRouting.setText ("The beat is heard only if it is sent to GlitchKid's optional Instrumental input (see docs/SOURCES.md). A track that already has the vocal and beat mixed together "
-                             "is measured as the vocal. BEAT LOCK only changes this vocal's own controls: it does not process the beat, move your mixer faders or add reverb.", juce::dontSendNotification);
+        beatRouting.setText ("The beat is heard only on the optional Instrumental input (docs/SOURCES.md); a track that already mixes vocal and beat counts as the vocal. "
+                             "BEAT LOCK changes only this vocal's own controls: no beat processing, no mixer faders, no reverb.", juce::dontSendNotification);
         bandCompare.setTooltip ("How much of each frequency range holds the vocal's energy and the beat's energy (five coarse bands, not a spectrum analyser). A marker means the beat is likely to cover the voice there.");
         vocalBar.setTooltip ("The real peak level of this track's input.");
         beatBar.setTooltip ("The real peak level of the Instrumental input. Empty and dimmed while nothing is connected.");
@@ -658,9 +668,8 @@ void GlitchKidEditor::showPage (Page p, bool remember)
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
-    static const char* stages[5] = { "LEVEL SELECT", "01 CLEAN LAB", "02 BEAT LOCK", "03 BUILD MY VOCAL MIX", "04 FINAL TOUCH" };
-    stageText = stages[(int) page];
-    levelsButton.setToggleState (page == Page::levels, juce::dontSendNotification);
+    for (int i = 0; i < 5; ++i)
+        navButtons[i].setToggleState (i == (int) page, juce::dontSendNotification);
     layoutContent();
     repaint();
 }
@@ -1148,7 +1157,7 @@ void GlitchKidEditor::backToMine()
 // ---- level cards, the persistent bar ---------------------------------------------------------------------------------------------------------
 
 // Everything shown here is read from the real plug-in state: the held peaks, the CLEAN telemetry, the instrumental input status, the build result and the chain.
-void GlitchKidEditor::refreshLevels (float inPeak, float outPeak)
+void GlitchKidEditor::refreshStatus (float inPeak, float outPeak)
 {
     using SS = GlitchKidProcessor::SourceStatus;
     namespace am = glitchkid::automode;
@@ -1165,57 +1174,100 @@ void GlitchKidEditor::refreshLevels (float inPeak, float outPeak)
     ioLabel.setColour (juce::Label::textColourId, clipTicks > 0 ? ui::errorRed : ui::textDim);
     undoButton.setEnabled (undo.valid);
 
-    if (page != Page::levels)
-        return;
-    homeIn.setValue (ui::PixelBar::peakToMeter (inPeak), false);
-    homeOut.setValue (ui::PixelBar::peakToMeter (outPeak), clipping);
-    homeIn.setActive (signalTicks <= 30);
-
     const bool cleanOn = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::cleanOnId)->load() >= 0.5f;
     {
         const auto ca = glitchProcessor.getCleanApplied();
         const bool applied = ca.rumbleAmount > 0.02f || ca.mudDb > 0.05f || ca.resDb[0] > 0.05f || ca.resDb[1] > 0.05f || ca.resDb[2] > 0.05f || ca.essGrDb > 0.05f;
         if (! cleanOn)
-            levelCards[0].setStatus ("OFF - YOUR SIGNAL IS UNTOUCHED", ui::LevelStatus::idle);
+            tiles[0].setStatus ("OFF - SIGNAL UNTOUCHED", ui::TileStatus::idle);
         else if (ca.learnedSeconds < 0.05f && signalTicks > 30)
-            levelCards[0].setStatus ("ON - WAITING FOR AUDIO", ui::LevelStatus::ready);
+            tiles[0].setStatus ("ON - WAITING FOR AUDIO", ui::TileStatus::ready);
         else if (ca.learnedSeconds < 3.0f)
-            levelCards[0].setStatus ("ON - LEARNING YOUR VOICE", ui::LevelStatus::ready);
+            tiles[0].setStatus ("ON - LEARNING YOUR VOICE", ui::TileStatus::ready);
         else
-            levelCards[0].setStatus (applied ? "ON - CLEANING NOW" : "ON - NOTHING TO FIX FOUND", applied ? ui::LevelStatus::active : ui::LevelStatus::ready);
+            tiles[0].setStatus (applied ? "ON - CLEANING NOW" : "ON - NOTHING TO FIX FOUND", applied ? ui::TileStatus::active : ui::TileStatus::ready);
     }
     {
         const auto st = glitchProcessor.getInstrumentalStatus();
         if (beatListening)
-            levelCards[1].setStatus ("ANALYZING...", ui::LevelStatus::active);
+            tiles[1].setStatus ("ANALYZING...", ui::TileStatus::active);
         else if (beatApplied)
-            levelCards[1].setStatus ("APPLIED - " + juce::String (beatAppliedCount) + " CHANGE" + (beatAppliedCount == 1 ? "" : "S"), ui::LevelStatus::active);
+            tiles[1].setStatus ("APPLIED - " + juce::String (beatAppliedCount) + " CHANGE" + (beatAppliedCount == 1 ? "" : "S"), ui::TileStatus::active);
         else if (beatResult.valid)
-            levelCards[1].setStatus ("ANALYSED - " + juce::String ((int) beatResult.items.size() - 1) + " SUGGESTION" + (beatResult.items.size() == 2 ? "" : "S"), ui::LevelStatus::ready);
+            tiles[1].setStatus ("ANALYSED - " + juce::String ((int) beatResult.items.size() - 1) + " SUGGESTION" + (beatResult.items.size() == 2 ? "" : "S"), ui::TileStatus::ready);
         else if (st == SS::notConnected)
-            levelCards[1].setStatus ("NO BEAT INPUT CONNECTED", ui::LevelStatus::idle);
+            tiles[1].setStatus ("NO BEAT INPUT CONNECTED", ui::TileStatus::idle);
         else if (st == SS::connectedSilent)
-            levelCards[1].setStatus ("BEAT INPUT IS SILENT", ui::LevelStatus::idle);
+            tiles[1].setStatus ("BEAT INPUT IS SILENT", ui::TileStatus::idle);
         else
-            levelCards[1].setStatus (beatResult.status == am::BeatLockResult::Status::beatNotAnalysed ? "BEAT NOT ANALYSED - TRY AGAIN" : "BEAT ARRIVING - READY TO ANALYZE", ui::LevelStatus::ready);
+            tiles[1].setStatus (beatResult.status == am::BeatLockResult::Status::beatNotAnalysed ? "BEAT NOT ANALYSED - TRY AGAIN" : "BEAT ARRIVING - READY TO ANALYZE", ui::TileStatus::ready);
     }
     {
         const bool built = glitchProcessor.getPresetName().startsWith ("Built: ");
         if (buildState == BuildState::listening)
-            levelCards[2].setStatus ("LISTENING TO YOUR VOCAL", ui::LevelStatus::active);
+            tiles[2].setStatus ("LISTENING TO YOUR VOCAL", ui::TileStatus::active);
         else if (buildState == BuildState::built && built)
-            levelCards[2].setStatus ("BUILT - " + juce::String ((int) lastProposal.changes.size()) + " CHANGES, " + (lastProposal.mode == am::MixMode::beatInformed ? "BEAT-AWARE" : "VOCAL ONLY"), ui::LevelStatus::active);
+            tiles[2].setStatus ("BUILT - " + juce::String ((int) lastProposal.changes.size()) + " CHANGES, " + (lastProposal.mode == am::MixMode::beatInformed ? "BEAT-AWARE" : "VOCAL ONLY"), ui::TileStatus::active);
         else if (buildState == BuildState::failed)
-            levelCards[2].setStatus ("BUILD FAILED - NOTHING CHANGED", ui::LevelStatus::problem);
+            tiles[2].setStatus ("BUILD FAILED - NOTHING CHANGED", ui::TileStatus::problem);
         else
-            levelCards[2].setStatus ("NOT BUILT YET", ui::LevelStatus::idle);
+            tiles[2].setStatus ("NOT BUILT YET", ui::TileStatus::idle);
     }
     {
         int n = 0;
         for (bool b : stageActive)
             n += b ? 1 : 0;
         const bool dry = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::bypassId)->load() >= 0.5f;
-        levelCards[3].setStatus (dry ? "DRY - NO STAGE IS PROCESSING" : juce::String (n) + " OF 4 STAGES ACTIVE", n > 0 ? ui::LevelStatus::ready : ui::LevelStatus::idle);
+        tiles[3].setStatus (dry ? "DRY - NO STAGE IS PROCESSING" : juce::String (n) + " OF 4 STAGES ACTIVE", n > 0 ? ui::TileStatus::ready : ui::TileStatus::idle);
+    }
+}
+
+// The real-time views: the newest audio from the processor's taps (the vocal input before processing, the output after it, the Instrumental input), a windowed FFT
+// and a min/max waveform, all computed here on the message thread from bounded copies. Nothing is drawn without a signal.
+void GlitchKidEditor::refreshDisplays()
+{
+    using SS = GlitchKidProcessor::SourceStatus;
+    const bool onHome = page == Page::home, onBeat = page == Page::beat, onClean = page == Page::clean, onTone = page == Page::finalTouch && category == 1;
+    if (! (onHome || onBeat || onClean || onTone))
+        return;
+    const double sr = glitchProcessor.getSampleRate() > 8000.0 ? glitchProcessor.getSampleRate() : 48000.0;
+    specIn.update (glitchProcessor.getInputTap(), sr);
+    if (onClean || onTone)
+    {
+        const float top = (float) juce::jmin (20000.0, 0.45 * sr);
+        if (specIn.hasSignal())
+            eqGraph->setSpectrum (specIn.levels().data(), glitchkid::analysis::DisplaySpectrum::columns, top);
+        else
+            eqGraph->clearSpectrum();
+    }
+    if (onHome)
+    {
+        specOut.update (glitchProcessor.getOutputTap(), sr);
+        waveIn.update (glitchProcessor.getInputTap(), 2400);
+        waveOut.update (glitchProcessor.getOutputTap(), 2400);
+        const bool beatLive = glitchProcessor.getInstrumentalStatus() == SS::live;
+        if (beatLive)
+            specBeat.update (glitchProcessor.getBeatTap(), sr);
+        homeView.setSampleRate (sr);
+        homeView.setTrace (0, specIn.levels(), specIn.hasSignal());
+        homeView.setTrace (1, specOut.levels(), specOut.hasSignal());
+        homeView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
+        homeView.setWave (waveIn, waveOut);
+        const juce::String hint = beatLive ? "VOCAL INPUT before processing, OUTPUT after it, INSTRUMENTAL INPUT as received" : "VOCAL INPUT before processing, OUTPUT after it";
+        if (hint != homeHint.getText())
+            homeHint.setText (hint, juce::dontSendNotification);
+    }
+    if (onBeat)
+    {
+        const bool beatLive = glitchProcessor.getInstrumentalStatus() == SS::live;
+        if (beatLive)
+            specBeat.update (glitchProcessor.getBeatTap(), sr);
+        beatView.setSampleRate (sr);
+        beatView.setShowWave (false);
+        beatView.setTrace (0, specIn.levels(), specIn.hasSignal());
+        beatView.setTrace (1, specOut.levels(), false);
+        beatView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
+        beatView.setWave (glitchkid::analysis::WaveColumns {}, glitchkid::analysis::WaveColumns {});
     }
 }
 
@@ -1349,8 +1401,8 @@ void GlitchKidEditor::refreshBeatLock (float inPeak, float beatPk)
     if (page != Page::beat)
         return;
 
-    vocalBar.setValue (ui::PixelBar::peakToMeter (inPeak), inPeak >= 0.999f);
-    beatBar.setValue (ui::PixelBar::peakToMeter (beatPk), beatPk >= 0.999f);
+    vocalBar.setValue (ui::LevelBar::peakToMeter (inPeak), inPeak >= 0.999f);
+    beatBar.setValue (ui::LevelBar::peakToMeter (beatPk), beatPk >= 0.999f);
     beatBar.setActive (input != am::InstrumentalInput::notConnected);
     vocalBar.setActive (signalTicks <= 30);
     auto db = [] (float v) { return v > -80.0f ? juce::String (v, 1) + " dB" : juce::String ("no signal"); };
@@ -1516,7 +1568,8 @@ void GlitchKidEditor::timerCallback()
     outMeter.pushPeak (outPeak);
     refreshState (inPeak, outPeak);
     refreshBeatLock (inPeak, glitchProcessor.consumeBeatPeak());
-    refreshLevels (inPeak, outPeak);
+    refreshStatus (inPeak, outPeak);
+    refreshDisplays();
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
     if (eqGraph->isVisible())
         eqGraph->refresh();
@@ -1554,46 +1607,49 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.fillAll (ui::obsidian);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
-    // a pixel-dot grid behind the workspace
-    g.setColour (ui::border.withAlpha (0.4f));
+    // a faint technical grid behind the workspace
+    g.setColour (ui::border.withAlpha (0.22f));
     for (float x = 16.0f; x < W; x += 32.0f)
-        for (float y = 102.0f; y < 560.0f; y += 32.0f)
-            g.fillRect (x, y, 2.0f, 2.0f);
+        g.fillRect (x, 102.0f, 1.0f, 458.0f);
+    for (float y = 102.0f; y < 562.0f; y += 32.0f)
+        g.fillRect (0.0f, y, W, 1.0f);
 
-    // the persistent bar: dithered graphite, then a violet pixel rule with a pink block every fifth step
-    g.setColour (ui::panelBottom);
-    g.fillRect (0.0f, 0.0f, W, 44.0f);
-    ui::drawDither (g, { 0.0f, 0.0f, W, 44.0f }, 0.05f);
-    for (float x = 0.0f; x < W; x += 12.0f)
-    {
-        g.setColour (((int) (x / 12.0f)) % 5 == 4 ? ui::pink : ui::violet);
-        g.fillRect (x, 44.0f, 10.0f, 3.0f);
-    }
+    // the persistent bar: fine scanlines, then an ultraviolet-to-pink signal line along its lower edge
+    g.setColour (ui::violet.withAlpha (0.05f));
+    for (float y = 2.0f; y < 43.0f; y += 3.0f)
+        g.fillRect (0.0f, y, W, 1.0f);
+    juce::ColourGradient line (ui::violet, 0.0f, 0.0f, ui::pink.withAlpha (0.0f), W, 0.0f, false);
+    line.addColour (0.55, ui::pink.withAlpha (0.8f));
+    g.setGradientFill (line);
+    g.fillRect (0.0f, 43.0f, W, 2.0f);
     g.setColour (ui::border);
-    g.fillRect (0.0f, 562.0f, W, 2.0f);
+    g.fillRect (0.0f, 562.0f, W, 1.0f);
 
-    // the wordmark (a one-pixel pink shadow) and the current stage
-    ui::drawPixelText (g, "GLITCHKID", { 17, 10, 130, 14 }, 2, juce::Justification::centredLeft, ui::pink.withAlpha (0.7f));
-    ui::drawPixelText (g, "GLITCHKID", { 16, 9, 130, 14 }, 2, juce::Justification::centredLeft, ui::textBright);
-    ui::drawPixelText (g, "VOCAL LAB", { 16, 28, 130, 7 }, 1, juce::Justification::centredLeft, ui::violet);
-    ui::drawPixelText (g, stageText, { 240, 15, 258, 14 }, 2, juce::Justification::centredLeft, ui::chrome);
+    // the wordmark: bold, tracked out, with a slight chromatic fringe (pink left, violet right)
+    {
+        const juce::Rectangle<float> r (14.0f, 4.0f, 160.0f, 24.0f);
+        g.setFont (ui::labFont (18.0f));
+        g.setColour (ui::pink.withAlpha (0.6f));
+        g.drawText ("GLITCHKID", r.translated (-1.4f, 0.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::violet.withAlpha (0.6f));
+        g.drawText ("GLITCHKID", r.translated (1.4f, 0.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::textBright);
+        g.drawText ("GLITCHKID", r, juce::Justification::centredLeft, false);
+        g.setFont (ui::labFont (9.5f));
+        g.setColour (ui::violet);
+        g.drawText ("VOCAL LAB", juce::Rectangle<float> (15.0f, 27.0f, 120.0f, 13.0f), juce::Justification::centredLeft, false);
+    }
 
     if (page == Page::build)
     {
         g.setColour (ui::border);
-        g.fillRect (586.0f, 104.0f, 2.0f, 444.0f);
+        g.fillRect (586.0f, 104.0f, 1.0f, 444.0f);
         g.setColour (ui::violet);
-        g.fillRect (586.0f, 104.0f, 2.0f, 12.0f); // a short ultraviolet tick at the top of the divider
+        g.fillRect (586.0f, 104.0f, 1.0f, 12.0f); // a short ultraviolet tick at the top of the divider
     }
 
     for (const auto& r : panelRects)
         ui::drawPanel (g, r.toFloat());
-}
-
-// Subtle scanlines over the whole interface.
-void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
-{
-    ui::drawScanlines (g, getLocalBounds(), 0.07f);
 }
 
 void GlitchKidEditor::resized()
@@ -1611,7 +1667,7 @@ void GlitchKidEditor::layoutContent()
     auto showK = [] (ParamKnob& k, Rect r) { k.setBounds (r); k.setVisible (true); };
 
     // Hide every control that is not part of the always-visible bar, chain and preset bar; the current page then shows what it needs.
-    const std::vector<juce::Component*> persistent = { &levelsButton, &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &chain,
+    const std::vector<juce::Component*> persistent = { &navButtons[0], &navButtons[1], &navButtons[2], &navButtons[3], &navButtons[4], &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &chain,
                                                        &presetPrevButton, &presetMenuButton, &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB,
                                                        &abRecallA, &abRecallB, &abLabel, &presetStatus };
     for (auto* child : content.getChildren())
@@ -1620,13 +1676,21 @@ void GlitchKidEditor::layoutContent()
     panelRects.clear();
 
     // ---- the persistent bar, the chain ----
-    show (levelsButton, { 132, 7, 96, 30 });
-    show (ioLabel, { 500, 5, 160, 34 });
-    show (dryButton, { 664, 7, 52, 30 });
-    show (processedButton, { 720, 7, 88, 30 });
-    show (undoButton, { 814, 7, 50, 30 });
-    show (motionButton, { 870, 7, 74, 30 });
-    show (chain, { 16, 50, 928, 48 });
+    {
+        static const int navW[5] = { 62, 92, 90, 118, 100 };
+        int x = 168;
+        for (int i = 0; i < 5; ++i)
+        {
+            show (navButtons[i], { x, 8, navW[i], 28 });
+            x += navW[i] + 4;
+        }
+    }
+    show (dryButton, { 658, 8, 46, 28 });
+    show (processedButton, { 708, 8, 86, 28 });
+    show (undoButton, { 800, 8, 46, 28 });
+    show (motionButton, { 852, 8, 92, 28 });
+    show (chain, { 16, 50, 770, 48 });
+    show (ioLabel, { 796, 50, 148, 48 });
 
     // ---- bottom bar: presets and A/B (always available) ----
     Rect bar (16, 568, designW - 32, 26);
@@ -1651,66 +1715,74 @@ void GlitchKidEditor::layoutContent()
     show (abLabel, bar.removeFromRight (34));
     show (presetStatus, bar);
 
-    // ---- LEVEL SELECT ----
-    if (page == Page::levels)
+    // ---- HOME / SESSION ----
+    if (page == Page::home)
     {
-        show (homeTitle, { 24, 106, 500, 24 });
-        show (homeHint, { 24, 134, 912, 18 });
+        show (homeTitle, { 24, 106, 300, 18 });
+        show (homeSource, { 330, 106, 200, 18 });
+        show (homeHint, { 540, 106, 396, 18 });
+        show (homeView, { 24, 128, 912, 236 });
+        static const int tx[4] = { 24, 242, 460, 720 }, tw[4] = { 212, 212, 254, 216 };
         for (int i = 0; i < 4; ++i)
-            show (levelCards[i], { 24 + (i % 2) * 464, 160 + (i / 2) * 166, 456, 160 });
-        show (homeInLabel, { 24, 494, 100, 14 });
-        show (homeIn, { 24, 510, 440, 20 });
-        show (homeOutLabel, { 488, 494, 100, 14 });
-        show (homeOut, { 488, 510, 448, 20 });
+            show (tiles[i], { tx[i], 378, tw[i], 112 });
     }
 
-    // ---- LEVEL 1: CLEAN LAB ----
+    // ---- CLEAN LAB ----
     else if (page == Page::clean)
     {
         show (cleanOnButton, { 24, 106, 130, 28 });
         show (cleanAmountLabel, { 166, 106, 60, 28 });
-        show (cleanAmountSlider, { 228, 106, 500, 28 });
+        show (cleanAmountSlider, { 228, 106, 400, 28 });
+        show (cleanAdvButton, { 640, 106, 110, 28 });
         show (cleanResetButton, { 820, 106, 116, 28 });
-        show (cleanHint, { 24, 140, 912, 40 });
-        panelRects.push_back ({ 24, 184, 912, 128 });
-        const int cx[3] = { 36, 346, 656 };
-        juce::Component* heads[3] = { &toneHead, &resHead, &essHead };
-        juce::Label* trims[3] = { &toneTrimLabel, &resTrimLabel, &essTrimLabel };
-        juce::Slider* sliders[3] = { &cleanToneSlider, &cleanResSlider, &cleanEssSlider };
-        for (int c = 0; c < 3; ++c)
-        {
-            show (*heads[c], { cx[c], 194, 280, 14 });
-            show (*trims[c], { cx[c], 214, 56, 24 });
-            show (*sliders[c], { cx[c] + 58, 214, 214, 24 });
-        }
-        show (toneRead[0], { cx[0], 248, 296, 20 });
-        show (toneRead[1], { cx[0], 270, 296, 20 });
+        show (cleanHint, { 24, 140, 912, 30 });
+        show (*eqGraph, { 24, 176, 590, 250 });
+        // what CLEAN LAB is really doing (from the DSP's telemetry)
+        show (toneHead, { 630, 178, 300, 16 });
+        show (toneRead[0], { 630, 198, 306, 20 });
+        show (toneRead[1], { 630, 220, 306, 20 });
+        show (resHead, { 630, 246, 300, 16 });
         for (int i = 0; i < 3; ++i)
-            show (resRead[i], { cx[1], 244 + i * 21, 296, 20 });
-        show (essBar, { cx[2], 248, 270, 16 });
-        show (essRead, { cx[2], 270, 276, 20 });
-        show (*eqGraph, { 24, 322, 590, 232 });
-        show (cleanLearn, { 628, 322, 308, 40 });
-        show (cleanLevel, { 628, 366, 308, 40 });
-        show (eqNote, { 628, 414, 308, 70 });
+            show (resRead[i], { 630, 266 + i * 21, 306, 20 });
+        show (essHead, { 630, 334, 300, 16 });
+        show (essBar, { 630, 354, 300, 14 });
+        show (essRead, { 630, 372, 306, 20 });
+        show (cleanLearn, { 630, 396, 306, 30 });
+        show (cleanLevel, { 24, 432, 590, 20 });
+        show (eqNote, { 24, 454, 590, 30 });
+        if (cleanAdvanced)
+        {
+            panelRects.push_back ({ 24, 492, 912, 62 });
+            juce::Component* trimHeads[3] = { &toneTrimLabel, &resTrimLabel, &essTrimLabel };
+            juce::Slider* sliders[3] = { &cleanToneSlider, &cleanResSlider, &cleanEssSlider };
+            static const char* names[3] = { "CORRECTIVE EQ", "RESONANCE", "DE-ESSER" };
+            const int cx[3] = { 36, 346, 656 };
+            for (int c = 0; c < 3; ++c)
+            {
+                static_cast<juce::Label*> (trimHeads[c])->setText (names[c], juce::dontSendNotification);
+                show (*trimHeads[c], { cx[c], 498, 270, 18 });
+                show (*sliders[c], { cx[c], 520, 270, 26 });
+            }
+        }
     }
 
-    // ---- LEVEL 2: BEAT LOCK ----
+    // ---- BEAT LOCK ----
     else if (page == Page::beat)
     {
-        show (beatHeading, { 24, 106, 300, 14 });
-        show (beatStatus, { 24, 126, 446, 56 });
-        show (vocalBarLabel, { 24, 190, 60, 18 });
-        show (vocalBar, { 88, 188, 382, 20 });
-        show (beatBarLabel, { 24, 216, 60, 18 });
-        show (beatBar, { 88, 214, 382, 20 });
-        show (beatLevels, { 24, 238, 446, 16 });
-        show (bandCompare, { 24, 260, 446, 160 });
-        show (analyzeBeatButton, { 24, 430, 200, 40 });
-        show (beatProgress, { 234, 430, 236, 40 });
-        show (beatRouting, { 24, 478, 446, 80 });
+        show (beatHeading, { 24, 106, 300, 16 });
+        show (beatStatus, { 24, 126, 446, 40 });
+        show (vocalBarLabel, { 24, 170, 60, 16 });
+        show (vocalBar, { 88, 168, 382, 18 });
+        show (beatBarLabel, { 24, 192, 60, 16 });
+        show (beatBar, { 88, 190, 382, 18 });
+        show (beatLevels, { 24, 212, 446, 16 });
+        show (beatView, { 24, 232, 446, 120 });
+        show (bandCompare, { 24, 358, 446, 112 });
+        show (analyzeBeatButton, { 24, 478, 200, 36 });
+        show (beatProgress, { 234, 478, 236, 36 });
+        show (beatRouting, { 24, 518, 446, 42 });
 
-        show (suggestHeading, { 486, 106, 400, 14 });
+        show (suggestHeading, { 486, 106, 400, 16 });
         for (int i = 0; i < beatRows; ++i)
         {
             const bool used = beatResult.valid && (size_t) i < beatResult.items.size();
@@ -1718,9 +1790,9 @@ void GlitchKidEditor::layoutContent()
                 continue;
             const int y = 128 + i * 47;
             if (! beatResult.items[(size_t) i].advisory)
-                show (beatTicks[i], { 486, y + 2, 30, 24 });
-            show (beatTitles[i], { 522, y, 414, 18 });
-            show (beatReasons[i], { 522, y + 18, 414, 28 });
+                show (beatTicks[i], { 486, y + 1, 40, 24 });
+            show (beatTitles[i], { 534, y, 402, 18 });
+            show (beatReasons[i], { 534, y + 18, 402, 28 });
         }
         show (applyBeatButton, { 486, 466, 196, 40 });
         show (undoBeatButton, { 690, 466, 160, 40 });
@@ -1737,7 +1809,7 @@ void GlitchKidEditor::layoutContent()
             vocalOnlyButton.setVisible (false);
     }
 
-    // ---- LEVEL 3: BUILD MY VOCAL MIX (profiles, build, result) ----
+    // ---- BUILD MY VOCAL MIX (profiles, build, result) ----
     else if (page == Page::build)
     {
         show (profileHeading, { 24, 106, 548, 14 });
@@ -1762,7 +1834,7 @@ void GlitchKidEditor::layoutContent()
         show (finalButton, { 776, 504, 160, 44 });
     }
 
-    // ---- LEVEL 4: FINAL TOUCH (one category at a time) ----
+    // ---- FINAL TOUCH (one category at a time) ----
     else
     {
         for (int i = 0; i < numCategories; ++i)

@@ -1,5 +1,4 @@
 #include "PlaygroundWidgets.h"
-#include "PixelKit.h"
 #include <BinaryData.h>
 #include "../Presets/FactoryPresets.h"
 #include <juce_audio_basics/juce_audio_basics.h>
@@ -7,14 +6,32 @@
 
 namespace glitchkid::ui
 {
+juce::Path chamferPath (juce::Rectangle<float> r, float c)
+{
+    c = juce::jmin (c, r.getWidth() * 0.5f, r.getHeight() * 0.5f);
+    juce::Path p;
+    p.startNewSubPath (r.getX() + c, r.getY());
+    p.lineTo (r.getRight(), r.getY());
+    p.lineTo (r.getRight(), r.getBottom() - c);
+    p.lineTo (r.getRight() - c, r.getBottom());
+    p.lineTo (r.getX(), r.getBottom());
+    p.lineTo (r.getX(), r.getY() + c);
+    p.closeSubPath();
+    return p;
+}
+
+void drawGlow (juce::Graphics& g, const juce::Path& shape, juce::Colour c, float radius)
+{
+    juce::DropShadow (c, juce::roundToInt (radius), { 0, 0 }).drawForPath (g, shape);
+}
+
 namespace
 {
 float peakToLevel (float peak) { return juce::jmap (juce::jlimit (-60.0f, 0.0f, juce::Decibels::gainToDecibels (std::isfinite (peak) ? peak : 0.0f, -60.0f)), -60.0f, 0.0f, 0.0f, 1.0f); }
 void focusRing (juce::Graphics& g, juce::Rectangle<float> r, float radius)
 {
-    juce::ignoreUnused (radius);
     g.setColour (chrome);
-    g.strokePath (pixelRectPath (r.expanded (2.0f), 3.0f), juce::PathStrokeType (1.5f));
+    g.drawRoundedRectangle (r.expanded (2.0f), radius + 2.0f, 1.2f);
 }
 }
 
@@ -36,24 +53,24 @@ void drawDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, floa
     const auto c = dial.getCentre();
     const float rad = dial.getWidth() * 0.5f;
     pos = juce::jlimit (0.0f, 1.0f, pos);
-    constexpr int dots = 19;
-    const float sq = juce::jmax (3.0f, std::floor (thick * 1.3f));
-    for (int i = 0; i < dots; ++i)
+    juce::Path track, value;
+    track.addCentredArc (c.x, c.y, rad, rad, 0.0f, start, end, true);
+    value.addCentredArc (c.x, c.y, rad, rad, 0.0f, start, start + (end - start) * pos, true);
+    g.setColour (border.brighter (0.15f).withAlpha (alpha));
+    g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (pos > 0.002f)
     {
-        const float t = (float) i / (float) (dots - 1);
-        const float ang = start + (end - start) * t;
-        const bool lit = pos > 0.002f && t <= pos + 0.001f;
-        g.setColour ((lit ? accent : border.brighter (0.15f)).withAlpha (alpha));
-        g.fillRect (std::floor (c.x + std::sin (ang) * rad - sq * 0.5f), std::floor (c.y - std::cos (ang) * rad - sq * 0.5f), sq, sq);
+        g.setColour (accent.withAlpha (alpha));
+        g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
     const float capR = rad - thick * 1.8f;
     g.setColour (juce::Colour (0xff1b1523).withAlpha (alpha));
-    g.fillPath (pixelRectPath ({ c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f }, capR * 0.45f));
+    g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
     g.setColour ((hover ? chrome.withAlpha (0.55f) : border.brighter (0.3f)).withAlpha (alpha));
-    g.strokePath (pixelRectPath ({ c.x - capR + 0.5f, c.y - capR + 0.5f, capR * 2.0f - 1.0f, capR * 2.0f - 1.0f }, capR * 0.45f), juce::PathStrokeType (1.5f));
+    g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
     const float a = start + (end - start) * pos;
     g.setColour (chrome.withAlpha (alpha));
-    g.drawLine (c.x + std::sin (a) * capR * 0.35f, c.y - std::cos (a) * capR * 0.35f, c.x + std::sin (a) * capR * 0.9f, c.y - std::cos (a) * capR * 0.9f, 3.0f);
+    g.drawLine (c.x + std::sin (a) * capR * 0.35f, c.y - std::cos (a) * capR * 0.35f, c.x + std::sin (a) * capR * 0.9f, c.y - std::cos (a) * capR * 0.9f, 2.0f);
     if (focus)
         focusRing (g, dial, rad);
 }
@@ -78,7 +95,10 @@ void ProfileCard::paintButton (juce::Graphics& g, bool highlighted, bool down)
         return;
     const auto& info = FactoryPresets::info (profile);
     auto r = getLocalBounds().toFloat().reduced (1.0f);
-    drawPixelBox (g, r, selected ? juce::Colour (0xff2a1238) : (highlighted || down ? panelTop.brighter (0.08f) : panelTop), selected ? violet : (highlighted ? border.brighter (0.4f) : border), 3.0f);
+    g.setColour (selected ? violet.withAlpha (0.18f) : (highlighted || down ? panelTop.brighter (0.08f) : panelTop));
+    g.fillPath (chamferPath (r, 4.0f));
+    g.setColour (selected ? violet : (highlighted ? border.brighter (0.4f) : border));
+    g.strokePath (chamferPath (r, 4.0f), juce::PathStrokeType (selected ? 1.6f : 1.0f));
     if (hasKeyboardFocus (true))
         focusRing (g, r, 5.0f);
     auto area = r.reduced (12.0f, 6.0f);
@@ -91,7 +111,7 @@ void ProfileCard::paintButton (juce::Graphics& g, bool highlighted, bool down)
     if (live) // the profile that is loaded right now
     {
         g.setColour (pink);
-        g.fillRect (r.getRight() - 16.0f, r.getY() + 8.0f, 7.0f, 7.0f);
+        g.fillEllipse (r.getRight() - 14.0f, r.getY() + 8.0f, 6.0f, 6.0f);
     }
 }
 
@@ -112,18 +132,18 @@ void NoteKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     const bool sharp = getButtonText().contains ("#");
     const auto base = selected ? violet : (sharp ? juce::Colour (0xff0c0910) : juce::Colour (0xff1d1626));
     g.setColour (down || highlighted ? base.brighter (0.15f) : base);
-    g.fillPath (pixelRectPath (r, 3.0f));
+    g.fillPath (chamferPath (r, 4.0f));
     g.setColour (selected ? neon : (highlighted ? border.brighter (0.4f) : border));
-    g.strokePath (pixelRectPath (r.reduced (1.0f), 2.0f), juce::PathStrokeType (selected ? 2.0f : 1.5f));
+    g.strokePath (chamferPath (r, 4.0f), juce::PathStrokeType (selected ? 1.5f : 1.0f));
     if (target) // the note Pitch Tune is pulling the voice to right now (real detector output)
     {
         g.setColour (pink);
-        g.strokePath (pixelRectPath (r.expanded (1.0f), 4.0f), juce::PathStrokeType (2.0f));
+        g.strokePath (chamferPath (r.expanded (1.0f), 4.0f), juce::PathStrokeType (2.0f));
     }
     if (pulseT > 0.0f)
     {
         g.setColour (neon.withAlpha (pulseT * 0.8f));
-        g.strokePath (pixelRectPath (r.expanded (std::floor ((1.0f - pulseT) * 5.0f)), 4.0f), juce::PathStrokeType (1.5f));
+        g.drawRoundedRectangle (r.expanded ((1.0f - pulseT) * 5.0f), 7.0f, 1.2f);
     }
     if (hasKeyboardFocus (true))
         focusRing (g, r, 5.0f);
@@ -133,7 +153,7 @@ void NoteKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     if (inScale) // this note is allowed by the chosen scale
     {
         g.setColour (selected ? chrome : neon);
-        g.fillRect (r.getCentreX() - 2.5f, r.getBottom() - 11.0f, 5.0f, 5.0f);
+        g.fillEllipse (r.getCentreX() - 2.5f, r.getBottom() - 11.0f, 5.0f, 5.0f);
     }
 }
 
@@ -149,7 +169,10 @@ void ScopeStrip::push (float peak)
 void ScopeStrip::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    drawPixelBox (g, r, juce::Colour (0xff0c0910), border, 3.0f);
+    g.setColour (juce::Colour (0xff0c0910));
+    g.fillPath (chamferPath (r, 4.0f));
+    g.setColour (border);
+    g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
     g.setColour (border.withAlpha (0.7f));
     g.fillRect (r.getX() + 4.0f, r.getCentreY(), r.getWidth() - 8.0f, 1.0f);
     const float step = (r.getWidth() - 8.0f) / (float) numBars;
@@ -179,18 +202,11 @@ void ReductionBar::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
     g.setColour (juce::Colour (0xff0c0910));
-    g.fillRect (r);
+    g.fillPath (chamferPath (r, 4.0f));
     g.setColour (border);
-    g.drawRect (r, 2.0f);
-    r = r.reduced (4.0f, 3.0f);
-    const int seg = juce::jmax (4, (int) (r.getWidth() / 8.0f));
-    const float w = r.getWidth() / (float) seg;
-    const int lit = (int) std::lround (juce::jlimit (0.0f, 1.0f, shown / maxReduction) * (float) seg);
-    for (int i = 0; i < seg; ++i)
-    {
-        g.setColour (i < lit ? pink : border.withAlpha (0.45f));
-        g.fillRect (r.getX() + (float) i * w, r.getY(), w - 2.0f, r.getHeight());
-    }
+    g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
+    g.setColour (pink);
+    g.fillRoundedRectangle (r.withWidth (r.getWidth() * shown / maxReduction).reduced (2.0f, 2.0f), 2.0f);
 }
 
 // ---- BuildButton -----------------------------------------------------------------------------------------------------------------------
@@ -219,7 +235,7 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     const float alpha = isEnabled() ? 1.0f : 0.45f;
     const auto r = getLocalBounds().toFloat().reduced (1.5f);
-    const auto shape = pixelRectPath (r, 6.0f);
+    const auto shape = chamferPath (r, 10.0f);
     const bool solid = state == AutoState::idle || state == AutoState::ready;
     g.setColour ((solid ? (down ? violet.darker (0.35f) : highlighted ? violet.brighter (0.12f) : violet) : juce::Colour (0xff1f0d2b)).withAlpha (alpha));
     g.fillPath (shape);
@@ -249,12 +265,12 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
         g.fillRect (r.getX(), r.getBottom() - 3.0f, state == AutoState::ready ? r.getWidth() : 34.0f, 3.0f);
     }
     g.setColour ((state == AutoState::error ? errorRed : (highlighted && solid ? pink : (solid ? violet.brighter (0.35f) : violet))).withAlpha (alpha));
-    g.strokePath (shape, juce::PathStrokeType (highlighted && solid ? 3.0f : 2.0f));
+    g.strokePath (shape, juce::PathStrokeType (highlighted && solid ? 2.0f : 1.4f));
     if (hasKeyboardFocus (false))
         focusRing (g, r, 8.0f);
-    const auto label = getButtonText();
-    const int px = pixelTextWidth (label, 3) + 24 <= getWidth() ? 3 : 2;
-    drawPixelText (g, label, getLocalBounds(), px, juce::Justification::centred, (state == AutoState::error ? errorRed : chrome).withAlpha (alpha));
+    g.setFont (fontOf (juce::jlimit (14.0f, 24.0f, r.getHeight() * 0.3f), true));
+    g.setColour ((state == AutoState::error ? errorRed : chrome).withAlpha (alpha));
+    g.drawText (getButtonText(), r, juce::Justification::centred, false);
 }
 
 
@@ -262,14 +278,16 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> r)
 {
-    drawPixelBox (g, r, panelBottom, border, 4.0f);
-    drawDither (g, r.reduced (3.0f), 0.035f);
+    g.setColour (panelBottom);
+    g.fillPath (chamferPath (r, 4.0f));
+    g.setColour (border);
+    g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
     g.setColour (violet);
-    const float L = 14.0f;
-    g.fillRect (r.getX() + 4.0f, r.getY(), L, 3.0f);
-    g.fillRect (r.getX(), r.getY() + 4.0f, 3.0f, L);
-    g.fillRect (r.getRight() - L - 4.0f, r.getBottom() - 3.0f, L, 3.0f);
-    g.fillRect (r.getRight() - 3.0f, r.getBottom() - L - 4.0f, 3.0f, L);
+    const float L = 12.0f;
+    g.fillRect (r.getX(), r.getY(), L, 2.0f);
+    g.fillRect (r.getX(), r.getY(), 2.0f, L);
+    g.fillRect (r.getRight() - L, r.getBottom() - 2.0f, L, 2.0f);
+    g.fillRect (r.getRight() - 2.0f, r.getBottom() - L, 2.0f, L);
 }
 
 namespace
@@ -424,6 +442,21 @@ float EqGraph::cleanResponseDb (const CleanLab::Applied& a, float atHz, double f
     return (float) (20.0 * std::log10 (std::abs (h) + 1.0e-12));
 }
 
+void EqGraph::setSpectrum (const float* levels, int n, float topHz)
+{
+    const bool had = ! spec.empty();
+    if (levels == nullptr || n <= 1)
+    {
+        spec.clear();
+        if (had)
+            repaint();
+        return;
+    }
+    spec.assign (levels, levels + n);
+    specTop = topHz;
+    repaint();
+}
+
 void EqGraph::setCleanApplied (const CleanLab::Applied& a)
 {
     clean = a;
@@ -473,9 +506,9 @@ void EqGraph::paint (juce::Graphics& g)
     if (! haveCurve)
         rebuildCurve();
     g.setColour (juce::Colour (0xff0c0910));
-    g.fillRect (getLocalBounds().toFloat());
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), 3.0f);
     g.setColour (border);
-    g.drawRect (getLocalBounds().toFloat(), 2.0f);
+    g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 3.0f, 1.0f);
     g.reduceClipRegion (getLocalBounds().reduced (1));
     // grid and labels
     g.setFont (fontOf (10.5f));
@@ -495,6 +528,23 @@ void EqGraph::paint (juce::Graphics& g)
         g.setColour (textDim);
         g.drawText (hz >= 1000.0f ? juce::String (hz / 1000.0f, hz < 10000.0f && ! juce::approximatelyEqual (std::fmod (hz, 1000.0f), 0.0f) ? 1 : 0) + "k" : juce::String ((int) hz),
                     juce::Rectangle<float> (x - 18.0f, plot.getBottom() + 3.0f, 36.0f, 14.0f), juce::Justification::centred, false);
+    }
+    // the real spectrum of the vocal input (only while a signal arrives)
+    if (spec.size() > 1)
+    {
+        juce::Path sp;
+        sp.startNewSubPath (xOf (20.0f), plot.getBottom());
+        for (size_t i = 0; i < spec.size(); ++i)
+        {
+            const float hz = 20.0f * std::pow (specTop / 20.0f, (float) i / (float) (spec.size() - 1));
+            sp.lineTo (xOf (hz), plot.getBottom() - plot.getHeight() * 0.85f * juce::jlimit (0.0f, 1.0f, spec[i]));
+        }
+        sp.lineTo (xOf (specTop), plot.getBottom());
+        sp.closeSubPath();
+        g.setColour (violet.withAlpha (0.13f));
+        g.fillPath (sp);
+        g.setColour (violet.withAlpha (0.45f));
+        g.strokePath (sp, juce::PathStrokeType (1.0f));
     }
     // the response: filled toward the 0 dB line, then the curve itself
     juce::Path fill (curve);
@@ -521,9 +571,9 @@ void EqGraph::paint (juce::Graphics& g)
         const auto p = juce::Point<float> (xOf (shownF[i]), yOf (shownG[i]));
         const bool sel = i == selected, hot = i == dragging || i == hovered;
         g.setColour (obsidian);
-        g.fillRect (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f);
+        g.fillEllipse (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f);
         g.setColour (sel ? pink : (hot ? neon : violet));
-        g.drawRect (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f, sel ? 3.0f : 2.0f);
+        g.drawEllipse (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f, sel ? 2.4f : 1.6f);
         g.setColour (sel ? pink : violet);
         g.setFont (fontOf (10.5f, true));
         g.drawText (eqNames[i], juce::Rectangle<float> (p.x - 30.0f, p.y + (shownG[i] > 0.05f ? -22.0f : 9.0f), 60.0f, 13.0f), juce::Justification::centred, false);
@@ -706,7 +756,7 @@ void ChainStrip::paint (juce::Graphics& g)
     {
         const float x0 = (float) nodeBounds (0).getCentreX(), x1 = (float) nodeBounds (5).getCentreX();
         g.setColour (pink.withAlpha (0.9f));
-        g.fillRect (std::floor (x0 + (x1 - x0) * phase) - 2.0f, cy - 2.0f, 5.0f, 5.0f);
+        g.fillEllipse (x0 + (x1 - x0) * phase - 2.5f, cy - 2.5f, 5.0f, 5.0f);
     }
     for (int i = 0; i < 6; ++i)
     {
@@ -714,7 +764,10 @@ void ChainStrip::paint (juce::Graphics& g)
         const bool stage = i >= 1 && i <= numStages;
         const bool on = stage && active[(size_t) (i - 1)];
         const bool sel = stage && selected == i - 1;
-        drawPixelBox (g, r, sel ? juce::Colour (0xff2a1238) : panelTop, sel ? violet : border, 3.0f);
+        g.setColour (sel ? violet.withAlpha (0.2f) : panelTop);
+        g.fillPath (chamferPath (r, 4.0f));
+        g.setColour (sel ? violet : border);
+        g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (sel ? 1.5f : 1.0f));
         g.setFont (fontOf (11.5f, true));
         g.setColour (stage && ! on ? textDim : textBright);
         if (stage)
@@ -724,12 +777,12 @@ void ChainStrip::paint (juce::Graphics& g)
             if (on)
             {
                 g.setColour (pink);
-                g.fillRect (dot);
+                g.fillEllipse (dot);
             }
             else
             {
                 g.setColour (textDim.withAlpha (0.7f));
-                g.drawRect (dot, 1.5f);
+                g.drawEllipse (dot.reduced (0.5f), 1.0f);
             }
         }
         else
@@ -738,9 +791,9 @@ void ChainStrip::paint (juce::Graphics& g)
             const float level = i == 0 ? inLevel : outLevel;
             const auto bar = juce::Rectangle<float> (r.getX() + 10.0f, r.getBottom() - 11.0f, r.getWidth() - 20.0f, 4.0f);
             g.setColour (juce::Colour (0xff0c0910));
-            g.fillRect (bar);
+            g.fillPath (chamferPath (bar, 4.0f));
             g.setColour (level > 0.98f ? errorRed : violet);
-            g.fillRect (bar.withWidth (std::floor (bar.getWidth() * level / 4.0f) * 4.0f)); // whole 4 px steps
+            g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * level), 2.0f);
         }
     }
     if (legacy.isNotEmpty())
@@ -780,17 +833,17 @@ juce::Font PlaygroundLookAndFeel::getPopupMenuFont() { return fontOf (14.0f, fal
 
 void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& bg, bool highlighted, bool down)
 {
-    auto r = b.getLocalBounds().toFloat().reduced (1.0f).withTrimmedRight (2.0f).withTrimmedBottom (2.0f);
+    auto r = b.getLocalBounds().toFloat().reduced (1.0f);
     const bool on = b.getToggleState();
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
     auto fill = on ? b.findColour (juce::TextButton::buttonOnColourId) : bg;
     fill = down ? fill.darker (0.15f) : highlighted ? fill.brighter (0.12f) : fill;
-    if (down)
-        r = r.translated (1.0f, 1.0f);
-    const auto outline = (on ? fill.brighter (0.4f) : border.brighter (highlighted ? 0.45f : 0.15f)).withAlpha (alpha);
-    drawPixelBox (g, r, fill.withAlpha (alpha), outline, 3.0f, down || ! b.isEnabled() ? 0.0f : 2.0f);
+    g.setColour (fill.withAlpha (alpha));
+    g.fillPath (chamferPath (r, 4.0f));
+    g.setColour ((on ? fill.brighter (0.3f) : border.brighter (highlighted ? 0.35f : 0.1f)).withAlpha (alpha));
+    g.strokePath (chamferPath (r, 4.0f), juce::PathStrokeType (1.0f));
     if (b.hasKeyboardFocus (true))
-        focusRing (g, r, 3.0f);
+        focusRing (g, r, 5.0f);
 }
 
 void PlaygroundLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton& b, bool highlighted, bool)
@@ -798,15 +851,17 @@ void PlaygroundLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleBut
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
     const bool on = b.getToggleState();
     const auto sw = juce::Rectangle<float> (34.0f, 18.0f).withCentre ({ 20.0f, (float) b.getHeight() * 0.5f });
-    drawPixelBox (g, sw, (on ? juce::Colour (0xff2a1238) : juce::Colour (0xff0c0910)).withAlpha (alpha),
-                  (on ? violet : (highlighted ? border.brighter (0.5f) : border.brighter (0.2f))).withAlpha (alpha), 3.0f);
+    g.setColour ((on ? violet.withAlpha (0.22f) : juce::Colour (0xff0c0910)).withAlpha (alpha));
+    g.fillPath (chamferPath (sw, 4.0f));
+    g.setColour ((on ? violet : (highlighted ? border.brighter (0.5f) : border.brighter (0.2f))).withAlpha (alpha));
+    g.strokePath (chamferPath (sw, 4.0f), juce::PathStrokeType (1.2f));
     g.setColour ((on ? violet : disabled).withAlpha (alpha));
-    g.fillRect (on ? sw.getRight() - 15.0f : sw.getX() + 3.0f, sw.getY() + 3.0f, 12.0f, 12.0f);
+    g.fillEllipse (on ? sw.getRight() - 15.0f : sw.getX() + 3.0f, sw.getY() + 2.0f, 14.0f, 14.0f);
     g.setColour ((on ? textBright : textDim).withAlpha (alpha));
     g.setFont (fontOf (juce::jlimit (12.0f, 14.0f, (float) b.getHeight() * 0.4f), true));
     g.drawFittedText (b.getButtonText(), b.getLocalBounds().withTrimmedLeft (46), juce::Justification::centredLeft, 1, 0.8f);
     if (b.hasKeyboardFocus (true))
-        focusRing (g, sw, 3.0f);
+        focusRing (g, sw, 9.0f);
 }
 
 void PlaygroundLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider& s)
@@ -826,15 +881,14 @@ void PlaygroundLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, i
     const float alpha = s.isEnabled() ? 1.0f : 0.4f;
     const float cy = (float) y + (float) h * 0.5f;
     g.setColour (border.brighter (0.15f).withAlpha (alpha));
-    g.fillRect ((float) x, cy - 3.0f, (float) w, 6.0f);
+    g.fillRoundedRectangle ((float) x, cy - 2.0f, (float) w, 4.0f, 2.0f);
     g.setColour (accent.withAlpha (alpha));
-    g.fillRect ((float) x, cy - 3.0f, std::floor (pos - (float) x), 6.0f);
-    const auto thumb = juce::Rectangle<float> (10.0f, 18.0f).withCentre ({ std::floor (pos), cy });
+    g.fillRoundedRectangle ((float) x, cy - 2.0f, pos - (float) x, 4.0f, 2.0f);
     g.setColour (chrome.withAlpha (alpha));
-    g.fillRect (thumb);
+    g.fillEllipse (pos - 7.0f, cy - 7.0f, 14.0f, 14.0f);
     g.setColour (accent.withAlpha (alpha));
-    g.drawRect (thumb, 2.0f);
+    g.drawEllipse (pos - 7.0f, cy - 7.0f, 14.0f, 14.0f, 1.5f);
     if (s.hasKeyboardFocus (false))
-        focusRing (g, thumb, 3.0f);
+        focusRing (g, { pos - 7.0f, cy - 7.0f, 14.0f, 14.0f }, 7.0f);
 }
 }

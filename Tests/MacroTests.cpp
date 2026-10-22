@@ -1,5 +1,5 @@
 #include "TestHelpers.h"
-#include "../Source/UI/PixelKit.h"
+#include "../Source/UI/LabKit.h"
 #include "../Source/Macros/MacroEngine.h"
 #include "../Source/Presets/PresetController.h"
 #include "../Source/UI/PlaygroundWidgets.h"
@@ -273,7 +273,7 @@ struct MacroTests : public juce::UnitTest
                     && ui::border == juce::Colour (0xff392044), "the locked brand colours");
         }
 
-        beginTest ("editor: builds, lays out and renders at several sizes; level select, four levels, four FINAL TOUCH categories, eight profiles, BUILD end to end");
+        beginTest ("editor: builds, lays out and renders at several sizes; HOME, four workspaces, four FINAL TOUCH categories, eight profiles, BUILD end to end");
         {
             const juce::String outDir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             auto snapshot = [&] (juce::AudioProcessorEditor& ed, const juce::String& shot)
@@ -380,12 +380,12 @@ struct MacroTests : public juce::UnitTest
 
                 auto levelCards = [&]
                 {
-                    std::vector<glitchkid::ui::LevelCard*> out;
+                    std::vector<glitchkid::ui::WorkspaceTile*> out;
                     std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
                     {
                         for (auto* ch : c.getChildren())
                         {
-                            if (auto* lc = dynamic_cast<glitchkid::ui::LevelCard*> (ch); lc != nullptr && lc->isVisible())
+                            if (auto* lc = dynamic_cast<glitchkid::ui::WorkspaceTile*> (ch); lc != nullptr && lc->isVisible())
                                 out.push_back (lc);
                             walk (*ch);
                         }
@@ -393,20 +393,13 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                     return out;
                 };
-                auto openLevel = [&] (int level) // 1..4, from anywhere, through the real "< LEVELS" button and the real card
+                static const char* navNames[5] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH" };
+                auto openLevel = [&] (int level) // 1..4: the real navigation button, from anywhere
                 {
-                    if (visible ("<  LEVELS") && levelCards().empty())
-                        click ("<  LEVELS");
-                    const auto cards4 = levelCards();
-                    expectEquals ((int) cards4.size(), 4, "the level-select screen shows four cards");
-                    if (cards4.size() == 4)
-                    {
-                        cards4[(size_t) (level - 1)]->triggerClick();
-                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
-                    }
+                    click (navNames[level]);
                 };
 
-                // the level-select screen: four cards in order, always open (nothing locked), statuses read from the real state
+                // HOME: four workspace tiles in order, always open (nothing is locked), statuses read from the real state
                 {
                     const auto cards4 = levelCards();
                     expectEquals ((int) cards4.size(), 4);
@@ -421,17 +414,17 @@ struct MacroTests : public juce::UnitTest
                         expect (cards4[2]->getStatusText().contains ("NOT BUILT"), cards4[2]->getStatusText());
                         expect (cards4[3]->getStatusText().contains ("STAGES"), cards4[3]->getStatusText());
                         for (auto* c : cards4)
-                            expect (c->isEnabled(), "no level is locked");
+                            expect (c->isEnabled(), "no workspace is locked");
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
-                expect (visible ("<  LEVELS") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the persistent bar is always shown");
+                expect (visible ("HOME") && visible ("CLEAN LAB") && visible ("BEAT LOCK") && visible ("BUILD MY MIX") && visible ("FINAL TOUCH") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the navigation and the persistent bar are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
                 openLevel (4);
                 expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                expect (visible ("HARD") && visible ("PITCH & KEY") && ! visible ("CLEAN"), "FINAL TOUCH opens on PITCH & KEY; CLEAN is its own level now");
+                expect (visible ("HARD") && visible ("PITCH & KEY") && ! visible ("CLEAN"), "FINAL TOUCH opens on PITCH & KEY; CLEAN LAB is its own workspace");
 
                 click ("HARD");
                 expectEquals (th::getParam (p, "tune_on"), 1.0f);
@@ -474,9 +467,9 @@ struct MacroTests : public juce::UnitTest
                 expectEquals (p.getUiInt ("uiLevel", -1), 3);
                 expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("DRY") && ! visible ("HARD"));
                 {
-                    click ("<  LEVELS");
+                    click ("HOME");
                     const auto c4 = levelCards();
-                    expect (c4.size() == 4 && c4[2]->getStatusText().contains ("NOT BUILT"), "opening a level never marks it complete");
+                    expect (c4.size() == 4 && c4[2]->getStatusText().contains ("NOT BUILT"), "opening a workspace never marks it complete");
                     openLevel (3);
                 }
 
@@ -564,6 +557,23 @@ struct MacroTests : public juce::UnitTest
                     openLevel (1);
                     expectEquals (p.getUiInt ("uiLevel", -1), 1);
                     expect (visible ("RESET CLEAN") && ! visible ("HARD"), "the CLEAN LAB level shows its own controls");
+                    {
+                        juce::ToggleButton* adv = nullptr;
+                        std::function<void (juce::Component&)> find = [&] (juce::Component& c)
+                        {
+                            for (auto* ch : c.getChildren())
+                            {
+                                if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->isVisible() && tb->getButtonText() == "ADVANCED")
+                                    adv = tb;
+                                find (*ch);
+                            }
+                        };
+                        find (*content);
+                        expect (adv != nullptr, "the advanced controls have their own switch");
+                        if (adv != nullptr)
+                            adv->triggerClick(); // the three section trims are hidden until asked for
+                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                    }
                     juce::ToggleButton* cleanOn = nullptr;
                     std::vector<juce::Slider*> sliders;
                     std::vector<juce::Label*> labels;
@@ -766,7 +776,7 @@ struct MacroTests : public juce::UnitTest
                     expect (chain != nullptr && chain->isVisible(), "the chain is always shown");
                     if (chain != nullptr)
                     {
-                        click ("<  LEVELS");
+                        click ("HOME");
                         const auto b = chain->nodeBounds (3); // DYNAMICS
                         const juce::MouseEvent down (juce::Desktop::getInstance().getMainMouseSource(), b.getCentre().toFloat(), juce::ModifierKeys(), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, chain, chain,
                                                      juce::Time::getCurrentTime(), b.getCentre().toFloat(), juce::Time::getCurrentTime(), 1, false);
@@ -778,7 +788,7 @@ struct MacroTests : public juce::UnitTest
 
                 click ("<  BACK TO BUILD");
                 expect (visible ("TRY AGAIN"), "BUILD shows the build button (TRY AGAIN after the silent attempt)");
-                click ("<  LEVELS");
+                click ("HOME");
                 expectEquals ((int) levelCards().size(), 4);
             }
 

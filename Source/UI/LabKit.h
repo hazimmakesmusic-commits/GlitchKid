@@ -1,0 +1,98 @@
+#pragma once
+#include <juce_gui_basics/juce_gui_basics.h>
+#include <array>
+#include <vector>
+#include "PlaygroundWidgets.h"
+#include "../Analysis/DisplaySpectrum.h"
+
+// Experimental Lab components: bold tracked headings, a smooth level bar, the vocal/beat band chart, the workspace tiles of the HOME screen and the real-time
+// spectrum + waveform view. Message thread only. Nothing here invents data: every view draws only what the caller passes in and shows NO SIGNAL otherwise.
+namespace glitchkid::ui
+{
+// Bold, upper-case, letter-spaced face for headings and technical labels (Inter Bold, tracked out).
+juce::Font labFont (float height);
+
+// A section heading: a short pink tick and tracked bold capitals. Text only; it takes no clicks.
+class LabHeading : public juce::Component
+{
+public:
+    explicit LabHeading (const juce::String& initial = {}, float size = 13.0f, juce::Colour c = chrome) : text (initial), fontSize (size), colour (c) { setInterceptsMouseClicks (false, false); }
+    void setText (const juce::String& t) { if (t != text) { text = t; repaint(); } }
+    void setColour (juce::Colour c) { if (c != colour) { colour = c; repaint(); } }
+    const juce::String& getText() const { return text; }
+    void paint (juce::Graphics&) override;
+
+private:
+    juce::String text;
+    float fontSize;
+    juce::Colour colour;
+};
+
+// A horizontal level bar, 0..1, rising at once and falling at a fixed rate. Violet to pink; red only at full scale. Empty (and dimmed with setActive (false)) when
+// there is no source. The caller converts a real peak with peakToMeter().
+class LevelBar : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    void setValue (float level01, bool clipping);
+    void setActive (bool);
+    void paint (juce::Graphics&) override;
+    static float peakToMeter (float linearPeak); // -60..0 dBFS -> 0..1 (0 for silence or NaN)
+
+private:
+    float level = 0.0f;
+    bool clip = false, active = true;
+};
+
+// Five broad bands: the vocal's share of energy next to the beat's, from a valid BEAT LOCK analysis only (otherwise: NOT ANALYSED, no data drawn). A marker above a
+// band means the beat is likely to cover the voice there (an estimate from five coarse bands).
+class BandCompare : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    static constexpr int numBands = 5;
+    void setData (bool valid, const std::array<float, numBands>& vocal, const std::array<float, numBands>& beat, const std::array<float, numBands>& risk);
+    void paint (juce::Graphics&) override;
+
+private:
+    bool valid = false;
+    std::array<float, numBands> vocal {}, beat {}, risk {};
+};
+
+enum class TileStatus { idle, ready, active, problem };
+
+// One workspace shortcut on the HOME screen. Its status line is whatever the caller reads from real plug-in state.
+class WorkspaceTile : public juce::Button
+{
+public:
+    WorkspaceTile() : juce::Button ("tile") { setWantsKeyboardFocus (true); }
+    void setContent (const juce::String& title, const juce::String& description, bool prominent = false);
+    void setStatus (const juce::String& text, TileStatus);
+    const juce::String& getStatusText() const { return status; }
+    const juce::String& getTitle() const { return title; }
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    juce::String title, description, status;
+    TileStatus kind = TileStatus::idle;
+    bool prominent = false;
+};
+
+// The central real-time display: spectrum traces (vocal input before processing, output after it, and the Instrumental input only when it is really live) and a
+// waveform strip of the vocal input and the output. All data comes from DisplaySpectrum / WaveColumns (the audio taps); with no signal it says so.
+class SpectrumView : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    using Levels = std::array<float, analysis::DisplaySpectrum::columns>;
+    void setTrace (int index, const Levels& levels, bool shown); // 0 = vocal input, 1 = output, 2 = instrumental input
+    void setWave (const analysis::WaveColumns& input, const analysis::WaveColumns& output);
+    void setSampleRate (double sr) { sampleRate = sr; }
+    void setShowWave (bool b) { showWave = b; }
+    void paint (juce::Graphics&) override;
+
+private:
+    std::array<Levels, 3> traces {};
+    std::array<bool, 3> shownTrace { { false, false, false } };
+    analysis::WaveColumns waveIn, waveOut;
+    double sampleRate = 48000.0;
+    bool showWave = true;
+};
+}

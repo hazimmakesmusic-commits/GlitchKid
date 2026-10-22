@@ -1,5 +1,7 @@
 # CLEAN LAB, BEAT LOCK and the level-select interface: implementation
 
+> **Superseded for the interface.** The 8-bit level-select look described below was rejected and replaced by the Experimental Lab interface; see `docs/CLEAN_LAB_BEAT_LOCK_UI_IMPLEMENTATION.md`. The BEAT LOCK engine, CLEAN LAB and compatibility sections remain accurate.
+
 Linux, synthetic signals only. Nothing here was tested in FL Studio, on macOS or on Windows, and pluginval is not installed on the build machine. Read the limitations before trusting any claim.
 
 ## What was implemented

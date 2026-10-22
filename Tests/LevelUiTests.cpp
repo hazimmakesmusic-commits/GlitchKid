@@ -1,8 +1,10 @@
 #include "TestHelpers.h"
+#include <limits>
 #include "../Source/AutoMode/BeatLock.h"
 #include "../Source/PluginEditor.h"
+#include "../Source/Analysis/DisplaySpectrum.h"
 
-// The level-based interface: BEAT LOCK in the real editor (no beat, then a real second input), without fake progress or fake results.
+// The Experimental Lab interface: the real-time display data, workspace navigation and BEAT LOCK in the real editor (no beat, then a real second input), without fake progress or fake results.
 namespace
 {
 namespace am = glitchkid::automode;
@@ -110,6 +112,152 @@ struct LevelUiTests : public juce::UnitTest
 
     void runTest() override
     {
+        beginTest ("display data: a tap keeps the newest samples, a sine shows up at its own frequency, silence shows nothing, non-finite samples are zeroed");
+        {
+            using namespace glitchkid::analysis;
+            for (double rate : { 44100.0, 48000.0, 96000.0 })
+            {
+                DisplayTap tap;
+                std::vector<float> x (20000);
+                for (size_t n = 0; n < x.size(); ++n)
+                    x[n] = 0.5f * (float) std::sin (2.0 * 3.14159265358979 * 1000.0 * (double) n / rate);
+                for (size_t pos = 0; pos < x.size(); pos += 480) // host-style blocks; more than the tap holds, so it wraps
+                    tap.push (x.data() + pos, nullptr, (int) std::min<size_t> (480, x.size() - pos));
+                DisplaySpectrum sp;
+                for (int i = 0; i < 4; ++i)
+                    sp.update (tap, rate);
+                expect (sp.hasSignal());
+                int best = 0;
+                for (int c = 1; c < DisplaySpectrum::columns; ++c)
+                    if (sp.levels()[(size_t) c] > sp.levels()[(size_t) best])
+                        best = c;
+                const float hz = DisplaySpectrum::columnHz (best, rate);
+                expect (hz > 850.0f && hz < 1180.0f, "peak column at " + juce::String (hz) + " Hz for a 1 kHz sine at " + juce::String (rate));
+                expect (sp.levels()[(size_t) best] > 0.9f, "a -6 dBFS sine reads at the top of the scale");
+                expect (sp.levels()[0] < 0.3f && sp.levels()[(size_t) DisplaySpectrum::columns - 1] < 0.3f, "far from the sine the display is low");
+                std::array<float, 8> tail;
+                tap.copyLatest (tail.data(), 8);
+                for (int i = 0; i < 8; ++i)
+                    expectWithinAbsoluteError (tail[(size_t) i], x[x.size() - 8 + (size_t) i], 1.0e-6f); // the newest samples, in order
+            }
+            DisplayTap quiet;
+            std::vector<float> zeros (4000, 0.0f);
+            quiet.push (zeros.data(), zeros.data(), 4000);
+            DisplaySpectrum sp2;
+            sp2.update (quiet, 48000.0);
+            expect (! sp2.hasSignal());
+            for (float v : sp2.levels())
+                expectEquals (v, 0.0f);
+            WaveColumns wc;
+            wc.update (quiet, 2400);
+            expect (! wc.hasSignal);
+            DisplayTap bad;
+            std::vector<float> nasty (2000, 0.1f);
+            nasty[10] = std::numeric_limits<float>::quiet_NaN();
+            nasty[11] = std::numeric_limits<float>::infinity();
+            bad.push (nasty.data(), nullptr, 2000);
+            std::array<float, 2000> back;
+            bad.copyLatest (back.data(), 2000);
+            for (float v : back)
+                expect (std::isfinite (v));
+            DisplaySpectrum sp3;
+            sp3.update (bad, 48000.0);
+            for (float v : sp3.levels())
+                expect (std::isfinite (v) && v >= 0.0f && v <= 1.0f);
+        }
+
+        beginTest ("display data from the real plug-in: input tap = what arrives, output tap = what is returned; an EQ boost shows in the output and not the input; mono works");
+        {
+            for (int channels : { 2, 1 })
+            {
+                GlitchKidProcessor p;
+                if (channels == 1)
+                    th::setLayout (p, juce::AudioChannelSet::mono());
+                th::setParam (p, "eq_b2_freq", 1000.0f);
+                th::setParam (p, "eq_b2_gain", 12.0f);
+                p.prepareToPlay (fs, blockSize);
+                juce::MidiBuffer midi;
+                for (int b = 0; b < 100; ++b)
+                {
+                    th::Buf buf (channels, blockSize);
+                    for (int i = 0; i < blockSize; ++i)
+                        for (int ch = 0; ch < channels; ++ch)
+                            buf.setSample (ch, i, 0.03f * (float) std::sin (2.0 * 3.14159265358979 * 1000.0 * (double) (b * blockSize + i) / fs));
+                    p.processBlock (buf, midi);
+                }
+                glitchkid::analysis::DisplaySpectrum in, out;
+                for (int i = 0; i < 4; ++i)
+                {
+                    in.update (p.getInputTap(), fs);
+                    out.update (p.getOutputTap(), fs);
+                }
+                float peakIn = 0.0f, peakOut = 0.0f;
+                for (int c = 0; c < glitchkid::analysis::DisplaySpectrum::columns; ++c)
+                {
+                    peakIn = juce::jmax (peakIn, in.levels()[(size_t) c]);
+                    peakOut = juce::jmax (peakOut, out.levels()[(size_t) c]);
+                }
+                expect (in.hasSignal() && out.hasSignal());
+                expect (peakOut > peakIn + 0.08f, "the +12 dB boost shows in the output (" + juce::String (peakIn, 3) + " -> " + juce::String (peakOut, 3) + ") and not in the input");
+                glitchkid::analysis::DisplaySpectrum beatSpec;
+                beatSpec.update (p.getBeatTap(), fs);
+                expect (! beatSpec.hasSignal(), "no instrumental input: the beat tap is empty, so no beat trace can be drawn");
+            }
+        }
+
+        beginTest ("workspace navigation never changes the sound, the window can be resized, and the workspace is remembered");
+        {
+            GlitchKidProcessor p;
+            p.prepareToPlay (fs, blockSize);
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+            auto* content = ed->getChildComponent (0);
+            th::setParam (p, "gain", -3.0f);
+            th::setParam (p, "eq_b2_gain", 2.5f);
+            th::setParam (p, "clean_on", 1.0f);
+            const auto before = p.captureSoundState();
+            const auto presetName = p.getPresetName();
+            for (const char* name : { "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH", "HOME", "FINAL TOUCH", "HOME" })
+            {
+                auto* b = findButton (*content, name);
+                expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the navigation bar");
+                if (b != nullptr)
+                    b->triggerClick();
+                pump (60);
+                ed->setSize (ed->getWidth() * 5 / 6, ed->getHeight() * 5 / 6);
+                ed->setSize (ed->getWidth() * 6 / 5, ed->getHeight() * 6 / 5);
+            }
+            for (const auto& e : before.values)
+                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
+            expectEquals (p.getPresetName(), presetName);
+            findButton (*content, "BEAT LOCK")->triggerClick();
+            pump (60);
+            juce::MemoryBlock mb;
+            p.getStateInformation (mb);
+            GlitchKidProcessor q;
+            q.setStateInformation (mb.getData(), (int) mb.getSize());
+            expectEquals (q.getUiInt ("uiLevel", -1), 2);
+            GlitchKidProcessor fresh;
+            expectEquals (fresh.getUiInt ("uiLevel", 0), 0, "a session without the preference opens on HOME");
+        }
+
+        beginTest ("HOME with real audio flowing: renders (snapshot when GLITCHKID_SNAPSHOT_DIR is set)");
+        {
+            GlitchKidProcessor p;
+            th::setParam (p, "clean_on", 1.0f);
+            p.prepareToPlay (fs, blockSize);
+            std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+            pump (100);
+            snapshot (*ed, "home_nosignal");
+            const auto voice = lead (5.85); // ends inside a note, so the newest samples are not silence
+            stream (p, voice, nullptr, 0);
+            pump (200);
+            snapshot (*ed, "home_signal");
+            auto* content = ed->getChildComponent (0);
+            findButton (*content, "CLEAN LAB")->triggerClick();
+            pump (200);
+            snapshot (*ed, "clean_signal");
+        }
+
         beginTest ("BEAT LOCK without a beat: says so, starts no analysis, offers the vocal-only workflow, applies nothing");
         {
             GlitchKidProcessor p;
