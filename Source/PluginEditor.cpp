@@ -523,6 +523,22 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         k->addTo (content);
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", ui::pink, "The final level of the vocal."));
     gainKnob[0]->addTo (content);
+    limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limCeilingId, "CEILING", " dB", ui::pink, "The highest level a SAMPLE may reach after the limiter (not a true-peak limit: between samples the reconstructed waveform can be higher)."));
+    limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limDriveId, "DRIVE", " dB", ui::violet, "Gain into the limiter. Louder, but more of the signal is limited. It is not compensated afterwards."));
+    limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limReleaseId, "RELEASE", " ms", ui::violet, "How quickly the gain comes back after a peak. Longer = smoother, shorter = louder but more audible."));
+    for (auto* k : limKnobs)
+        k->addTo (content);
+    limOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::limOnId, limOnButton);
+    limOnButton.setColour (juce::ToggleButton::tickColourId, ui::violet);
+    limOnButton.setTooltip ("Switch the output limiter on or off (a 20 ms crossfade). It is the last stage, so it also acts in DRY. While on it adds about 1.5 ms of latency, which GlitchKid reports to the host. Off by default.");
+    content.addAndMakeVisible (limOnButton);
+    content.addAndMakeVisible (limHeading);
+    content.addAndMakeVisible (limGrBar);
+    limGrBar.setTooltip ("The real gain reduction the limiter is applying (dB).");
+    label (limGrLabel, 11.0f, true, ui::textDim);
+    label (limPeakLabel, 12.0f, true, ui::textBright);
+    label (limNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
+    limNote.setText ("Sample-peak limiter, not true-peak: keep the ceiling a little below 0 dBFS. It protects the output; it does not replace setting the vocal level with Gain, the compressor makeup and AIR LAB trim.", juce::dontSendNotification);
     for (auto* l : { &inLabel, &outLabel, &grLabel })
         label (*l, 11.0f, true, ui::textDim, juce::Justification::centred);
     addAll ({ &inMeter, &outMeter, &grMeter });
@@ -799,7 +815,7 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
         {
             act[0] = fx::isActive (fx::pitchTune, all);
             act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f || cleanTone;
-            act[2] = fx::isActive (fx::compressor, all) || cleanEss;
+            act[2] = fx::isActive (fx::compressor, all) || cleanEss || all.get ("lim_on", 0.0f) >= 0.5f;
             act[3] = fx::isActive (fx::echo, all) || fx::isActive (fx::dimension, all) || fx::isActive (fx::doubler, all);
         }
         juce::StringArray legacy; // effects the interface no longer offers but an older session may still have switched on
@@ -1173,6 +1189,17 @@ void GlitchKidEditor::refreshStatus (float inPeak, float outPeak)
         ioLabel.setText (t, juce::dontSendNotification);
     ioLabel.setColour (juce::Label::textColourId, clipTicks > 0 ? ui::errorRed : ui::textDim);
     undoButton.setEnabled (undo.valid);
+    {
+        const bool limOn = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::limOnId)->load() >= 0.5f;
+        const auto text = juce::String (limOn ? "OUTPUT SAMPLE PEAK (after the limiter): " : "OUTPUT SAMPLE PEAK (limiter off): ") + (outDbShown > -80.0f ? juce::String (outDbShown, 1) + " dBFS" : juce::String ("--"))
+                          + (clipTicks > 0 ? "   CLIPPING" : "");
+        if (text != limPeakLabel.getText())
+            limPeakLabel.setText (text, juce::dontSendNotification);
+        limPeakLabel.setColour (juce::Label::textColourId, clipTicks > 0 ? ui::errorRed : ui::textBright);
+        const float a = limOn ? 1.0f : 0.55f;
+        for (auto* c : std::initializer_list<juce::Component*> { &limGrBar, &limGrLabel })
+            c->setAlpha (a);
+    }
 
     const bool cleanOn = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::cleanOnId)->load() >= 0.5f;
     {
@@ -1194,7 +1221,12 @@ void GlitchKidEditor::refreshStatus (float inPeak, float outPeak)
         else if (beatApplied)
             tiles[1].setStatus ("APPLIED - " + juce::String (beatAppliedCount) + " CHANGE" + (beatAppliedCount == 1 ? "" : "S"), ui::TileStatus::active);
         else if (beatResult.valid)
-            tiles[1].setStatus ("ANALYSED - " + juce::String ((int) beatResult.items.size() - 1) + " SUGGESTION" + (beatResult.items.size() == 2 ? "" : "S"), ui::TileStatus::ready);
+        {
+            int n = 0;
+            for (const auto& it : beatResult.items)
+                n += it.advisory ? 0 : 1;
+            tiles[1].setStatus ("ANALYSED - " + juce::String (n) + " SUGGESTION" + (n == 1 ? "" : "S"), ui::TileStatus::ready);
+        }
         else if (st == SS::notConnected)
             tiles[1].setStatus ("NO BEAT INPUT CONNECTED", ui::TileStatus::idle);
         else if (st == SS::connectedSilent)
@@ -1571,6 +1603,7 @@ void GlitchKidEditor::timerCallback()
     refreshStatus (inPeak, outPeak);
     refreshDisplays();
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
+    limGrBar.push (glitchProcessor.consumeLimiterGainReductionDb());
     if (eqGraph->isVisible())
         eqGraph->refresh();
 
@@ -1910,16 +1943,25 @@ void GlitchKidEditor::layoutContent()
                 show (eqNote, { 780, 384, 144, 96 });
                 break;
 
-            case 2: // DYNAMICS
+            case 2: // DYNAMICS: the compressor and output gain, then the OUTPUT LIMITER
                 for (int i = 0; i < compKnobs.size(); ++i)
-                    showK (*compKnobs[i], { 36 + i * 126, 204, 120, 200 });
-                show (grMeter, { 680, 204, 22, 230 });
-                show (grLabel, { 672, 438, 38, 16 });
-                showK (*gainKnob[0], { 724, 204, 130, 220 });
-                show (inMeter, { 872, 204, 22, 230 });
-                show (outMeter, { 904, 204, 22, 230 });
-                show (inLabel, { 864, 438, 38, 16 });
-                show (outLabel, { 896, 438, 38, 16 });
+                    showK (*compKnobs[i], { 36 + i * 126, 190, 120, 142 });
+                show (grMeter, { 680, 192, 22, 138 });
+                show (grLabel, { 672, 334, 38, 14 });
+                showK (*gainKnob[0], { 724, 190, 130, 142 });
+                show (inMeter, { 872, 192, 22, 138 });
+                show (outMeter, { 904, 192, 22, 138 });
+                show (inLabel, { 864, 334, 38, 14 });
+                show (outLabel, { 896, 334, 38, 14 });
+                panelRects.push_back ({ 24, 358, 912, 138 });
+                show (limHeading, { 36, 366, 240, 16 });
+                show (limOnButton, { 36, 392, 110, 28 });
+                for (int i = 0; i < limKnobs.size(); ++i)
+                    showK (*limKnobs[i], { 160 + i * 128, 378, 120, 112 });
+                show (limGrLabel, { 560, 372, 360, 14 });
+                show (limGrBar, { 560, 390, 360, 16 });
+                show (limPeakLabel, { 560, 412, 370, 18 });
+                show (limNote, { 560, 434, 370, 56 });
                 break;
 
             default: // SPACE

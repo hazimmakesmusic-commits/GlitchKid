@@ -258,6 +258,76 @@ struct LevelUiTests : public juce::UnitTest
             snapshot (*ed, "clean_signal");
         }
 
+        beginTest ("output limiter in FINAL TOUCH > DYNAMICS: the switch and knobs are the real parameters; the peak read-out is after the limiter and says CLIPPING only when the output really reached full scale");
+        {
+            for (bool limOn : { false, true })
+            {
+                GlitchKidProcessor p;
+                th::setParam (p, "gain", 12.0f);
+                p.setUiInt ("uiLevel", 4);
+                p.setUiInt ("uiCategory", 2);
+                p.prepareToPlay (fs, blockSize);
+                std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                auto* content = ed->getChildComponent (0);
+                std::vector<juce::ToggleButton*> toggles;
+                collectToggles (*content, toggles);
+                juce::ToggleButton* lim = nullptr;
+                for (auto* t : toggles)
+                    if (t->getButtonText() == "LIMITER")
+                        lim = t;
+                expect (lim != nullptr, "the limiter switch is on the DYNAMICS page");
+                if (lim == nullptr)
+                    continue;
+                if (limOn)
+                {
+                    lim->triggerClick();
+                    pump (60);
+                    expectEquals (th::getParam (p, "lim_on"), 1.0f);
+                }
+                std::vector<juce::Slider*> knobs;
+                std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                {
+                    for (auto* ch : c.getChildren())
+                    {
+                        if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag)
+                            knobs.push_back (sl);
+                        walk (*ch);
+                    }
+                };
+                walk (*content);
+                expectEquals ((int) knobs.size(), 9, "five compressor knobs, output gain, and ceiling, drive and release");
+                if (knobs.size() == 9)
+                {
+                    knobs[6]->setValue (-6.0, juce::sendNotificationSync); // CEILING
+                    knobs[7]->setValue (3.0, juce::sendNotificationSync);  // DRIVE
+                    knobs[8]->setValue (150.0, juce::sendNotificationSync); // RELEASE
+                    expectWithinAbsoluteError (th::getParam (p, "lim_ceiling"), -6.0f, 0.05f);
+                    expectWithinAbsoluteError (th::getParam (p, "lim_drive"), 3.0f, 0.05f);
+                    expectEquals (th::getParam (p, "lim_release"), 150.0f);
+                    th::setParam (p, "lim_ceiling", -1.0f);
+                    th::setParam (p, "lim_drive", 0.0f);
+                }
+                p.prepareToPlay (fs, blockSize);
+                std::vector<float> hot ((size_t) (fs * 2.0));
+                for (size_t n = 0; n < hot.size(); ++n)
+                    hot[n] = 0.9f * (float) std::sin (2.0 * 3.14159265358979 * 220.0 * (double) n / fs);
+                stream (p, hot, nullptr, 0);
+                pump (250);
+                if (limOn)
+                {
+                    expect (anyLabelContains (*content, "after the limiter"), "the read-out names the post-limiter peak");
+                    expect (! anyLabelContains (*content, "CLIPPING"), "the limited output does not clip");
+                }
+                else
+                {
+                    expect (anyLabelContains (*content, "limiter off"));
+                    expect (anyLabelContains (*content, "CLIPPING"), "a +12 dB output really clips, and the display says so");
+                }
+                if (limOn)
+                    snapshot (*ed, "limiter_on");
+            }
+        }
+
         beginTest ("BEAT LOCK without a beat: says so, starts no analysis, offers the vocal-only workflow, applies nothing");
         {
             GlitchKidProcessor p;

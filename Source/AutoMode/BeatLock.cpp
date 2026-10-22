@@ -12,6 +12,7 @@ juce::String titleFor (const std::string& id)
     if (id == "eq_b2_gain") return "PRESENCE BELL (3 kHz)";
     if (id == "eq_b1_gain") return "BODY BELL (400 Hz)";
     if (id == "eq_lo_gain") return "LOW SHELF";
+    if (id.empty())         return "NOT SUGGESTED";
     if (id == "echo_mix")   return "ECHO AMOUNT";
     if (id == "dim_mix")    return "WIDTH AMOUNT";
     return juce::String (id);
@@ -94,11 +95,15 @@ BeatLockResult analyseBeatLock (const analysis::VocalAnalysis& lead, const analy
     {
         BeatLockItem it;
         it.move = m;
+        it.advisory = m.id.empty(); // a withheld move is shown with its reason, never applied
         it.title = titleFor (m.id);
         r.items.push_back (it);
     }
-    r.message = r.items.size() > 1 ? "Analysed. " + juce::String ((int) r.items.size() - 1) + " suggested adjustment" + (r.items.size() > 2 ? "s" : "") + " below: untick any you do not want, then APPLY."
-                                   : "Analysed. No adjustment is suggested: the voice and the beat do not obviously conflict in these five bands.";
+    int adjustable = 0;
+    for (const auto& it : r.items)
+        adjustable += it.advisory ? 0 : 1;
+    r.message = adjustable > 0 ? "Analysed. " + juce::String (adjustable) + " suggested adjustment" + (adjustable > 1 ? "s" : "") + " below: untick any you do not want, then APPLY."
+                               : "Analysed. No adjustment is suggested: the voice and the beat do not obviously conflict in these five bands, or the safe limits leave nothing to change.";
     return r;
 }
 
@@ -117,9 +122,9 @@ SoundState applyBeatLock (const BeatLockResult& result, const std::vector<bool>&
         if (! rangeOf (id, range) || ! s.has (id))
             continue;
         const float base = s.get (id, 0.0f);
-        float v = m.scale ? base * m.factor : base + m.delta;
         if (m.scale && base <= 0.0f)
             continue; // an ambience that is off stays off
+        float v = applyBeatMove (base, m);
         if (! std::isfinite (v))
             continue;
         v = std::min (std::max (v, range.lo), range.hi);

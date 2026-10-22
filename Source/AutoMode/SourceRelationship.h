@@ -17,6 +17,9 @@ struct Relationship
     int worstBand = -1;             // band with the highest risk, or -1 if no band is at risk
     bool beatLowEndHeavy = false;   // more than half of the beat's energy is below 120 Hz
     bool beatVeryLoud = false;      // the beat peaks within 1 dB of full scale
+    float leadSibilance = 0.0f;     // the lead's own measurements (VocalAnalysis), so a move is never recommended without looking at the voice itself
+    float leadPresenceShare = 0.0f; // energy share 2-5 kHz
+    float leadAirShare = 0.0f;      // energy share above 5 kHz
     std::vector<std::string> reasons; // plain-English findings, in order of importance
     std::string unavailable;        // when !valid: why, in plain words
 };
@@ -29,8 +32,13 @@ struct BeatMove
     float delta = 0.0f;      // added to the current value (EQ gains, dB)
     bool scale = false;      // true: multiply the current value by `factor` instead (echo and width amounts)
     float factor = 1.0f;
+    bool hasLimit = false;   // an absolute bound on the RESULT (dB): a boost never takes the value above it, a cut never below it; a value already beyond it is left alone
+    float limit = 0.0f;
+    // id empty = advice only: nothing to apply (the reason says what was withheld and why)
 };
 
+// The value after one move (before the parameter's own range clamp): the change, then the move's limit. A value already beyond the limit is never moved back.
+float applyBeatMove (float base, const BeatMove&);
 const char* bandName (int band);
 std::vector<BeatMove> beatMoves (const Relationship&);
 Relationship compare (const analysis::VocalAnalysis& lead, const analysis::VocalAnalysis& beat);

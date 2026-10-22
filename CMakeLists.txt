@@ -41,6 +41,7 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/Saturation.cpp
     Source/DSP/AirLab.cpp
     Source/DSP/CleanLab.cpp
+    Source/DSP/OutputLimiter.cpp
     Source/DSP/GlitchStutter.cpp
     Source/DSP/LiquidEcho.cpp
     Source/DSP/Dimension.cpp
@@ -112,6 +113,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/MixEngineTests.cpp
         Tests/BeatLockTests.cpp
         Tests/LevelUiTests.cpp
+        Tests/OutputLimiterTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -125,6 +127,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/DSP/Saturation.cpp
         Source/DSP/AirLab.cpp
         Source/DSP/CleanLab.cpp
+        Source/DSP/OutputLimiter.cpp
         Source/DSP/GlitchStutter.cpp
         Source/DSP/LiquidEcho.cpp
         Source/DSP/Dimension.cpp

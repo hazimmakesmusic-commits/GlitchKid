@@ -78,7 +78,7 @@ private:
 };
 
 // A horizontal bar for a measured gain reduction (dB, positive), 0..maxDb, falling at a fixed rate; it shows only what the DSP reports.
-class ReductionBar : public juce::Component
+class ReductionBar : public juce::Component, public juce::SettableTooltipClient
 {
 public:
     explicit ReductionBar (float maxDb = 12.0f) : maxReduction (maxDb) {}

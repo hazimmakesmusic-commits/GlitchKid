@@ -6,6 +6,7 @@
 #include "DSP/Saturation.h"
 #include "DSP/AirLab.h"
 #include "DSP/CleanLab.h"
+#include "DSP/OutputLimiter.h"
 #include "DSP/FixedDelay.h"
 #include "DSP/GlitchStutter.h"
 #include "DSP/LiquidEcho.h"
@@ -59,6 +60,11 @@ public:
     static constexpr const char* airTrimId     = "air_trim";     // dB
 
     // CLEAN LAB (rumble / low-mid / resonance cleanup after the user EQ, de-esser after the compressor). Appended after AIR LAB; off by default.
+    // OUTPUT LIMITER: appended after CLEAN LAB. Off by default, so an old session or preset sounds and reports latency exactly as before.
+    static constexpr const char* limOnId       = "lim_on";
+    static constexpr const char* limCeilingId  = "lim_ceiling";
+    static constexpr const char* limDriveId    = "lim_drive";
+    static constexpr const char* limReleaseId  = "lim_release";
     static constexpr const char* cleanOnId     = "clean_on";
     static constexpr const char* cleanAmountId = "clean_amount"; // percent: how much of each section is allowed
     static constexpr const char* cleanToneId   = "clean_tone";   // percent trim of the corrective EQ section
@@ -220,6 +226,7 @@ public:
     const glitchkid::analysis::DisplayTap& getInputTap() const { return inputTap; }
     const glitchkid::analysis::DisplayTap& getOutputTap() const { return outputTap; }
     const glitchkid::analysis::DisplayTap& getBeatTap() const { return beatTap; }
+    float consumeLimiterGainReductionDb() { return limiter.consumeGainReductionDb(); } // the largest limiter gain reduction since the last call (dB, positive)
     float consumeBeatPeak() { return beatPeak.exchange (0.0f); } // peak of the Instrumental input since the last call (0 when none is connected)
     CleanLab::Applied getCleanApplied() const { return cleanLab.applied(); } // what CLEAN LAB is really applying right now (UI telemetry)
     float consumeGainReductionDb() { return gainReductionPeak.exchange (0.0f); } // positive dB
@@ -319,6 +326,10 @@ private:
     std::atomic<float>* mixPercent = nullptr;
     juce::AudioBuffer<float> dryBuffer; // preallocated in prepareToPlay, used for the bypass crossfade
     glitchkid::analysis::DisplayTap inputTap, outputTap, beatTap;
+    OutputLimiter limiter;
+    std::atomic<float>* limParams[4] {};
+    OutputLimiter::Settings readLimiterSettings() const;
+    void runOutputLimiter (juce::AudioBuffer<float>&, int numChannels, int numSamples) noexcept;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
     juce::SmoothedValue<float> wetMix { 1.0f };       // 1 = processed, 0 = dry (bypass)

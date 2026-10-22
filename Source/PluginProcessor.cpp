@@ -175,6 +175,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { cleanEssId, 1 }, "Clean Lab De-esser",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
 
+    // OUTPUT LIMITER: appended after CLEAN LAB so every existing parameter keeps its host index
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { limOnId, 1 }, "Limiter On", false));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { limCeilingId, 1 }, "Limiter Ceiling",
+        NormalisableRange<float> (-12.0f, -0.1f, 0.1f), -1.0f, AudioParameterFloatAttributes().withLabel ("dBFS")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { limDriveId, 1 }, "Limiter Drive",
+        NormalisableRange<float> (0.0f, 24.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { limReleaseId, 1 }, "Limiter Release",
+        NormalisableRange<float> (10.0f, 500.0f, 1.0f), 80.0f, AudioParameterFloatAttributes().withLabel ("ms")));
+
     return layout;
 }
 
@@ -228,6 +237,10 @@ GlitchKidProcessor::GlitchKidProcessor()
     for (int i = 0; i < 5; ++i)
         cleanParams[i] = apvts.getRawParameterValue (cleanIds[i]);
 
+    const char* limIds[] = { limOnId, limCeilingId, limDriveId, limReleaseId };
+    for (int i = 0; i < 4; ++i)
+        limParams[i] = apvts.getRawParameterValue (limIds[i]);
+
     if (juce::MessageManager::existsAndIsCurrentThread())
         startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
 }
@@ -235,6 +248,23 @@ GlitchKidProcessor::GlitchKidProcessor()
 GlitchKidProcessor::~GlitchKidProcessor()
 {
     stopTimer();
+}
+
+OutputLimiter::Settings GlitchKidProcessor::readLimiterSettings() const
+{
+    OutputLimiter::Settings s;
+    s.on = limParams[0]->load() >= 0.5f;
+    s.ceilingDb = limParams[1]->load();
+    s.driveDb = limParams[2]->load();
+    s.releaseMs = limParams[3]->load();
+    return s;
+}
+
+// The last stage of the output path (also on the DRY path, so level and delay stay consistent when you compare). Adds its look-ahead latency only while on.
+void GlitchKidProcessor::runOutputLimiter (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples) noexcept
+{
+    limiter.setSettings (readLimiterSettings());
+    limiter.process (buffer.getArrayOfWritePointers(), juce::jmin (numChannels, 2), numSamples);
 }
 
 CleanLab::Settings GlitchKidProcessor::readCleanSettings() const
@@ -273,7 +303,8 @@ glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings(
 int GlitchKidProcessor::getWantedLatencySamples() const
 {
     return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0)
-           + (formantIsOn (formantShift->load()) ? formantLatency : 0) + (harmParams[0]->load() >= 0.5f ? harmonyLatency : 0);
+           + (formantIsOn (formantShift->load()) ? formantLatency : 0) + (harmParams[0]->load() >= 0.5f ? harmonyLatency : 0)
+           + (limParams[0]->load() >= 0.5f ? limiter.latencySamples() : 0);
 }
 
 void GlitchKidProcessor::updateReportedLatency()
@@ -710,6 +741,8 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     airLab.reset();
     cleanLab.setSettings (readCleanSettings());
     cleanLab.prepare (sampleRate);
+    limiter.setSettings (readLimiterSettings());
+    limiter.prepare (sampleRate);
     stutter.prepare (sampleRate);
 
     pitchLatency = glitchkid::pitch::PitchCorrector::latencyFor (sampleRate);
@@ -753,6 +786,14 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     formantBlendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
     dryBuffer4.setSize (2, dryBuffer.getNumSamples());
     harmonyBlendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
+}
+
+static float maxMagnitude (const juce::AudioBuffer<float>& b, int numChannels, int numSamples)
+{
+    float m = 0.0f;
+    for (int ch = 0; ch < numChannels; ++ch)
+        m = juce::jmax (m, b.getMagnitude (ch, 0, numSamples));
+    return m;
 }
 
 // Raise a peak value; only the audio thread writes, so a plain load/store is enough.
@@ -849,7 +890,9 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     for (int ch = 0; ch < numChannels; ++ch)
         dspguard::zeroNonFinite (buffer.getWritePointer (ch), numSamples);
 
-    const float inMag = buffer.getMagnitude (0, numSamples);
+    float inMag = 0.0f; // the louder of the channels (a hot right channel must show too)
+    for (int ch = 0; ch < numChannels; ++ch)
+        inMag = juce::jmax (inMag, buffer.getMagnitude (ch, 0, numSamples));
     raisePeak (inputPeak, inMag);
     inputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 
@@ -955,7 +998,8 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         shownTargetMidi.store (-1.0f, std::memory_order_relaxed);
         for (int ch = 0; ch < dryChannels; ++ch)
             buffer.copyFrom (ch, 0, dry, ch, 0, numSamples);
-        raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
+        runOutputLimiter (buffer, numChannels, numSamples);
+        raisePeak (outputPeak, maxMagnitude (buffer, numChannels, numSamples));
         outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
         return;
     }
@@ -1112,7 +1156,8 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
             }
         }
 
-    raisePeak (outputPeak, buffer.getMagnitude (0, numSamples));
+    runOutputLimiter (buffer, numChannels, numSamples);
+    raisePeak (outputPeak, maxMagnitude (buffer, numChannels, numSamples)); // after the limiter: what actually leaves the plug-in
     outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 }
 

@@ -56,7 +56,7 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
 
     // ---- foundation: the profile's own values ----
     SoundState s = in.profile >= 0 && in.profile < FactoryPresets::count ? FactoryPresets::build (in.profile, in.factoryDefault) : in.factoryDefault;
-    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "air_on", "air_presence", "air_air", "air_link", "air_mix", "air_trim", "clean_on", "clean_amount", "clean_tone", "clean_res", "clean_ess" })
+    for (const char* keep : { "tune_on", "tune_strength", "tune_speed", "tune_key", "tune_scale", "gain", "mix", "air_on", "air_presence", "air_air", "air_link", "air_mix", "air_trim", "clean_on", "clean_amount", "clean_tone", "clean_res", "clean_ess", "lim_on", "lim_ceiling", "lim_drive", "lim_release" })
         s.set (keep, in.current.get (keep, in.factoryDefault.get (keep, 0.0f)));
     s.egoId = {};
     s.egoChaos = 0.0f;
@@ -173,13 +173,15 @@ MixProposal buildMix (const MixInput& in, const RangeLookup& rangeOf)
                 p.evidence.add ("BEAT: " + juce::String (r));
             for (const auto& m : beatMoves (rel))
             {
-                if (m.scale)
+                if (m.id.empty())
+                    p.evidence.add ("BEAT: " + juce::String (m.reason)); // advice only: nothing is changed
+                else if (m.scale)
                 {
                     if (s.has (m.id.c_str()) && get (m.id.c_str()) > 0.0f)
                         put (m.id.c_str(), get (m.id.c_str()) * m.factor, m.reason);
                 }
                 else
-                    eqAdd (m.id.c_str(), m.delta, m.reason);
+                    put (m.id.c_str(), clampf (applyBeatMove (get (m.id.c_str()), m), -maxEqGain, maxEqGain), m.reason);
             }
             p.evidence.add ("The lead is " + f1 (rel.vocalMinusBeatDb) + " dB relative to the beat on this track; balance the levels in your mixer (GlitchKid does not change the beat or your fader).");
         }

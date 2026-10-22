@@ -169,6 +169,13 @@ private:
     void applyContentTransform (float dx = 0.0f);
     juce::OwnedArray<ParamKnob> compKnobs; // threshold, ratio, attack, release, makeup
     juce::OwnedArray<ParamKnob> gainKnob;
+    // OUTPUT LIMITER (DYNAMICS): the last stage of the output path
+    juce::OwnedArray<ParamKnob> limKnobs; // ceiling, drive, release
+    juce::ToggleButton limOnButton { "LIMITER" };
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> limOnAtt;
+    glitchkid::ui::LabHeading limHeading { "OUTPUT LIMITER" };
+    glitchkid::ui::ReductionBar limGrBar { 12.0f };
+    juce::Label limGrLabel { {}, "LIMITER GAIN REDUCTION" }, limPeakLabel, limNote;
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, mix
     juce::OwnedArray<ParamKnob> dimKnobs;  // width, mix
     juce::OwnedArray<ParamKnob> dblKnobs;  // amount, width

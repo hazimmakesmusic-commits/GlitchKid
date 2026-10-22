@@ -643,7 +643,7 @@ struct CleanLabTests : public juce::UnitTest
         beginTest ("processor: parameters appended with neutral defaults, state and presets, latency unchanged, no allocation while running, BUILD does not repeat CLEAN LAB's corrections");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 65);
+            expectEquals (p.getParameters().size(), 69);
             const char* ids[] = { "clean_on", "clean_amount", "clean_tone", "clean_res", "clean_ess" };
             for (int i = 0; i < 5; ++i)
                 if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (p.getParameters()[60 + i]))
