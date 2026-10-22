@@ -95,7 +95,8 @@ public:
     // The decorative backdrop (the Glitch Relic), drawn dimmed behind the grid and traces. It carries no data; pass an empty image for none.
     void setBackdrop (const juce::Image& image, float strength);
     // Sculpture mode: the display becomes a dark glass plate set into the artwork, so the chrome shows around it (and faintly through it) instead of sitting behind everything.
-    static constexpr float plateInsetX = 56.0f, plateInsetY = 8.0f, plateGlass = 0.88f;
+    static constexpr float plateInsetX = 96.0f, plateInsetY = 8.0f, plateGlass = 0.88f;
+    static constexpr float heroWidth = 912.0f, heroHeight = 266.0f; // the HOME display's size in design pixels (PluginEditor lays it out at this size)
     void setSculpture (bool on);
     // Playback-driven drift of the artwork. 'activity' (0..1) must come from the real, already displayed signal; with 0 (or motion off) the artwork stands still.
     void setActivity (float dt, float activity, bool motionAllowed);

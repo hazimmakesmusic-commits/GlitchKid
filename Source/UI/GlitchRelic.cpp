@@ -1,5 +1,6 @@
 #include "GlitchRelic.h"
 #include "PlaygroundWidgets.h"
+#include <BinaryData.h>
 #include <algorithm>
 #include <cmath>
 
@@ -192,9 +193,37 @@ void GlitchRelicLoader::stop()
     stopThread (15000);
 }
 
+// The supplied artwork is an RGBA PNG with a transparent background and a hollow chrome loop; crop it to the loop so it can be fitted to the display.
+// If it cannot be decoded (it always can, it is compiled in) the procedural relic is used instead, so the display never loses its artwork silently.
+juce::Image loadGlitchRelicArtwork()
+{
+    auto image = juce::ImageFileFormat::loadFrom (BinaryData::glitch_relic_png, (size_t) BinaryData::glitch_relic_pngSize);
+    if (! image.isValid())
+        return {};
+    image = image.convertedToFormat (juce::Image::ARGB);
+    juce::Rectangle<int> box;
+    {
+        const juce::Image::BitmapData data (image, juce::Image::BitmapData::readOnly);
+        int x0 = image.getWidth(), y0 = image.getHeight(), x1 = -1, y1 = -1;
+        for (int y = 0; y < image.getHeight(); ++y)
+            for (int x = 0; x < image.getWidth(); ++x)
+                if (data.getPixelColour (x, y).getAlpha() > 12)
+                {
+                    x0 = std::min (x0, x); x1 = std::max (x1, x);
+                    y0 = std::min (y0, y); y1 = std::max (y1, y);
+                }
+        if (x1 < x0)
+            return {};
+        box = { x0, y0, x1 - x0 + 1, y1 - y0 + 1 };
+    }
+    return image.getClippedImage (box).createCopy();
+}
+
 void GlitchRelicLoader::run()
 {
-    auto image = renderGlitchRelic (1824, 472);
+    auto image = loadGlitchRelicArtwork();
+    if (! image.isValid())
+        image = renderGlitchRelic (1824, 472);
     if (threadShouldExit())
         return;
     juce::MessageManager::callAsync ([sh = shared, img = std::move (image)]

@@ -589,7 +589,6 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             tiles[i].setContent (names[i], descs[i], i == 2);
             tiles[i].setGlyph (i);
             tiles[i].setStatus ("...", ui::TileStatus::idle);
-            tiles[i].setTooltip (juce::String ("Open ") + names[i] + ".");
             tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
             content.addAndMakeVisible (tiles[i]);
         }
@@ -1862,10 +1861,10 @@ void GlitchKidEditor::layoutContent()
         show (homeTitle, { 24, 106, 300, 18 });
         show (homeSource, { 330, 106, 200, 18 });
         show (homeHint, { 540, 106, 396, 18 });
-        show (homeView, { 24, 128, 912, 236 });
+        show (homeView, { 24, 128, 912, 266 });
         static const int tx[4] = { 24, 242, 460, 720 }, tw[4] = { 212, 212, 254, 216 };
         for (int i = 0; i < 4; ++i)
-            show (tiles[i], { tx[i], 378, tw[i], 112 });
+            show (tiles[i], { tx[i], 408, tw[i], 112 });
     }
 
     // ---- CLEAN LAB ----

@@ -395,16 +395,18 @@ void SpectrumView::paint (juce::Graphics& g)
     const bool art = backdrop.isValid();
     if (art)
     {
+        // the artwork is stretched to the display with a little bleed so the drift never pushes its edge into view
+        const auto artFrame = frame.reduced (8.0f, 5.0f);
         // pre-scaled once per size so every frame is a 1:1 copy; the drift (only while audio plays) moves it by a few pixels
         const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
-        const int pw = std::max (1, (int) std::ceil (frame.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (frame.getHeight() * pixelScale));
+        const int pw = std::max (1, (int) std::ceil (artFrame.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (artFrame.getHeight() * pixelScale));
         if (! backdropScaled.isValid() || backdropScaled.getWidth() != pw || backdropScaled.getHeight() != ph)
             backdropScaled = backdrop.rescaled (pw, ph, juce::Graphics::highResamplingQuality);
         const juce::Graphics::ScopedSaveState keep (g);
         g.reduceClipRegion (framePath);
         const float dx = 9.0f * std::sin (driftPhase) * activitySmoothed, dy = 3.0f * std::sin (driftPhase * 0.7f + 1.0f) * activitySmoothed;
         g.setOpacity (juce::jmin (1.0f, backdropStrength * (1.0f + 0.12f * activitySmoothed)));
-        g.drawImage (backdropScaled, frame.translated (std::round (dx), std::round (dy)));
+        g.drawImage (backdropScaled, artFrame.translated (std::round (dx), std::round (dy)));
     }
     if (art && sculpture)
     {

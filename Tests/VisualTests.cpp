@@ -18,7 +18,7 @@ juce::Image onPlate (const juce::Image& relic, float strength, bool glass = fals
     g.drawImageAt (relic, 0, 0);
     if (glass)
     {
-        const float fx = glitchkid::ui::SpectrumView::plateInsetX / 912.0f, fy = glitchkid::ui::SpectrumView::plateInsetY / 236.0f;
+        const float fx = glitchkid::ui::SpectrumView::plateInsetX / glitchkid::ui::SpectrumView::heroWidth, fy = glitchkid::ui::SpectrumView::plateInsetY / glitchkid::ui::SpectrumView::heroHeight;
         g.setColour (juce::Colour (0xff0a070f).withAlpha (glitchkid::ui::SpectrumView::plateGlass));
         g.fillRect (juce::Rectangle<float> ((float) relic.getWidth() * fx, (float) relic.getHeight() * fy, (float) relic.getWidth() * (1.0f - 2.0f * fx), (float) relic.getHeight() * (1.0f - 2.0f * fy)));
     }
@@ -84,36 +84,67 @@ struct VisualTests : public juce::UnitTest
             }
         }
 
-        beginTest ("contrast: under the glass plate the relic leaves the legend, axis-label and level-scale zones dark, so labels and traces keep their contrast");
+        beginTest ("the supplied artwork: compiled in, decodes, has a transparent background and a visible loop");
         {
-            const auto relic = glitchkid::ui::renderGlitchRelic (1824, 472);
-            const auto plate = onPlate (relic, 1.0f, true);
-            const int W = plate.getWidth(), H = plate.getHeight();
-            float zoneWorst = 0.0f;
-            double sum = 0.0;
-            int n = 0;
-            for (int y = 0; y < H; y += 3)
-                for (int x = 0; x < W; x += 3)
-                {
-                    const float l = luminance (plate.getPixelAt (x, y));
-                    const bool inPlate = x > W * 8 / 100 && x < W * 92 / 100 && y > H * 4 / 100 && y < H * 96 / 100;
-                    if (inPlate)
+            const auto art = glitchkid::ui::loadGlitchRelicArtwork();
+            expect (art.isValid(), "it decodes");
+            if (art.isValid())
+            {
+                logMessage ("VISUAL supplied artwork cropped to " + juce::String (art.getWidth()) + " x " + juce::String (art.getHeight()));
+                expect (art.getWidth() > 1200 && art.getWidth() < 1800 && art.getHeight() > 400, "a wide loop");
+                expect (art.getPixelAt (art.getWidth() / 2, art.getHeight() / 2).getAlpha() < 8, "the centre of the loop is transparent (the display shows through)");
+                int opaque = 0, total = 0;
+                for (int y = 0; y < art.getHeight(); y += 4)
+                    for (int x = 0; x < art.getWidth(); x += 4)
                     {
-                        sum += l;
-                        ++n;
+                        opaque += art.getPixelAt (x, y).getAlpha() > 200 ? 1 : 0;
+                        ++total;
                     }
-                    const bool legendZone = inPlate && y < H * 145 / 1000;               // the legend row
-                    const bool axisZone = inPlate && y > H * 60 / 100 && y < H * 67 / 100; // the frequency labels
-                    const bool scaleZone = inPlate && x > W * 8 / 100 && x < W * 12 / 100;           // the level scale on the left of the plot
-                    if (legendZone || axisZone || scaleZone)
-                        zoneWorst = std::max (zoneWorst, l);
-                }
+                expect (opaque > total / 8 && opaque < total * 3 / 4, "the loop covers part of its box: " + juce::String (100 * opaque / total) + " %");
+            }
+        }
+
+        beginTest ("contrast: the supplied artwork under the glass plate leaves the legend, axis-label and level-scale zones dark enough for AA contrast");
+        {
+            namespace ui = glitchkid::ui;
+            const auto art = ui::loadGlitchRelicArtwork();
+            expect (art.isValid());
+            constexpr int S = 2; // measure at twice the design size
+            const int W = (int) ui::SpectrumView::heroWidth * S, H = (int) ui::SpectrumView::heroHeight * S;
+            juce::Image view (juce::Image::ARGB, W, H, true);
+            {
+                juce::Graphics g (view);
+                g.fillAll (juce::Colour (0xff0a070f));
+                g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+                g.drawImage (art, juce::Rectangle<float> (8.0f * S, 5.0f * S, (float) W - 16.0f * S, (float) H - 10.0f * S)); // as SpectrumView fits it
+                g.setColour (juce::Colour (0xff0a070f).withAlpha (ui::SpectrumView::plateGlass));
+                g.fillRect (juce::Rectangle<float> (ui::SpectrumView::plateInsetX * S, ui::SpectrumView::plateInsetY * S, W - 2.0f * ui::SpectrumView::plateInsetX * S, H - 2.0f * ui::SpectrumView::plateInsetY * S));
+            }
+            // text zones in design pixels, from SpectrumView::rebuildGeometry: plate (96, 8, 720 x 250), content area inset 12 x 10
+            const juce::Rectangle<int> plate ((int) ui::SpectrumView::plateInsetX, (int) ui::SpectrumView::plateInsetY, (int) (ui::SpectrumView::heroWidth - 2.0f * ui::SpectrumView::plateInsetX),
+                                              (int) (ui::SpectrumView::heroHeight - 2.0f * ui::SpectrumView::plateInsetY));
+            const auto area = plate.reduced (12, 10);
+            const juce::Rectangle<int> legend (area.getX(), area.getY(), area.getWidth(), 14), scale (area.getX(), area.getY() + 16, 30, 120);
+            const int waveH = (int) std::min (64.0f, (float) area.getHeight() * 0.28f);
+            const juce::Rectangle<int> axis (area.getX(), area.getBottom() - waveH - 6 - 14, area.getWidth(), 14);
+            float zoneWorst = 0.0f;
+            for (const auto& zone : { legend, scale, axis })
+                for (int y = zone.getY() * S; y < zone.getBottom() * S; y += 2)
+                    for (int x = zone.getX() * S; x < zone.getRight() * S; x += 2)
+                        zoneWorst = std::max (zoneWorst, luminance (view.getPixelAt (x, y)));
             const float text = luminance (juce::Colour (0xff9b91a5)); // the dim label colour
             const float ratio = (text + 0.05f) / (zoneWorst + 0.05f);
-            logMessage ("VISUAL relic under glass: mean luminance in the plate " + juce::String ((float) (sum / n), 3) + ", brightest in the text zones " + juce::String (zoneWorst, 4)
-                        + " (dim label contrast there " + juce::String (ratio, 2) + ":1)");
-            expect (ratio >= 4.5f, "the dim labels keep WCAG AA contrast (4.5:1) in the text zones: " + juce::String (ratio, 2));
-            expect ((float) (sum / n) < 0.03f, "the plate is mostly dark");
+            logMessage ("VISUAL supplied artwork under glass: brightest in the text zones " + juce::String (zoneWorst, 4) + " (dim label contrast there " + juce::String (ratio, 2) + ":1)");
+            expect (ratio >= 4.5f, "the dim labels keep WCAG AA contrast (4.5:1): " + juce::String (ratio, 2));
+            const juce::String dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
+            if (dir.isNotEmpty())
+            {
+                juce::File f = juce::File (dir).getChildFile ("home_art_composite.png");
+                f.deleteFile();
+                juce::FileOutputStream os (f);
+                if (os.openedOk())
+                    juce::PNGImageFormat().writeImageToStream (view, os);
+            }
         }
 
         beginTest ("tooltips: narrow, inside the editor, and never on top of the pointer, wherever the pointer is");

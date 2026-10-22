@@ -33,7 +33,8 @@ juce_add_plugin(GlitchKid
 # Bundled fonts (Inter, SIL Open Font License; see Assets/Fonts/OFL.txt): compiled in so the interface looks the same on every machine.
 juce_add_binary_data(GlitchKidAssets SOURCES
     Assets/Fonts/Inter-Regular.otf
-    Assets/Fonts/Inter-Bold.otf)
+    Assets/Fonts/Inter-Bold.otf
+    Assets/Art/glitch_relic.png) # the Glitch Relic artwork (supplied by the project owner; see Assets/Art/README.md)
 
 target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp

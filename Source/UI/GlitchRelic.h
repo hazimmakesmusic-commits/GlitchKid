@@ -10,6 +10,9 @@ namespace glitchkid::ui
 // The output is premultiplied-alpha ARGB with a transparent background; use it dimmed and only behind plates that carry no text.
 juce::Image renderGlitchRelic (int width, int height);
 
+// The supplied artwork (Assets/Art/glitch_relic.png, compiled in): a transparent-background chrome loop, cropped to its visible extent. Empty if it cannot be decoded.
+juce::Image loadGlitchRelicArtwork();
+
 // Renders the relic once on a background thread (never on the message thread: it takes a few hundred milliseconds in software) and delivers it back on the
 // message thread. The finished image is kept for the life of the process, so a second editor gets it at once. The owner must call stop () before it is destroyed
 // (a plug-in must never leave a thread running).
