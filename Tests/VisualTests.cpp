@@ -1,19 +1,27 @@
 #include "TestHelpers.h"
 #include "../Source/PluginEditor.h"
 #include "../Source/UI/GlitchRelic.h"
+#include "../Source/UI/LabKit.h"
 #include <set>
 
 // The visual system: the Glitch Relic is deterministic, never raises the background behind the spectrum above a contrast-safe level, costs nothing per frame
 // (rendered once and reused), and can be exported for marketing; the palette tokens are unchanged.
 namespace
 {
-juce::Image onPlate (const juce::Image& relic, float strength)
+// The HOME display as built: the relic at full strength in a frame, a dark glass plate over the middle of it (see SpectrumView sculpture mode).
+juce::Image onPlate (const juce::Image& relic, float strength, bool glass = false)
 {
     juce::Image plate (juce::Image::ARGB, relic.getWidth(), relic.getHeight(), true);
     juce::Graphics g (plate);
     g.fillAll (juce::Colour (0xff0a070f));
     g.setOpacity (strength);
     g.drawImageAt (relic, 0, 0);
+    if (glass)
+    {
+        const float fx = glitchkid::ui::SpectrumView::plateInsetX / 912.0f, fy = glitchkid::ui::SpectrumView::plateInsetY / 236.0f;
+        g.setColour (juce::Colour (0xff0a070f).withAlpha (glitchkid::ui::SpectrumView::plateGlass));
+        g.fillRect (juce::Rectangle<float> ((float) relic.getWidth() * fx, (float) relic.getHeight() * fy, (float) relic.getWidth() * (1.0f - 2.0f * fx), (float) relic.getHeight() * (1.0f - 2.0f * fy)));
+    }
     return plate;
 }
 
@@ -65,7 +73,7 @@ struct VisualTests : public juce::UnitTest
             const juce::String dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             if (dir.isNotEmpty())
             {
-                for (auto [name, img] : { std::pair<const char*, juce::Image> { "glitch_relic_transparent.png", a }, { "glitch_relic_on_plate.png", onPlate (a, 1.0f) } })
+                for (auto [name, img] : { std::pair<const char*, juce::Image> { "glitch_relic_transparent.png", a }, { "glitch_relic_on_plate.png", onPlate (a, 1.0f, true) } })
                 {
                     juce::File f = juce::File (dir).getChildFile (name);
                     f.deleteFile();
@@ -76,34 +84,75 @@ struct VisualTests : public juce::UnitTest
             }
         }
 
-        beginTest ("contrast: at its working strength the relic leaves the legend, axis-label and edge zones dark, so labels and traces keep their contrast");
+        beginTest ("contrast: under the glass plate the relic leaves the legend, axis-label and level-scale zones dark, so labels and traces keep their contrast");
         {
             const auto relic = glitchkid::ui::renderGlitchRelic (1824, 472);
-            const float strength = 0.6f; // the strength the HOME display uses
-            const auto plate = onPlate (relic, strength);
+            const auto plate = onPlate (relic, 1.0f, true);
             const int W = plate.getWidth(), H = plate.getHeight();
-            float brightest = 0.0f, zoneWorst = 0.0f;
+            float zoneWorst = 0.0f;
             double sum = 0.0;
             int n = 0;
             for (int y = 0; y < H; y += 3)
                 for (int x = 0; x < W; x += 3)
                 {
                     const float l = luminance (plate.getPixelAt (x, y));
-                    brightest = std::max (brightest, l);
-                    sum += l;
-                    ++n;
-                    const bool legendZone = y < H * 10 / 100;                   // the legend row
-                    const bool axisZone = y > H * 88 / 100;                     // the axis labels
-                    const bool sideZone = x < W * 6 / 100 || x > W * 94 / 100;  // the level scale on the left, the right edge
-                    if (legendZone || axisZone || sideZone)
+                    const bool inPlate = x > W * 8 / 100 && x < W * 92 / 100 && y > H * 4 / 100 && y < H * 96 / 100;
+                    if (inPlate)
+                    {
+                        sum += l;
+                        ++n;
+                    }
+                    const bool legendZone = inPlate && y < H * 145 / 1000;               // the legend row
+                    const bool axisZone = inPlate && y > H * 60 / 100 && y < H * 67 / 100; // the frequency labels
+                    const bool scaleZone = inPlate && x > W * 8 / 100 && x < W * 12 / 100;           // the level scale on the left of the plot
+                    if (legendZone || axisZone || scaleZone)
                         zoneWorst = std::max (zoneWorst, l);
                 }
             const float text = luminance (juce::Colour (0xff9b91a5)); // the dim label colour
             const float ratio = (text + 0.05f) / (zoneWorst + 0.05f);
-            logMessage ("VISUAL relic at strength 0.6: mean luminance " + juce::String ((float) (sum / n), 3) + ", brightest pixel " + juce::String (brightest, 3) + ", brightest in the text zones "
-                        + juce::String (zoneWorst, 4) + " (dim label contrast there " + juce::String (ratio, 2) + ":1)");
+            logMessage ("VISUAL relic under glass: mean luminance in the plate " + juce::String ((float) (sum / n), 3) + ", brightest in the text zones " + juce::String (zoneWorst, 4)
+                        + " (dim label contrast there " + juce::String (ratio, 2) + ":1)");
             expect (ratio >= 4.5f, "the dim labels keep WCAG AA contrast (4.5:1) in the text zones: " + juce::String (ratio, 2));
             expect ((float) (sum / n) < 0.03f, "the plate is mostly dark");
+        }
+
+        beginTest ("artwork motion: still when idle or with MOTION off, moves only with a real signal, and stops asking for repaints once still");
+        {
+            namespace ui = glitchkid::ui;
+            ui::SpectrumView v;
+            v.setBounds (0, 0, 912, 236);
+            for (int i = 0; i < 30; ++i)
+                v.setActivity (0.016f, 0.0f, true);
+            expectEquals (v.getDriftForTest(), 0.0f);
+            v.commit();
+            const int before = v.getRepaintRequestsForTest();
+            for (int i = 0; i < 30; ++i)
+            {
+                v.setActivity (0.016f, 0.0f, true); // idle: nothing changes, nothing is repainted
+                v.commit();
+            }
+            expectEquals (v.getRepaintRequestsForTest(), before);
+            for (int i = 0; i < 30; ++i)
+                v.setActivity (0.016f, 0.0f, false);
+            expectEquals (v.getDriftForTest(), 0.0f); // MOTION off
+            for (int i = 0; i < 60; ++i)
+                v.setActivity (0.016f, 0.6f, false);
+            expectEquals (v.getDriftForTest(), 0.0f); // MOTION off, with signal: still still
+            for (int i = 0; i < 60; ++i)
+                v.setActivity (0.016f, 0.6f, true);
+            expect (v.getDriftForTest() > 0.05f, "it drifts while audio plays");
+            for (int i = 0; i < 400; ++i)
+                v.setActivity (0.016f, 0.0f, true); // the audio stops: it settles
+            const float rest = v.getDriftForTest();
+            v.commit();
+            const int r0 = v.getRepaintRequestsForTest();
+            for (int i = 0; i < 30; ++i)
+            {
+                v.setActivity (0.016f, 0.0f, true);
+                v.commit();
+            }
+            expectEquals (v.getDriftForTest(), rest);
+            expectEquals (v.getRepaintRequestsForTest(), r0);
         }
 
         beginTest ("the relic is a real, decorative backdrop on HOME only: it loads off the message thread, is cached for later editors, and is gone when the editor is");

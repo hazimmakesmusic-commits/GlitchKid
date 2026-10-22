@@ -162,6 +162,57 @@ void WorkspaceTile::setStatus (const juce::String& statusText, TileStatus k)
     }
 }
 
+namespace
+{
+// Schematic pictograms for the HOME workspace tiles. They are decoration drawn from fixed shapes; none of them represents a measurement.
+void drawTileGlyph (juce::Graphics& g, int index, juce::Rectangle<float> b, juce::Colour c, bool lit)
+{
+    g.setColour (c);
+    const float x = b.getX(), y = b.getY(), w = b.getWidth(), h = b.getHeight();
+    juce::Path p;
+    switch (index)
+    {
+        case 0: // CLEAN LAB: a response line with a notch taken out of it
+            p.startNewSubPath (x, y + h * 0.35f); p.lineTo (x + w * 0.30f, y + h * 0.35f); p.lineTo (x + w * 0.42f, y + h * 0.88f); p.lineTo (x + w * 0.54f, y + h * 0.35f); p.lineTo (x + w, y + h * 0.35f);
+            break;
+        case 1: // BEAT LOCK: two waves, one riding the other
+            for (int i = 0; i <= 20; ++i)
+            {
+                const float t = (float) i / 20.0f;
+                const float yy = y + h * (0.30f + 0.20f * std::sin (t * 12.0f));
+                i == 0 ? p.startNewSubPath (x, yy) : p.lineTo (x + w * t, yy);
+            }
+            for (int i = 0; i <= 20; ++i)
+            {
+                const float t = (float) i / 20.0f;
+                const float yy = y + h * (0.72f + 0.14f * std::sin (t * 12.0f + 1.6f));
+                i == 0 ? p.startNewSubPath (x, yy) : p.lineTo (x + w * t, yy);
+            }
+            break;
+        case 2: // BUILD: three rising bars
+            for (int i = 0; i < 3; ++i)
+                p.addRectangle (x + w * (0.08f + 0.32f * (float) i), y + h * (0.62f - 0.28f * (float) i), w * 0.2f, h * (0.38f + 0.28f * (float) i));
+            g.fillPath (p);
+            return;
+        default: // FINAL TOUCH: three small dials
+            for (int i = 0; i < 3; ++i)
+            {
+                const float cx = x + w * (0.17f + 0.33f * (float) i), cy = y + h * 0.55f, rr = h * 0.34f;
+                p.addCentredArc (cx, cy, rr, rr, 0.0f, -2.2f, 2.2f, true);
+                p.startNewSubPath (cx, cy); p.lineTo (cx + rr * 0.7f * std::sin (-0.6f + 0.6f * (float) i), cy - rr * 0.7f * std::cos (-0.6f + 0.6f * (float) i));
+            }
+            break;
+    }
+    if (lit)
+    {
+        g.setColour (c.withAlpha (0.25f));
+        g.strokePath (p, juce::PathStrokeType (3.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setColour (c);
+    }
+    g.strokePath (p, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+}
+
 void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
@@ -181,9 +232,14 @@ void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
     g.setGradientFill (juce::ColourGradient (accent, r.getX() + 14.0f, 0.0f, accent.withAlpha (0.0f), r.getX() + 80.0f, 0.0f, false)); // the status light
     g.fillRect (r.getX() + 14.0f, r.getBottom() - 4.0f, 66.0f, 3.0f);
     auto in = r.toNearestInt().reduced (16, 12);
+    if (glyph >= 0)
+    {
+        const auto box = juce::Rectangle<float> (40.0f, 26.0f).withRightX (r.getRight() - 14.0f).withY (r.getY() + 12.0f);
+        drawTileGlyph (g, glyph, box, prominent ? violet.brighter (0.4f) : accent.interpolatedWith (textDim, 0.4f).withAlpha (highlighted ? 1.0f : 0.8f), prominent || highlighted);
+    }
     g.setColour (chrome);
     g.setFont (labFont (prominent ? 18.0f : 15.0f));
-    g.drawFittedText (title.toUpperCase(), in.removeFromTop (prominent ? 26 : 22), juce::Justification::centredLeft, 1, 0.75f);
+    g.drawFittedText (title.toUpperCase(), in.removeFromTop (prominent ? 26 : 22).withTrimmedRight (glyph >= 0 ? 46 : 0), juce::Justification::centredLeft, 1, 0.7f);
     in.removeFromTop (4);
     g.setColour (textDim);
     g.setFont (fontOf (12.0f));
@@ -215,8 +271,32 @@ void SpectrumView::setBackdrop (const juce::Image& image, float strength)
     backdrop = image;
     backdropScaled = {};
     backdropStrength = strength;
+    geometryDirty = true;
     changed = true;
     commit();
+}
+
+void SpectrumView::setSculpture (bool on)
+{
+    if (on != sculpture)
+    {
+        sculpture = on;
+        geometryDirty = true;
+        changed = true;
+    }
+}
+
+void SpectrumView::setActivity (float dt, float activity, bool motionAllowed)
+{
+    const float target = motionAllowed ? juce::jlimit (0.0f, 1.0f, activity) : 0.0f;
+    const float before = activitySmoothed;
+    activitySmoothed += (target - activitySmoothed) * juce::jmin (1.0f, dt * (target > activitySmoothed ? 6.0f : 2.0f));
+    if (activitySmoothed < 0.004f)
+        activitySmoothed = 0.0f;
+    if (activitySmoothed > 0.0f)
+        driftPhase += dt * (0.10f + 0.55f * activitySmoothed); // radians per second: a slow drift that quickens a little with level
+    if (activitySmoothed > 0.0f || before > 0.0f)
+        changed = true; // when it reaches zero the artwork stops and so does the redrawing
 }
 
 void SpectrumView::setShowWave (bool b)
@@ -266,7 +346,9 @@ void SpectrumView::rebuildGeometry()
     geometryDirty = false;
     frame = getLocalBounds().toFloat();
     framePath = chamferPath (frame, 10.0f);
-    auto area = frame.reduced (12.0f, 10.0f);
+    plate = sculpture && backdrop.isValid() ? frame.reduced (plateInsetX, plateInsetY) : frame;
+    platePath = chamferPath (plate, 8.0f);
+    auto area = plate.reduced (12.0f, 10.0f);
     waveArea = {};
     if (showWave)
     {
@@ -310,17 +392,31 @@ void SpectrumView::paint (juce::Graphics& g)
         rebuildGeometry();
     g.setColour (juce::Colour (0xff0a070f));
     g.fillPath (framePath);
-    if (backdrop.isValid())
+    const bool art = backdrop.isValid();
+    if (art)
     {
-        // pre-scaled once per size so every frame is a 1:1 copy (the image is decorative and static)
+        // pre-scaled once per size so every frame is a 1:1 copy; the drift (only while audio plays) moves it by a few pixels
         const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
         const int pw = std::max (1, (int) std::ceil (frame.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (frame.getHeight() * pixelScale));
         if (! backdropScaled.isValid() || backdropScaled.getWidth() != pw || backdropScaled.getHeight() != ph)
             backdropScaled = backdrop.rescaled (pw, ph, juce::Graphics::highResamplingQuality);
         const juce::Graphics::ScopedSaveState keep (g);
         g.reduceClipRegion (framePath);
-        g.setOpacity (backdropStrength);
-        g.drawImage (backdropScaled, frame);
+        const float dx = 9.0f * std::sin (driftPhase) * activitySmoothed, dy = 3.0f * std::sin (driftPhase * 0.7f + 1.0f) * activitySmoothed;
+        g.setOpacity (juce::jmin (1.0f, backdropStrength * (1.0f + 0.12f * activitySmoothed)));
+        g.drawImage (backdropScaled, frame.translated (std::round (dx), std::round (dy)));
+    }
+    if (art && sculpture)
+    {
+        // the display: a dark glass plate set into the chrome, with a lit chrome rim
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff140e1c).withAlpha (plateGlass - 0.06f), 0.0f, plate.getY(), juce::Colour (0xff06040a).withAlpha (plateGlass + 0.06f), 0.0f, plate.getBottom(), false));
+        g.fillPath (platePath);
+        juce::ColourGradient rim (chrome.withAlpha (0.85f), 0.0f, plate.getY(), pink.withAlpha (0.7f), 0.0f, plate.getBottom(), false);
+        rim.addColour (0.35, violet.withAlpha (0.8f));
+        g.setGradientFill (rim);
+        g.strokePath (platePath, juce::PathStrokeType (1.6f));
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.strokePath (chamferPath (plate.reduced (1.6f), 7.0f), juce::PathStrokeType (1.0f));
     }
     g.setColour (border);
     g.strokePath (framePath, juce::PathStrokeType (1.2f));
@@ -352,7 +448,7 @@ void SpectrumView::paint (juce::Graphics& g)
         fillPath.closeSubPath();
         g.setColour (colours[t].withAlpha (t == 1 ? 0.08f : 0.2f));
         g.fillPath (fillPath);
-        if (backdrop.isValid()) // a dark under-stroke keeps the line legible over the chrome
+        if (art && ! sculpture) // a dark under-stroke keeps the line legible over the chrome
         {
             g.setColour (juce::Colour (0xff08060d).withAlpha (0.55f));
             g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 3.6f : 4.0f, juce::PathStrokeType::curved));

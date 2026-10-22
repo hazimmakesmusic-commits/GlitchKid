@@ -903,16 +903,16 @@ void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
     const bool on = b.getToggleState();
     const bool tab = (bool) b.getProperties().getWithDefault ("tab", false);
     const float alpha = b.isEnabled() ? 1.0f : 0.4f;
-    auto fill = on ? b.findColour (juce::TextButton::buttonOnColourId) : bg;
+    auto fill = on ? b.findColour (juce::TextButton::buttonOnColourId) : (tab ? juce::Colour (0xff130f1b) : bg);
     fill = down ? fill.darker (0.2f) : highlighted ? fill.brighter (0.1f) : fill;
     if (down)
         r = r.translated (0.0f, 1.0f);
     const auto shape = chamferPath (r, 4.0f);
     if (on && b.isEnabled() && (highlighted || tab || fill == violet)) // a restrained glow on a selected control
-        drawGlow (g, shape, fill.withAlpha (0.55f), 5.0f);
-    g.setGradientFill (juce::ColourGradient (fill.brighter (on ? 0.28f : 0.16f).withAlpha (alpha), 0.0f, r.getY(), fill.darker (on ? 0.28f : 0.3f).withAlpha (alpha), 0.0f, r.getBottom(), false));
+        drawGlow (g, shape, fill.withAlpha (tab ? 0.8f : 0.55f), tab ? 7.0f : 5.0f);
+    g.setGradientFill (juce::ColourGradient (fill.brighter (on ? 0.28f : (tab ? 0.06f : 0.16f)).withAlpha (alpha), 0.0f, r.getY(), fill.darker (on ? 0.28f : 0.3f).withAlpha (alpha), 0.0f, r.getBottom(), false));
     g.fillPath (shape);
-    g.setColour (chrome.withAlpha ((on ? 0.28f : 0.10f) * alpha)); // the lit top edge
+    g.setColour (chrome.withAlpha ((on ? 0.34f : (tab ? 0.04f : 0.10f)) * alpha)); // the lit top edge
     g.fillRect (r.getX() + 4.0f, r.getY() + 1.0f, r.getWidth() - 8.0f, 1.0f);
     g.setColour ((on ? fill.brighter (0.45f) : border.brighter (highlighted ? 0.45f : 0.12f)).withAlpha (alpha));
     g.strokePath (shape, juce::PathStrokeType (1.0f));

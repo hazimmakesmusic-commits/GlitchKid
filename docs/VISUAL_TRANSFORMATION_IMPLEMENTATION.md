@@ -22,3 +22,10 @@ New: `Source/UI/GlitchRelic.{h,cpp}`, `Tests/VisualTests.cpp`, the two docs. Mod
 
 ## Not verified
 Real display colour and gamma, Retina scaling, font rendering on macOS, FL Studio's window wrapper, GPU/CoreGraphics paint cost, any listening.
+
+## HOME pass (sculpture and motion)
+* `SpectrumView::setSculpture`: the plot, grid, legend and wave strip live on a glass plate inset 56 x 8 px in the display; the relic fills the frame behind it, so the chrome ribbons are visible at the two sides and through the glass (88 % dark). The relic geometry was re-composed (wider, thicker ribbon, ends at mid-height) to fit.
+* Motion: `SpectrumView::setActivity (dt, activity, motionAllowed)`. `activity` is the mean level of the displayed input or output spectrum that currently has signal (the same real data the traces use, produced on the message thread from the lock-free taps). It eases in and out; the artwork drifts at most 9 x 3 px and brightens by 12 %; at zero activity, or with MOTION off, it holds still and requests no repaint. No audio-thread change.
+* Tiles: `WorkspaceTile::setGlyph` draws four fixed schematic pictograms.
+* Not changed: layout positions of the title row, tiles and bottom bar; controls; navigation.
+* Test and render evidence: `Tests/VisualTests.cpp` (motion, contrast under glass), full suite 0 failures, headless renders `home_signal.png` / `home_nosignal.png`. HOME at the minimum and maximum window sizes was covered by the existing overlap tests, not looked at by eye in this pass.

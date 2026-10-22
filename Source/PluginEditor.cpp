@@ -172,6 +172,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         navButtons[i].setButtonText (navText[i]);
         style (navButtons[i], juce::String (navTip[i]) + " Any workspace can be opened at any time; switching never changes your sound.");
         navButtons[i].getProperties().set ("tab", true); // the look-and-feel draws the selected tab with a lit underline
+        navButtons[i].setColour (juce::TextButton::textColourOffId, ui::textDim.brighter (0.3f)); // an unselected workspace is quieter but stays legible
+        navButtons[i].setColour (juce::TextButton::textColourOnId, juce::Colours::white);
         navButtons[i].onClick = [this, i] { showPage ((Page) i, true); };
     }
     style (undoButton, "Put back the sound you had before the last build, profile load or BEAT LOCK change.");
@@ -585,12 +587,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         for (int i = 0; i < 4; ++i)
         {
             tiles[i].setContent (names[i], descs[i], i == 2);
+            tiles[i].setGlyph (i);
             tiles[i].setStatus ("...", ui::TileStatus::idle);
             tiles[i].setTooltip (juce::String ("Open ") + names[i] + ". The line at the bottom is read from the plug-in's real state.");
             tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
             content.addAndMakeVisible (tiles[i]);
         }
         addAll ({ &homeTitle, &homeSource, &homeView });
+        homeView.setSculpture (true);
         label (homeHint, 11.5f, false, ui::textDim, juce::Justification::centredRight);
         homeView.setTooltip ("Spectrum (log frequency) and waveform of the audio this plug-in really receives (VOCAL INPUT, before processing) and returns (OUTPUT). The instrumental trace appears only "
                              "when a beat is really arriving on the Instrumental input. Nothing is drawn without a signal.");
@@ -647,7 +651,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW * 7 / 10, designH * 7 / 10, designW * 3 / 2, designH * 3 / 2); // below ~70 % the smallest labels (9.5-11 pt) fall under about 7 px
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     visualTimer.onTick = [this] { visualTick(); };
-    relicLoader.start ([this] (const juce::Image& image) { homeView.setBackdrop (image, 0.6f); });
+    relicLoader.start ([this] (const juce::Image& image) { homeView.setBackdrop (image, 1.0f); });
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -1349,6 +1353,17 @@ void GlitchKidEditor::refreshDisplays (float dt)
         homeView.setTrace (1, specOut.levels(), specOut.hasSignal());
         homeView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
         homeView.setWave (waveIn, waveOut);
+        // artwork drift: driven by the real displayed spectrum only (mean level of whichever trace has signal); still when there is none or MOTION is off
+        float activity = 0.0f;
+        for (const auto* sp : { &specIn, &specOut })
+            if (sp->hasSignal())
+            {
+                float sum = 0.0f;
+                for (float v : sp->levels())
+                    sum += v;
+                activity = juce::jmax (activity, juce::jlimit (0.0f, 1.0f, 2.0f * sum / (float) sp->levels().size()));
+            }
+        homeView.setActivity (dt, activity, motionOn);
         homeView.commit(); // repaints only if something changed
         const juce::String hint = beatLive ? "VOCAL INPUT before processing, OUTPUT after it, INSTRUMENTAL INPUT as received" : "VOCAL INPUT before processing, OUTPUT after it";
         if (hint != homeHint.getText())

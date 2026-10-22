@@ -66,6 +66,8 @@ public:
     WorkspaceTile() : juce::Button ("tile") { setWantsKeyboardFocus (true); }
     void setContent (const juce::String& title, const juce::String& description, bool prominent = false);
     void setStatus (const juce::String& text, TileStatus);
+    // A small schematic pictogram of what the workspace is (0 CLEAN LAB, 1 BEAT LOCK, 2 BUILD, 3 FINAL TOUCH). Decoration: it never shows a measurement.
+    void setGlyph (int index) { glyph = index; repaint(); }
     const juce::String& getStatusText() const { return status; }
     const juce::String& getTitle() const { return title; }
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
@@ -74,6 +76,7 @@ private:
     juce::String title, description, status;
     TileStatus kind = TileStatus::idle;
     bool prominent = false;
+    int glyph = -1;
 };
 
 // The central real-time display: spectrum traces (vocal input before processing, output after it, and the Instrumental input only when it is really live) and a
@@ -91,6 +94,12 @@ public:
     void setShowWave (bool b);
     // The decorative backdrop (the Glitch Relic), drawn dimmed behind the grid and traces. It carries no data; pass an empty image for none.
     void setBackdrop (const juce::Image& image, float strength);
+    // Sculpture mode: the display becomes a dark glass plate set into the artwork, so the chrome shows around it (and faintly through it) instead of sitting behind everything.
+    static constexpr float plateInsetX = 56.0f, plateInsetY = 8.0f, plateGlass = 0.88f;
+    void setSculpture (bool on);
+    // Playback-driven drift of the artwork. 'activity' (0..1) must come from the real, already displayed signal; with 0 (or motion off) the artwork stands still.
+    void setActivity (float dt, float activity, bool motionAllowed);
+    float getDriftForTest() const { return driftPhase; }
     int getPaintCountForTest() const { return paintCount; }
     int getRepaintRequestsForTest() const { return repaintRequests; } // how many times a change asked for a redraw
     void paint (juce::Graphics&) override;
@@ -105,7 +114,10 @@ private:
     bool showWave = true, changed = false, geometryDirty = true;
     int paintCount = 0, repaintRequests = 0;
     juce::Image backdrop, backdropScaled;
-    float backdropStrength = 0.0f;
+    float backdropStrength = 0.0f, activitySmoothed = 0.0f, driftPhase = 0.0f;
+    bool sculpture = false;
+    juce::Rectangle<float> plate;
+    juce::Path platePath;
     // cached geometry (rebuilt only when the size, the sample rate or the wave strip changes)
     juce::Rectangle<float> frame, plot, labelRow, legendRow, waveArea;
     std::array<float, analysis::DisplaySpectrum::columns> columnX {};

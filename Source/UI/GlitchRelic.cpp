@@ -46,7 +46,7 @@ std::vector<Sample> knot (float W, float H, float stretch, float phase, float wi
 {
     constexpr int count = 2200;
     std::vector<Sample> out ((size_t) count);
-    const float sy = H * 0.148f, sx = H * 0.148f * stretch, cx = W * 0.5f, cy = H * 0.5f + sy * 0.75f; // (the knot's own bounds are -3 .. +1.5 vertically: centre it)
+    const float sy = H * 0.13f, sx = sy * stretch, cx = W * 0.5f, cy = H * 0.468f; // placed so the two ends, which the display plate leaves visible, sit at mid-height
     auto pt = [&] (float t)
     {
         const float x = std::sin (t + phase) + 2.0f * std::sin (2.0f * t + 2.0f * phase);
@@ -119,9 +119,9 @@ juce::Image renderGlitchRelic (int width, int height)
     {
         juce::Graphics g (ribbons);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        drawRibbon (g, knot (W, H, 2.3f, 0.0f, 1.0f), 0.85f);
+        drawRibbon (g, knot (W, H, 5.35f, 0.0f, 1.4f), 0.85f);
         // a second, thinner ribbon through the first: more depth, a different phase
-        drawRibbon (g, knot (W, H, 2.3f, 1.05f, 0.5f), 0.6f);
+        drawRibbon (g, knot (W, H, 5.35f, 1.05f, 0.7f), 0.6f);
     }
 
     juce::Image out (juce::Image::ARGB, width, height, true);
@@ -139,14 +139,14 @@ juce::Image renderGlitchRelic (int width, int height)
         g.drawImageAt (ribbons, 0, 0);
     }
 
-    // fade to nothing at the edges so the form floats on the plate instead of being cut off by it
+    // fade to nothing at the very border so the form floats in its frame instead of being cut off by it
     juce::Image::BitmapData data (out, juce::Image::BitmapData::readWrite);
     for (int y = 0; y < height; ++y)
     {
-        const float fy = smooth (0.10f, 0.26f, (float) y / H) * smooth (0.10f, 0.26f, 1.0f - (float) y / H); // gone entirely in the top and bottom tenth, where the legend and the axis labels sit
+        const float fy = smooth (0.0f, 0.07f, (float) y / H) * smooth (0.0f, 0.07f, 1.0f - (float) y / H);
         for (int x = 0; x < width; ++x)
         {
-            const float fx = smooth (0.0f, 0.22f, (float) x / W) * smooth (0.0f, 0.22f, 1.0f - (float) x / W);
+            const float fx = smooth (0.0f, 0.04f, (float) x / W) * smooth (0.0f, 0.04f, 1.0f - (float) x / W);
             auto c = data.getPixelColour (x, y);
             data.setPixelColour (x, y, c.withMultipliedAlpha (fx * fy));
         }
