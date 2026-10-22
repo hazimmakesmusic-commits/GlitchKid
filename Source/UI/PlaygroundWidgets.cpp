@@ -770,7 +770,7 @@ void ChainStrip::setState (const std::array<bool, numStages>& a, float inPeak, f
     outLevel = newOut;
     signalPresent = inLevel > 0.05f;
     setTooltip (legacy.isNotEmpty() ? "Hidden effects from an older session are still switched on: " + legacy + ". BUILD MY VOCAL MIX switches them off."
-                                    : "The real signal path, left to right. A lit dot means the stage is doing something right now. Click a stage to open it in FINAL TOUCH.");
+                                    : "The signal path. A lit dot means the stage is active. Click a stage to open it.");
     if (changed)
         repaint();
 }
@@ -890,6 +890,44 @@ PlaygroundLookAndFeel::PlaygroundLookAndFeel()
     setColour (juce::TooltipWindow::backgroundColourId, juce::Colour (0xff1d1626));
     setColour (juce::TooltipWindow::textColourId, textBright);
     setColour (juce::TooltipWindow::outlineColourId, border.brighter (0.3f));
+}
+
+namespace
+{
+constexpr float tipMaxWidth = 230.0f;
+juce::TextLayout tipLayout (const juce::String& text, float width)
+{
+    juce::AttributedString a;
+    a.setJustification (juce::Justification::topLeft);
+    a.append (text, fontOf (11.5f, false), textBright);
+    juce::TextLayout t;
+    t.createLayoutWithBalancedLineLengths (a, width);
+    return t;
+}
+}
+
+juce::Rectangle<int> PlaygroundLookAndFeel::getTooltipBounds (const juce::String& tip, juce::Point<int> pos, juce::Rectangle<int> area)
+{
+    const auto layout = tipLayout (tip, tipMaxWidth);
+    const int w = (int) std::ceil (layout.getWidth()) + 16, h = (int) std::ceil (layout.getHeight()) + 12;
+    int x = pos.x + 16, y = pos.y + 24;
+    if (x + w > area.getRight())
+        x = pos.x - w - 8; // no room on the right: beside the pointer on the left
+    if (y + h > area.getBottom())
+        y = pos.y - h - 10; // no room below: above it
+    return juce::Rectangle<int> (x, y, w, h).constrainedWithin (area.reduced (2));
+}
+
+void PlaygroundLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height)
+{
+    const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
+    g.setColour (findColour (juce::TooltipWindow::backgroundColourId).withAlpha (0.97f));
+    g.fillRect (r);
+    g.setColour (findColour (juce::TooltipWindow::outlineColourId));
+    g.drawRect (r, 1.0f);
+    g.setColour (violet.withAlpha (0.8f)); // a short ultraviolet tick at the corner
+    g.fillRect (0.0f, 0.0f, 10.0f, 2.0f);
+    tipLayout (text, tipMaxWidth).draw (g, r.reduced (8.0f, 6.0f));
 }
 
 juce::Font PlaygroundLookAndFeel::getTextButtonFont (juce::TextButton&, int h) { return fontOf (juce::jlimit (12.0f, 16.0f, (float) h * 0.4f), true); }

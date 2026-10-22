@@ -116,6 +116,20 @@ struct VisualTests : public juce::UnitTest
             expect ((float) (sum / n) < 0.03f, "the plate is mostly dark");
         }
 
+        beginTest ("tooltips: narrow, inside the editor, and never on top of the pointer, wherever the pointer is");
+        {
+            glitchkid::ui::PlaygroundLookAndFeel laf;
+            const juce::String longTip ("Real spectrum and waveform of the vocal input (before processing) and the output. The instrumental shows only while a beat really arrives.");
+            const juce::Rectangle<int> area (0, 0, 960, 600);
+            for (auto pos : { juce::Point<int> (10, 10), { 480, 70 }, { 950, 590 }, { 20, 590 }, { 940, 20 }, { 480, 300 } })
+            {
+                const auto b = laf.getTooltipBounds (longTip, pos, area);
+                expect (area.contains (b), "inside the editor at " + pos.toString());
+                expect (! b.contains (pos), "not under the pointer at " + pos.toString());
+                expect (b.getWidth() <= 260, "narrow: " + juce::String (b.getWidth()));
+            }
+        }
+
         beginTest ("artwork motion: still when idle or with MOTION off, moves only with a real signal, and stops asking for repaints once still");
         {
             namespace ui = glitchkid::ui;

@@ -589,15 +589,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             tiles[i].setContent (names[i], descs[i], i == 2);
             tiles[i].setGlyph (i);
             tiles[i].setStatus ("...", ui::TileStatus::idle);
-            tiles[i].setTooltip (juce::String ("Open ") + names[i] + ". The line at the bottom is read from the plug-in's real state.");
+            tiles[i].setTooltip (juce::String ("Open ") + names[i] + ".");
             tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
             content.addAndMakeVisible (tiles[i]);
         }
         addAll ({ &homeTitle, &homeSource, &homeView });
         homeView.setSculpture (true);
         label (homeHint, 11.5f, false, ui::textDim, juce::Justification::centredRight);
-        homeView.setTooltip ("Spectrum (log frequency) and waveform of the audio this plug-in really receives (VOCAL INPUT, before processing) and returns (OUTPUT). The instrumental trace appears only "
-                             "when a beat is really arriving on the Instrumental input. Nothing is drawn without a signal.");
+        homeView.setTooltip ("Real spectrum and waveform of the vocal input (before processing) and the output. The instrumental shows only while a beat really arrives.");
     }
 
     // ---- BEAT LOCK ----

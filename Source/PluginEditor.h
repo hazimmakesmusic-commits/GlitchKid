@@ -85,7 +85,7 @@ private:
     void timerCallback() override;
     void refreshState (float peak, float outPeak);
     void setBypassFromUi (bool bypassed);
-    juce::TooltipWindow tooltipWindow { this, 400 }; // the controls' tooltips need one to be shown at all (400 ms: quick enough to be useful, slow enough not to flash while moving between controls)
+    juce::TooltipWindow tooltipWindow { this, 800 }; // the controls' tooltips need one to be shown at all (800 ms: still there when you pause on a control, but not flashing up while the pointer travels across the chain and controls)
 
     // The spectrum and waveform refresh on their own ~60 Hz timer, running only while a view that needs them (or a workspace transition) is visible; the 30 Hz
     // timer keeps the state and the meters. A transition is a brief scan-line wipe (MOTION on); the new workspace is fully drawn and usable from the first frame.

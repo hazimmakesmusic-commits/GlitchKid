@@ -411,6 +411,8 @@ void SpectrumView::paint (juce::Graphics& g)
         // the display: a dark glass plate set into the chrome, with a lit chrome rim
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xff140e1c).withAlpha (plateGlass - 0.06f), 0.0f, plate.getY(), juce::Colour (0xff06040a).withAlpha (plateGlass + 0.06f), 0.0f, plate.getBottom(), false));
         g.fillPath (platePath);
+        g.setGradientFill (juce::ColourGradient (chrome.withAlpha (0.07f), plate.getX(), plate.getY(), chrome.withAlpha (0.0f), plate.getX() + plate.getWidth() * 0.45f, plate.getY() + plate.getHeight() * 0.7f, false)); // a faint sheen: it reads as glass
+        g.fillPath (platePath);
         juce::ColourGradient rim (chrome.withAlpha (0.85f), 0.0f, plate.getY(), pink.withAlpha (0.7f), 0.0f, plate.getBottom(), false);
         rim.addColour (0.35, violet.withAlpha (0.8f));
         g.setGradientFill (rim);
@@ -476,9 +478,12 @@ void SpectrumView::paint (juce::Graphics& g)
         g.setColour (border.withAlpha (0.8f));
         g.drawRect (waveArea, 1.0f);
         const float cy = waveArea.getCentreY(), half = waveArea.getHeight() * 0.5f - 2.0f;
-        g.setColour (border);
-        g.fillRect (waveArea.getX(), cy, waveArea.getWidth(), 1.0f);
         wave = waveIn.hasSignal || waveOut.hasSignal;
+        if (wave) // an empty strip stays empty: no line that could look like a measurement
+        {
+            g.setColour (border);
+            g.fillRect (waveArea.getX(), cy, waveArea.getWidth(), 1.0f);
+        }
         if (wave)
         {
             const float step = waveArea.getWidth() / (float) analysis::WaveColumns::columns;
@@ -494,17 +499,26 @@ void SpectrumView::paint (juce::Graphics& g)
     }
     if (! any && ! wave)
     {
-        const juce::String msg = showWave ? "NO SIGNAL - PLAY AUDIO THROUGH THE PLUG-IN" : "NO SIGNAL";
-        const auto font = labFont (showWave ? 13.0f : 12.0f);
-        const float tw = (float) juce::GlyphArrangement::getStringWidth (font, msg) + 28.0f;
-        const auto pill = juce::Rectangle<float> (tw, 26.0f).withCentre (plot.getCentre());
-        g.setColour (juce::Colour (0xff08060d).withAlpha (0.82f)); // the message sits on a dark plate so it stays readable over the backdrop
+        // idle: a still, quiet plate that says plainly that nothing is arriving; no trace, no baseline, nothing that looks like analysis
+        const juce::String head = "NO SIGNAL", sub = showWave ? "PLAY AUDIO THROUGH THE PLUG-IN" : "";
+        const auto headFont = labFont (showWave ? 15.0f : 12.0f), subFont = fontOf (10.5f);
+        const float tw = (float) juce::jmax (juce::GlyphArrangement::getStringWidth (headFont, head), sub.isEmpty() ? 0 : juce::GlyphArrangement::getStringWidth (subFont, sub)) + 44.0f;
+        const auto pill = juce::Rectangle<float> (tw, sub.isEmpty() ? 26.0f : 46.0f).withCentre (plot.getCentre().translated (0.0f, -6.0f));
+        g.setColour (juce::Colour (0xff08060d).withAlpha (0.86f)); // dark enough to stay readable over the artwork
         g.fillPath (chamferPath (pill, 6.0f));
-        g.setColour (border);
+        g.setColour (border.brighter (0.2f));
         g.strokePath (chamferPath (pill, 6.0f), juce::PathStrokeType (1.0f));
-        g.setColour (textBright.withAlpha (0.9f));
-        g.setFont (font);
-        g.drawText (msg, pill, juce::Justification::centred, false);
+        g.setColour (chrome.withAlpha (0.22f)); // the lit top edge
+        g.fillRect (pill.getX() + 8.0f, pill.getY() + 1.0f, pill.getWidth() - 16.0f, 1.0f);
+        g.setColour (textBright.withAlpha (0.92f));
+        g.setFont (headFont);
+        g.drawText (head, sub.isEmpty() ? pill : pill.withTrimmedBottom (18.0f), juce::Justification::centred, false);
+        if (sub.isNotEmpty())
+        {
+            g.setColour (textDim);
+            g.setFont (subFont);
+            g.drawText (sub, pill.withTrimmedTop (26.0f), juce::Justification::centred, false);
+        }
     }
 }
 }

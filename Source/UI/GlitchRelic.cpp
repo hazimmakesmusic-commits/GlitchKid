@@ -22,11 +22,11 @@ juce::Colour environment (float u)
         g.addColour (0.455, juce::Colour (0xffffffff));
         g.addColour (0.49, juce::Colour (0xffd8c8e8));
         g.addColour (0.50, juce::Colour (0xff0b0712)); // the horizon: a hard step from white to near black
-        g.addColour (0.56, juce::Colour (0xff1c1226));
-        g.addColour (0.66, juce::Colour (0xff3a2548));
+        g.addColour (0.56, juce::Colour (0xff2a1c3a));
+        g.addColour (0.66, juce::Colour (0xff6a4a8c));
         g.addColour (0.76, juce::Colour (0xffff3dae));
-        g.addColour (0.82, juce::Colour (0xff8a1a5e));
-        g.addColour (0.90, juce::Colour (0xff1a0a1c));
+        g.addColour (0.82, juce::Colour (0xffb42a86));
+        g.addColour (0.90, juce::Colour (0xff3a1044));
         g.addColour (1.00, juce::Colour (0xff050209));
         return g;
     }();
@@ -99,6 +99,16 @@ void drawRibbon (juce::Graphics& g, const std::vector<Sample>& s, float rimAlpha
             g.fillPath (quad);
             g.strokePath (quad, juce::PathStrokeType (0.6f));
         }
+        // a specular streak on the edge that faces the light (upper left): a thin pale line, strongest where the ribbon turns toward it
+        {
+            const juce::Point<float> light (-0.5f, -0.86f);
+            const float d = a.n.x * light.x + a.n.y * light.y, e = b.n.x * light.x + b.n.y * light.y;
+            const float k = std::pow (std::abs (d), 3.0f) * 0.85f;
+            const float fa = d > 0.0f ? 0.8f : 0.2f, fb = e > 0.0f ? 0.8f : 0.2f;
+            const auto sa = la + (ra - la) * fa, sb = lb + (rb - lb) * fb;
+            g.setColour (juce::Colour (0xffffffff).withAlpha (juce::jmin (0.9f, k)));
+            g.drawLine (sa.x, sa.y, sb.x, sb.y, 1.5f);
+        }
         // rim light: ultraviolet on one edge, cyber pink on the other
         g.setColour (juce::Colour (0xffc026ff).withAlpha (rimAlpha));
         g.drawLine (la.x, la.y, lb.x, lb.y, 1.2f);
@@ -119,9 +129,9 @@ juce::Image renderGlitchRelic (int width, int height)
     {
         juce::Graphics g (ribbons);
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-        drawRibbon (g, knot (W, H, 5.35f, 0.0f, 1.4f), 0.85f);
+        drawRibbon (g, knot (W, H, 5.35f, 0.0f, 1.9f), 0.85f);
         // a second, thinner ribbon through the first: more depth, a different phase
-        drawRibbon (g, knot (W, H, 5.35f, 1.05f, 0.7f), 0.6f);
+        drawRibbon (g, knot (W, H, 5.35f, 1.05f, 0.9f), 0.6f);
     }
 
     juce::Image out (juce::Image::ARGB, width, height, true);
@@ -132,6 +142,8 @@ juce::Image renderGlitchRelic (int width, int height)
         haze.addColour (0.6, juce::Colour (0xff6a1aa8).withAlpha (0.07f));
         g.setGradientFill (haze);
         g.fillRect (0.0f, 0.0f, W, H);
+        // depth: the form casts a soft dark shadow downward onto the haze
+        juce::DropShadow (juce::Colours::black.withAlpha (0.7f), (int) (H * 0.035f), { 0, (int) (H * 0.03f) }).drawForImage (g, ribbons);
         // glow: a blurred copy of the form in ultraviolet, then a smaller one in pink
         juce::DropShadow (juce::Colour (0xffc026ff).withAlpha (0.38f), (int) (H * 0.06f), { 0, 0 }).drawForImage (g, ribbons);
         juce::DropShadow (juce::Colour (0xffff3dae).withAlpha (0.22f), (int) (H * 0.02f), { (int) (H * 0.012f), (int) (H * 0.02f) }).drawForImage (g, ribbons);
