@@ -70,6 +70,9 @@ public:
     void setGlyph (int index) { glyph = index; repaint(); }
     const juce::String& getStatusText() const { return status; }
     const juce::String& getTitle() const { return title; }
+    // A dim crop of the artwork behind the card: decoration only, kept faint so the text on it stays above AA contrast. 'crop' is a normalised rectangle of the image.
+    static constexpr float artStrength = 0.26f; // only the title strip (top third) carries it; it fades out above the description text
+    void setArt (const juce::Image& image, juce::Rectangle<float> crop);
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
 private:
@@ -77,6 +80,9 @@ private:
     TileStatus kind = TileStatus::idle;
     bool prominent = false;
     int glyph = -1;
+    juce::Image art, artScaled;
+    juce::Rectangle<float> artCrop; // normalised crop of the artwork shown dimly behind the card
+    juce::Rectangle<int> artScaledFor;
 };
 
 // The central real-time display: spectrum traces (vocal input before processing, output after it, and the Instrumental input only when it is really live) and a
@@ -95,8 +101,8 @@ public:
     // The decorative backdrop (the Glitch Relic), drawn dimmed behind the grid and traces. It carries no data; pass an empty image for none.
     void setBackdrop (const juce::Image& image, float strength);
     // Sculpture mode: the display becomes a dark glass plate set into the artwork, so the chrome shows around it (and faintly through it) instead of sitting behind everything.
-    static constexpr float plateInsetX = 96.0f, plateInsetY = 8.0f, plateGlass = 0.88f;
-    static constexpr float heroWidth = 912.0f, heroHeight = 266.0f; // the HOME display's size in design pixels (PluginEditor lays it out at this size)
+    static constexpr float plateInsetX = 96.0f, plateInsetY = 28.0f, plateGlass = 0.88f;
+    static constexpr float heroWidth = 912.0f, heroHeight = 294.0f; // the HOME display's size in design pixels (PluginEditor lays it out at this size)
     void setSculpture (bool on);
     // Playback-driven drift of the artwork. 'activity' (0..1) must come from the real, already displayed signal; with 0 (or motion off) the artwork stands still.
     void setActivity (float dt, float activity, bool motionAllowed);

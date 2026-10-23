@@ -213,6 +213,14 @@ void drawTileGlyph (juce::Graphics& g, int index, juce::Rectangle<float> b, juce
 }
 }
 
+void WorkspaceTile::setArt (const juce::Image& image, juce::Rectangle<float> crop)
+{
+    art = image;
+    artCrop = crop;
+    artScaled = {};
+    repaint();
+}
+
 void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
@@ -225,6 +233,32 @@ void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
     g.setGradientFill (juce::ColourGradient (prominent ? juce::Colour (0xff3a1363) : (highlighted ? panelTop.brighter (0.12f) : panelTop), 0.0f, r.getY(),
                                              prominent ? juce::Colour (0xff1a0a2e) : panelBottom.darker (0.25f), 0.0f, r.getBottom(), false));
     g.fillPath (shape);
+    if (art.isValid())
+    {
+        // a faint crop of the chrome behind the card, pre-scaled once per size
+        const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        const juce::Rectangle<int> px ((int) std::ceil (r.getWidth() * pixelScale), (int) std::ceil (r.getHeight() * pixelScale));
+        if (! artScaled.isValid() || artScaledFor != px)
+        {
+            const auto source = art.getBounds().toFloat();
+            const auto cropPx = juce::Rectangle<float> (source.getX() + artCrop.getX() * source.getWidth(), source.getY() + artCrop.getY() * source.getHeight(),
+                                                       artCrop.getWidth() * source.getWidth(), artCrop.getHeight() * source.getHeight()).getSmallestIntegerContainer();
+            artScaled = art.getClippedImage (cropPx).rescaled (juce::jmax (1, px.getWidth()), juce::jmax (1, px.getHeight()), juce::Graphics::highResamplingQuality);
+            artScaledFor = px;
+            const juce::Image::BitmapData data (artScaled, juce::Image::BitmapData::readWrite); // fade it out downwards: full in the title strip, gone before the description
+            for (int y = 0; y < data.height; ++y)
+            {
+                const float t = (float) y / (float) juce::jmax (1, data.height);
+                const float f = 1.0f - juce::jlimit (0.0f, 1.0f, (t - 0.18f) / 0.18f);
+                for (int x = 0; x < data.width; ++x)
+                    data.setPixelColour (x, y, data.getPixelColour (x, y).withMultipliedAlpha (f));
+            }
+        }
+        const juce::Graphics::ScopedSaveState keep (g);
+        g.reduceClipRegion (shape);
+        g.setOpacity (artStrength * (prominent ? 1.3f : (highlighted ? 1.2f : 1.0f)));
+        g.drawImage (artScaled, r);
+    }
     g.setColour (chrome.withAlpha (prominent ? 0.16f : 0.08f)); // the lit top edge
     g.fillRect (r.getX() + 14.0f, r.getY() + 1.0f, r.getWidth() - 28.0f, 1.0f);
     g.setColour (prominent ? violet : (highlighted ? neon : border.brighter (0.15f)));
@@ -421,6 +455,9 @@ void SpectrumView::paint (juce::Graphics& g)
         g.strokePath (platePath, juce::PathStrokeType (1.6f));
         g.setColour (juce::Colours::black.withAlpha (0.5f));
         g.strokePath (chamferPath (plate.reduced (1.6f), 7.0f), juce::PathStrokeType (1.0f));
+        // the chrome's light spills onto the inner edge of the glass: ultraviolet at the top, pink at the bottom
+        g.setGradientFill (juce::ColourGradient (violet.withAlpha (0.16f), 0.0f, plate.getY(), pink.withAlpha (0.14f), 0.0f, plate.getBottom(), false));
+        g.strokePath (chamferPath (plate.reduced (3.5f), 6.0f), juce::PathStrokeType (3.0f));
     }
     g.setColour (border);
     g.strokePath (framePath, juce::PathStrokeType (1.2f));

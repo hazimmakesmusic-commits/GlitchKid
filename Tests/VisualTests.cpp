@@ -147,6 +147,36 @@ struct VisualTests : public juce::UnitTest
             }
         }
 
+        beginTest ("contrast: the dim artwork in the title strip of the four cards keeps the (large, bold) card titles above 3:1");
+        {
+            namespace ui = glitchkid::ui;
+            const auto art = ui::loadGlitchRelicArtwork();
+            expect (art.isValid());
+            static const juce::Rectangle<float> crops[4] = { { 0.00f, 0.15f, 0.34f, 0.60f }, { 0.34f, 0.00f, 0.34f, 0.45f }, { 0.66f, 0.10f, 0.34f, 0.60f }, { 0.34f, 0.55f, 0.34f, 0.45f } };
+            const float text = luminance (ui::chrome); // the title colour
+            const float cardBase = luminance (ui::panelTop.brighter (0.12f)); // the card's lightest background (hovered)
+            float worst = 0.0f;
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto r = crops[i];
+                const auto px = juce::Rectangle<int> ((int) (r.getX() * art.getWidth()), (int) (r.getY() * art.getHeight()), (int) (r.getWidth() * art.getWidth()), (int) (r.getHeight() * art.getHeight()));
+                const float k = ui::WorkspaceTile::artStrength * (i == 2 ? 1.3f : 1.2f); // prominent card, or hovered
+                std::vector<float> lums;
+                for (int y = px.getY(); y < px.getBottom(); y += 3)
+                    for (int x = px.getX(); x < px.getRight(); x += 3)
+                    {
+                        const auto c = art.getPixelAt (x, y);
+                        const float a = k * c.getFloatAlpha();
+                        lums.push_back (luminance (juce::Colour::fromFloatRGBA (c.getFloatRed() * a + 0.1f * (1.0f - a), c.getFloatGreen() * a + 0.08f * (1.0f - a), c.getFloatBlue() * a + 0.13f * (1.0f - a), 1.0f)));
+                    }
+                std::sort (lums.begin(), lums.end());
+                worst = std::max (worst, lums[lums.size() * 995 / 1000]); // the brightest half-percent of pixels (specular points) is excluded: they are a few pixels, not a text background
+            }
+            const float ratio = (text + 0.05f) / (std::max (worst, cardBase) + 0.05f);
+            logMessage ("VISUAL card artwork: 99.5th-percentile background luminance " + juce::String (worst, 4) + " (title contrast " + juce::String (ratio, 2) + ":1)");
+            expect (ratio >= 3.0f, "card titles keep 3:1 (large bold text): " + juce::String (ratio, 2));
+        }
+
         beginTest ("tooltips: narrow, inside the editor, and never on top of the pointer, wherever the pointer is");
         {
             glitchkid::ui::PlaygroundLookAndFeel laf;

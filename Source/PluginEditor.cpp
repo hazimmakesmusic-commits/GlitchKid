@@ -649,7 +649,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW * 7 / 10, designH * 7 / 10, designW * 3 / 2, designH * 3 / 2); // below ~70 % the smallest labels (9.5-11 pt) fall under about 7 px
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     visualTimer.onTick = [this] { visualTick(); };
-    relicLoader.start ([this] (const juce::Image& image) { homeView.setBackdrop (image, 1.0f); });
+    relicLoader.start ([this] (const juce::Image& image)
+    {
+        homeView.setBackdrop (image, 1.0f);
+        // each workspace card shows a different dim crop of the same artwork (decoration)
+        static const juce::Rectangle<float> crops[4] = { { 0.00f, 0.15f, 0.34f, 0.60f }, { 0.34f, 0.00f, 0.34f, 0.45f }, { 0.66f, 0.10f, 0.34f, 0.60f }, { 0.34f, 0.55f, 0.34f, 0.45f } };
+        for (int i = 0; i < 4; ++i)
+            tiles[i].setArt (image, crops[i]);
+    });
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -1756,6 +1763,13 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     line.addColour (0.55, ui::pink.withAlpha (0.8f));
     g.setGradientFill (line);
     g.fillRect (0.0f, 43.0f, W, 2.0f);
+    if (page == Page::home) // the preset and A/B controls sit on a rail of their own on HOME
+    {
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff17121f), 0.0f, 563.0f, juce::Colour (0xff0a070f), 0.0f, 600.0f, false));
+        g.fillRect (0.0f, 563.0f, W, 37.0f);
+        g.setColour (ui::chrome.withAlpha (0.07f));
+        g.fillRect (0.0f, 563.0f, W, 1.0f);
+    }
     g.setColour (ui::border);
     g.fillRect (0.0f, 562.0f, W, 1.0f);
 
@@ -1861,10 +1875,10 @@ void GlitchKidEditor::layoutContent()
         show (homeTitle, { 24, 106, 300, 18 });
         show (homeSource, { 330, 106, 200, 18 });
         show (homeHint, { 540, 106, 396, 18 });
-        show (homeView, { 24, 128, 912, 266 });
+        show (homeView, { 24, 126, 912, 294 });
         static const int tx[4] = { 24, 242, 460, 720 }, tw[4] = { 212, 212, 254, 216 };
         for (int i = 0; i < 4; ++i)
-            show (tiles[i], { tx[i], 408, tw[i], 112 });
+            show (tiles[i], { tx[i], 432, tw[i], 108 });
     }
 
     // ---- CLEAN LAB ----
