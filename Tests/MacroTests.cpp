@@ -269,9 +269,9 @@ struct MacroTests : public juce::UnitTest
             expectEquals (glitchkid::ui::EqGraph::responseDb (flat, zero, Q, 1000.0f, fs), 0.0f);
 
             namespace ui = glitchkid::ui;
-            expect (ui::obsidian == juce::Colour (0xff08060d) && ui::panelBottom == juce::Colour (0xff15111b) && ui::violet == juce::Colour (0xffc026ff)
-                    && ui::pink == juce::Colour (0xffff3dae) && ui::textBright == juce::Colour (0xffe8ddf2) && ui::textDim == juce::Colour (0xff9b91a5)
-                    && ui::border == juce::Colour (0xff392044), "the locked brand colours");
+            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::violet == juce::Colour (0xffa83bee)
+                    && ui::pink == juce::Colour (0xffe14cbb) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2)
+                    && ui::border == juce::Colour (0xff3a3644), "the approved palette tokens");
         }
 
         beginTest ("editor: builds, lays out and renders at several sizes; HOME, four workspaces, four FINAL TOUCH categories, eight profiles, BUILD end to end");

@@ -30,7 +30,7 @@ void LevelMeter::pushPeak (float linearPeak)
 void LevelMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0c0910));
+    g.setColour (juce::Colour (0xff0d0d11));
     g.fillRect (r);
     g.setColour (ui::border);
     g.drawRect (r, 1.0f);
@@ -63,7 +63,7 @@ void GainReductionMeter::pushReduction (float db)
 void GainReductionMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0c0910));
+    g.setColour (juce::Colour (0xff0d0d11));
     g.fillRect (r);
     g.setColour (ui::border);
     g.drawRect (r, 1.0f);
@@ -145,10 +145,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     // A flat graphite button: violet when selected. Lime is only for the primary action.
     auto style = [this] (juce::TextButton& b, const juce::String& tip, juce::Colour text = ui::textBright)
     {
-        b.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1a1d27));
+        b.setColour (juce::TextButton::buttonColourId, ui::panelTop);
         b.setColour (juce::TextButton::buttonOnColourId, ui::violet);
         b.setColour (juce::TextButton::textColourOffId, text);
-        b.setColour (juce::TextButton::textColourOnId, ui::chrome);
+        b.setColour (juce::TextButton::textColourOnId, juce::Colours::white);
         b.setTooltip (tip);
         content.addAndMakeVisible (b);
     };
@@ -166,7 +166,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     static const char* navText[5] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH" };
     static const char* navTip[5] = { "The session: the real-time signal and shortcuts.", "Corrective EQ, resonance suppression and de-essing for the vocal itself.",
                                      "How the vocal sits against your beat (needs the beat on the Instrumental input).", "Pick a starting profile and build a starting mix from your vocal.",
-                                     "Pitch & key, tone, dynamics and space, control by control." };
+                                     "Pitch, tone, dynamics and space." };
     for (int i = 0; i < 5; ++i)
     {
         navButtons[i].setButtonText (navText[i]);
@@ -203,6 +203,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     };
 
     // ---- the preset bar and A/B (always available) ----
+    presetMenuButton.getProperties().set ("rawText", true); // it shows a preset name: user text, never re-cased
     style (presetMenuButton, "Choose the clean default, one of the starting profiles or one of your saved presets.");
     style (presetPrevButton, "Previous preset (starting profiles first, then yours). Replaces the current sound: press SET A first to keep it.");
     style (presetNextButton, "Next preset (starting profiles first, then yours). Replaces the current sound: press SET A first to keep it.");
@@ -579,21 +580,19 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     {
         static const char* names[4] = { "CLEAN LAB", "BEAT LOCK", "BUILD MY VOCAL MIX", "FINAL TOUCH" };
         static const char* descs[4] = {
-            "Rumble, mud, harsh resonances and sharp S sounds, found while your vocal plays.",
-            "How your vocal sits against the beat, with optional, explained changes.",
-            "Pick a profile; GlitchKid builds a starting mix from what it hears.",
-            "Pitch & key, tone, dynamics and space, control by control." };
+            "Rumble, mud, harsh resonances and sharp S sounds.",
+            "How your vocal sits against the beat.",
+            "Pick a profile and build a starting mix.",
+            "Pitch, tone, dynamics and space." };
         static const int targets[4] = { 1, 2, 3, 4 };
         for (int i = 0; i < 4; ++i)
         {
             tiles[i].setContent (names[i], descs[i], i == 2);
-            tiles[i].setGlyph (i);
             tiles[i].setStatus ("...", ui::TileStatus::idle);
             tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
             content.addAndMakeVisible (tiles[i]);
         }
         addAll ({ &homeTitle, &homeSource, &homeView });
-        homeView.setSculpture (true);
         label (homeHint, 11.5f, false, ui::textDim, juce::Justification::centredRight);
         homeView.setTooltip ("Real spectrum and waveform of the vocal input (before processing) and the output. The instrumental shows only while a beat really arrives.");
     }
@@ -649,14 +648,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setResizeLimits (designW * 7 / 10, designH * 7 / 10, designW * 3 / 2, designH * 3 / 2); // below ~70 % the smallest labels (9.5-11 pt) fall under about 7 px
     getConstrainer()->setFixedAspectRatio ((double) designW / (double) designH);
     visualTimer.onTick = [this] { visualTick(); };
-    relicLoader.start ([this] (const juce::Image& image)
-    {
-        homeView.setBackdrop (image, 1.0f);
-        // each workspace card shows a different dim crop of the same artwork (decoration)
-        static const juce::Rectangle<float> crops[4] = { { 0.00f, 0.15f, 0.34f, 0.60f }, { 0.34f, 0.00f, 0.34f, 0.45f }, { 0.66f, 0.10f, 0.34f, 0.60f }, { 0.34f, 0.55f, 0.34f, 0.45f } };
-        for (int i = 0; i < 4; ++i)
-            tiles[i].setArt (image, crops[i]);
-    });
+    relicLoader.start ([this] (const juce::Image& image) { homeView.setEmblem (image); }); // the idle emblem (decoration)
+
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -1358,17 +1351,6 @@ void GlitchKidEditor::refreshDisplays (float dt)
         homeView.setTrace (1, specOut.levels(), specOut.hasSignal());
         homeView.setTrace (2, specBeat.levels(), beatLive && specBeat.hasSignal());
         homeView.setWave (waveIn, waveOut);
-        // artwork drift: driven by the real displayed spectrum only (mean level of whichever trace has signal); still when there is none or MOTION is off
-        float activity = 0.0f;
-        for (const auto* sp : { &specIn, &specOut })
-            if (sp->hasSignal())
-            {
-                float sum = 0.0f;
-                for (float v : sp->levels())
-                    sum += v;
-                activity = juce::jmax (activity, juce::jlimit (0.0f, 1.0f, 2.0f * sum / (float) sp->levels().size()));
-            }
-        homeView.setActivity (dt, activity, motionOn);
         homeView.commit(); // repaints only if something changed
         const juce::String hint = beatLive ? "VOCAL INPUT before processing, OUTPUT after it, INSTRUMENTAL INPUT as received" : "VOCAL INPUT before processing, OUTPUT after it";
         if (hint != homeHint.getText())
@@ -1722,85 +1704,40 @@ void GlitchKidEditor::paint (juce::Graphics& g)
 {
     constexpr float W = (float) designW;
     g.fillAll (ui::obsidian);
-
-    // atmosphere: a violet haze top left, a pink haze bottom right and a dark vignette: light falls on the instrument, the edges fall away.
-    // Three full-window gradients cost about as much as the rest of the window together in software, so they are drawn once per window size and blitted.
-    if (! atmosphere.isValid() || atmosphere.getWidth() != getWidth() || atmosphere.getHeight() != getHeight())
-    {
-        atmosphere = juce::Image (juce::Image::ARGB, juce::jmax (1, getWidth()), juce::jmax (1, getHeight()), true);
-        juce::Graphics ag (atmosphere);
-        ag.addTransform (juce::AffineTransform::scale (scaleFactor));
-        juce::ColourGradient hazeA (ui::violet.withAlpha (0.11f), 150.0f, 70.0f, ui::violet.withAlpha (0.0f), 150.0f + 560.0f, 70.0f, true);
-        ag.setGradientFill (hazeA);
-        ag.fillRect (0.0f, 0.0f, W, 600.0f);
-        juce::ColourGradient hazeB (ui::pink.withAlpha (0.065f), 840.0f, 540.0f, ui::pink.withAlpha (0.0f), 840.0f - 480.0f, 540.0f, true);
-        ag.setGradientFill (hazeB);
-        ag.fillRect (0.0f, 0.0f, W, 600.0f);
-        juce::ColourGradient vignette (juce::Colours::black.withAlpha (0.0f), W * 0.5f, 300.0f, juce::Colours::black.withAlpha (0.5f), 0.0f, 0.0f, true);
-        vignette.addColour (0.55, juce::Colours::black.withAlpha (0.0f));
-        ag.setGradientFill (vignette);
-        ag.fillRect (0.0f, 0.0f, W, 600.0f);
-    }
-    g.drawImageAt (atmosphere, 0, 0);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
-    // a faint technical grid behind the workspace
-    g.setColour (ui::border.withAlpha (0.18f));
-    for (float x = 16.0f; x < W; x += 32.0f)
-        g.fillRect (x, 102.0f, 1.0f, 458.0f);
-    for (float y = 102.0f; y < 562.0f; y += 32.0f)
-        g.fillRect (0.0f, y, W, 1.0f);
-
-    // the persistent bar: a lit metal strip with fine scanlines, then an ultraviolet-to-pink signal line along its lower edge
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1d1627), 0.0f, 0.0f, juce::Colour (0xff0b0810), 0.0f, 44.0f, false));
+    // the persistent bar: a flat raised strip with a hairline under it
+    g.setColour (ui::panelBottom);
     g.fillRect (0.0f, 0.0f, W, 44.0f);
-    g.setColour (ui::violet.withAlpha (0.04f));
-    for (float y = 2.0f; y < 43.0f; y += 3.0f)
-        g.fillRect (0.0f, y, W, 1.0f);
-    g.setColour (ui::chrome.withAlpha (0.07f));
-    g.fillRect (0.0f, 0.0f, W, 1.0f);
-    juce::ColourGradient line (ui::violet, 0.0f, 0.0f, ui::pink.withAlpha (0.0f), W, 0.0f, false);
-    line.addColour (0.55, ui::pink.withAlpha (0.8f));
-    g.setGradientFill (line);
-    g.fillRect (0.0f, 43.0f, W, 2.0f);
-    if (page == Page::home) // the preset and A/B controls sit on a rail of their own on HOME
-    {
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff17121f), 0.0f, 563.0f, juce::Colour (0xff0a070f), 0.0f, 600.0f, false));
-        g.fillRect (0.0f, 563.0f, W, 37.0f);
-        g.setColour (ui::chrome.withAlpha (0.07f));
-        g.fillRect (0.0f, 563.0f, W, 1.0f);
-    }
     g.setColour (ui::border);
-    g.fillRect (0.0f, 562.0f, W, 1.0f);
+    g.fillRect (0.0f, 44.0f, W, 1.0f);
 
-    // the wordmark: liquid chrome with a hard horizon, a restrained pink / violet fringe (branding only) and a tracked-out sub line
+    // the wordmark: compact, a chrome gradient (the one place chrome is used), and a quiet sub line
     {
-        const juce::Rectangle<float> r (14.0f, 1.0f, 156.0f, 28.0f);
-        g.setFont (ui::labFont (22.0f));
-        g.setColour (ui::pink.withAlpha (0.55f));
-        g.drawText ("GLITCHKID", r.translated (-1.3f, 0.0f), juce::Justification::centredLeft, false);
-        g.setColour (ui::violet.withAlpha (0.55f));
-        g.drawText ("GLITCHKID", r.translated (1.3f, 0.0f), juce::Justification::centredLeft, false);
-        juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 4.0f, juce::Colour (0xff8a6fb8), 0.0f, r.getBottom() - 3.0f, false);
-        chromeFill.addColour (0.44, juce::Colour (0xffd9cbe8));
-        chromeFill.addColour (0.49, juce::Colour (0xff3a2650)); // the horizon
-        chromeFill.addColour (0.56, juce::Colour (0xffb98cf0));
+        const juce::Rectangle<float> r (16.0f, 4.0f, 150.0f, 24.0f);
+        g.setFont (ui::fontOf (20.0f, true));
+        juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 3.0f, juce::Colour (0xff9d8fb8), 0.0f, r.getBottom() - 2.0f, false);
+        chromeFill.addColour (0.46, juce::Colour (0xffd9cbe8));
+        chromeFill.addColour (0.52, juce::Colour (0xff4a3a66)); // a small horizon line in the lettering
+        chromeFill.addColour (0.58, juce::Colour (0xffb9a2e0));
         g.setGradientFill (chromeFill);
         g.drawText ("GLITCHKID", r, juce::Justification::centredLeft, false);
-        g.setFont (ui::labFont (9.0f));
-        g.setColour (ui::violet);
-        g.drawText ("VOCAL LAB", juce::Rectangle<float> (15.0f, 28.0f, 100.0f, 13.0f), juce::Justification::centredLeft, false);
-        g.setGradientFill (juce::ColourGradient (ui::pink, 78.0f, 0.0f, ui::pink.withAlpha (0.0f), 152.0f, 0.0f, false));
-        g.fillRect (78.0f, 34.0f, 74.0f, 1.0f);
+        g.setFont (ui::fontOf (11.0f));
+        g.setColour (ui::textDim);
+        g.drawText ("Vocal Lab", juce::Rectangle<float> (17.0f, 26.0f, 100.0f, 14.0f), juce::Justification::centredLeft, false);
     }
 
     if (page == Page::build)
     {
         g.setColour (ui::border);
         g.fillRect (586.0f, 104.0f, 1.0f, 444.0f);
-        g.setColour (ui::violet);
-        g.fillRect (586.0f, 104.0f, 1.0f, 12.0f); // a short ultraviolet tick at the top of the divider
     }
+
+    // the preset and A/B rail, the same on every workspace
+    g.setColour (ui::panelBottom);
+    g.fillRect (0.0f, 562.0f, W, 38.0f);
+    g.setColour (ui::border);
+    g.fillRect (0.0f, 562.0f, W, 1.0f);
 
     for (const auto& r : panelRects)
         ui::drawPanel (g, r.toFloat());
@@ -1873,12 +1810,12 @@ void GlitchKidEditor::layoutContent()
     if (page == Page::home)
     {
         show (homeTitle, { 24, 106, 300, 18 });
-        show (homeSource, { 330, 106, 200, 18 });
+        homeSource.setVisible (false); // "REAL-TIME SIGNAL" only repeated what the display already says
         show (homeHint, { 540, 106, 396, 18 });
-        show (homeView, { 24, 126, 912, 294 });
+        show (homeView, { 24, 130, 912, 276 });
         static const int tx[4] = { 24, 242, 460, 720 }, tw[4] = { 212, 212, 254, 216 };
         for (int i = 0; i < 4; ++i)
-            show (tiles[i], { tx[i], 432, tw[i], 108 });
+            show (tiles[i], { tx[i], 420, tw[i], 96 });
     }
 
     // ---- CLEAN LAB ----

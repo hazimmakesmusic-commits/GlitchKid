@@ -2,17 +2,17 @@
 
 namespace glitchkid::ui
 {
-// Inter Bold set slightly condensed and tracked out: no other face may be bundled, so the "technical" character comes from proportion and spacing.
-juce::Font labFont (float height) { return fontOf (height, true).withHorizontalScale (0.94f).withExtraKerningFactor (0.12f); }
+// Inter Bold at its natural width and spacing: legible first. (No other face is bundled.)
+juce::Font labFont (float height) { return fontOf (height, true); }
 
 void LabHeading::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds();
-    g.setColour (pink);
-    g.fillRect (r.getX(), r.getY() + 2, 3, r.getHeight() - 4);
+    g.setColour (violet);
+    g.fillRect (r.getX(), r.getY() + 3, 3, r.getHeight() - 6);
     g.setColour (colour);
     g.setFont (labFont (fontSize));
-    g.drawText (text.toUpperCase(), r.withTrimmedLeft (10), juce::Justification::centredLeft, false);
+    g.drawText (displayCase (text), r.withTrimmedLeft (10), juce::Justification::centredLeft, false);
 }
 
 // ---- LevelBar --------------------------------------------------------------------------------------------------------------------------
@@ -48,7 +48,7 @@ void LevelBar::setActive (bool a)
 void LevelBar::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0c0910));
+    g.setColour (juce::Colour (0xff0d0d11));
     g.fillRect (r);
     g.setColour (border);
     g.drawRect (r, 1.0f);
@@ -85,9 +85,9 @@ void BandCompare::setData (bool v, const std::array<float, numBands>& voc, const
 
 void BandCompare::paint (juce::Graphics& g)
 {
-    static const char* names[numBands] = { "LOW", "LOW-MID", "MID", "PRESENCE", "AIR" };
+    static const char* names[numBands] = { "Low", "Low-mid", "Mid", "Presence", "Air" };
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0c0910));
+    g.setColour (juce::Colour (0xff0d0d11));
     g.fillPath (chamferPath (r, 6.0f));
     g.setColour (border);
     g.strokePath (chamferPath (r.reduced (0.5f), 6.0f), juce::PathStrokeType (1.0f));
@@ -99,8 +99,8 @@ void BandCompare::paint (juce::Graphics& g)
     g.fillRect (legend.getX() + 70, legend.getY() + 3, 8, 8);
     g.setFont (fontOf (11.0f, true));
     g.setColour (textDim);
-    g.drawText ("VOCAL", legend.getX() + 12, legend.getY(), 54, 14, juce::Justification::centredLeft, false);
-    g.drawText ("BEAT", legend.getX() + 82, legend.getY(), 54, 14, juce::Justification::centredLeft, false);
+    g.drawText ("Vocal", legend.getX() + 12, legend.getY(), 54, 14, juce::Justification::centredLeft, false);
+    g.drawText ("Beat", legend.getX() + 82, legend.getY(), 54, 14, juce::Justification::centredLeft, false);
     auto labels = inner.removeFromBottom (16);
     inner.removeFromTop (10);
     const int colW = inner.getWidth() / numBands;
@@ -137,7 +137,7 @@ void BandCompare::paint (juce::Graphics& g)
     {
         g.setColour (textDim);
         g.setFont (labFont (13.0f));
-        g.drawText ("NOT ANALYSED", getLocalBounds(), juce::Justification::centred, false);
+        g.drawText ("Not analysed", getLocalBounds(), juce::Justification::centred, false);
     }
 }
 
@@ -213,78 +213,33 @@ void drawTileGlyph (juce::Graphics& g, int index, juce::Rectangle<float> b, juce
 }
 }
 
-void WorkspaceTile::setArt (const juce::Image& image, juce::Rectangle<float> crop)
-{
-    art = image;
-    artCrop = crop;
-    artScaled = {};
-    repaint();
-}
-
 void WorkspaceTile::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
-    auto r = getLocalBounds().toFloat().reduced (2.0f);
+    auto r = getLocalBounds().toFloat().reduced (1.0f);
     if (down)
         r = r.translated (0.0f, 1.0f);
     const auto accent = kind == TileStatus::problem ? errorRed : kind == TileStatus::active ? pink : kind == TileStatus::ready ? violet : textDim;
-    const auto shape = chamferPath (r, 12.0f);
-    if (prominent || highlighted)
-        drawGlow (g, shape, prominent ? violet.withAlpha (0.9f) : violet.withAlpha (0.55f), 6.0f);
-    g.setGradientFill (juce::ColourGradient (prominent ? juce::Colour (0xff3a1363) : (highlighted ? panelTop.brighter (0.12f) : panelTop), 0.0f, r.getY(),
-                                             prominent ? juce::Colour (0xff1a0a2e) : panelBottom.darker (0.25f), 0.0f, r.getBottom(), false));
+    const auto shape = chamferPath (r, 8.0f);
+    g.setColour (prominent ? violet.interpolatedWith (panelBottom, 0.78f) : (highlighted ? panelTop : panelBottom));
     g.fillPath (shape);
-    if (art.isValid())
-    {
-        // a faint crop of the chrome behind the card, pre-scaled once per size
-        const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
-        const juce::Rectangle<int> px ((int) std::ceil (r.getWidth() * pixelScale), (int) std::ceil (r.getHeight() * pixelScale));
-        if (! artScaled.isValid() || artScaledFor != px)
-        {
-            const auto source = art.getBounds().toFloat();
-            const auto cropPx = juce::Rectangle<float> (source.getX() + artCrop.getX() * source.getWidth(), source.getY() + artCrop.getY() * source.getHeight(),
-                                                       artCrop.getWidth() * source.getWidth(), artCrop.getHeight() * source.getHeight()).getSmallestIntegerContainer();
-            artScaled = art.getClippedImage (cropPx).rescaled (juce::jmax (1, px.getWidth()), juce::jmax (1, px.getHeight()), juce::Graphics::highResamplingQuality);
-            artScaledFor = px;
-            const juce::Image::BitmapData data (artScaled, juce::Image::BitmapData::readWrite); // fade it out downwards: full in the title strip, gone before the description
-            for (int y = 0; y < data.height; ++y)
-            {
-                const float t = (float) y / (float) juce::jmax (1, data.height);
-                const float f = 1.0f - juce::jlimit (0.0f, 1.0f, (t - 0.18f) / 0.18f);
-                for (int x = 0; x < data.width; ++x)
-                    data.setPixelColour (x, y, data.getPixelColour (x, y).withMultipliedAlpha (f));
-            }
-        }
-        const juce::Graphics::ScopedSaveState keep (g);
-        g.reduceClipRegion (shape);
-        g.setOpacity (artStrength * (prominent ? 1.3f : (highlighted ? 1.2f : 1.0f)));
-        g.drawImage (artScaled, r);
-    }
-    g.setColour (chrome.withAlpha (prominent ? 0.16f : 0.08f)); // the lit top edge
-    g.fillRect (r.getX() + 14.0f, r.getY() + 1.0f, r.getWidth() - 28.0f, 1.0f);
-    g.setColour (prominent ? violet : (highlighted ? neon : border.brighter (0.15f)));
-    g.strokePath (shape, juce::PathStrokeType (prominent ? 2.0f : 1.3f));
-    g.setGradientFill (juce::ColourGradient (accent, r.getX() + 14.0f, 0.0f, accent.withAlpha (0.0f), r.getX() + 80.0f, 0.0f, false)); // the status light
-    g.fillRect (r.getX() + 14.0f, r.getBottom() - 4.0f, 66.0f, 3.0f);
-    auto in = r.toNearestInt().reduced (16, 12);
-    if (glyph >= 0)
-    {
-        const auto box = juce::Rectangle<float> (40.0f, 26.0f).withRightX (r.getRight() - 14.0f).withY (r.getY() + 12.0f);
-        drawTileGlyph (g, glyph, box, prominent ? violet.brighter (0.4f) : accent.interpolatedWith (textDim, 0.4f).withAlpha (highlighted ? 1.0f : 0.8f), prominent || highlighted);
-    }
-    g.setColour (chrome);
-    g.setFont (labFont (prominent ? 18.0f : 15.0f));
-    g.drawFittedText (title.toUpperCase(), in.removeFromTop (prominent ? 26 : 22).withTrimmedRight (glyph >= 0 ? 46 : 0), juce::Justification::centredLeft, 1, 0.7f);
-    in.removeFromTop (4);
+    g.setColour (prominent ? violet : (highlighted ? border.brighter (0.5f) : border));
+    g.strokePath (shape, juce::PathStrokeType (prominent ? 1.5f : 1.0f));
+    auto in = r.toNearestInt().reduced (14, 10);
+    g.setColour (textBright);
+    g.setFont (fontOf (15.0f, true));
+    g.drawFittedText (displayCase (title), in.removeFromTop (22), juce::Justification::centredLeft, 1, 0.8f);
+    auto bottom = in.removeFromBottom (18);
+    g.setColour (accent);
+    g.fillEllipse ((float) bottom.getX(), (float) bottom.getCentreY() - 3.0f, 6.0f, 6.0f); // the status dot
+    g.setFont (fontOf (11.5f, true));
+    g.drawFittedText (displayCase (status, true), bottom.withTrimmedLeft (12), juce::Justification::centredLeft, 1, 0.75f);
     g.setColour (textDim);
     g.setFont (fontOf (12.0f));
-    g.drawFittedText (description, in.removeFromTop (juce::jmax (30, in.getHeight() - 24)), juce::Justification::topLeft, 3, 0.9f);
-    g.setColour (accent);
-    g.setFont (fontOf (11.5f, true));
-    g.drawFittedText (status.toUpperCase(), in.removeFromBottom (18), juce::Justification::centredLeft, 1, 0.7f);
+    g.drawFittedText (description, in.withTrimmedTop (2), juce::Justification::topLeft, 3, 0.9f);
     if (hasKeyboardFocus (true))
     {
         g.setColour (chrome);
-        g.strokePath (chamferPath (r.expanded (2.0f), 12.0f), juce::PathStrokeType (1.4f));
+        g.strokePath (chamferPath (r.expanded (2.0f), 8.0f), juce::PathStrokeType (1.4f));
     }
 }
 
@@ -300,37 +255,12 @@ void SpectrumView::setSampleRate (double sr)
     }
 }
 
-void SpectrumView::setBackdrop (const juce::Image& image, float strength)
+void SpectrumView::setEmblem (const juce::Image& image)
 {
-    backdrop = image;
-    backdropScaled = {};
-    backdropStrength = strength;
-    geometryDirty = true;
+    emblem = image;
+    emblemScaled = {};
     changed = true;
     commit();
-}
-
-void SpectrumView::setSculpture (bool on)
-{
-    if (on != sculpture)
-    {
-        sculpture = on;
-        geometryDirty = true;
-        changed = true;
-    }
-}
-
-void SpectrumView::setActivity (float dt, float activity, bool motionAllowed)
-{
-    const float target = motionAllowed ? juce::jlimit (0.0f, 1.0f, activity) : 0.0f;
-    const float before = activitySmoothed;
-    activitySmoothed += (target - activitySmoothed) * juce::jmin (1.0f, dt * (target > activitySmoothed ? 6.0f : 2.0f));
-    if (activitySmoothed < 0.004f)
-        activitySmoothed = 0.0f;
-    if (activitySmoothed > 0.0f)
-        driftPhase += dt * (0.10f + 0.55f * activitySmoothed); // radians per second: a slow drift that quickens a little with level
-    if (activitySmoothed > 0.0f || before > 0.0f)
-        changed = true; // when it reaches zero the artwork stops and so does the redrawing
 }
 
 void SpectrumView::setShowWave (bool b)
@@ -380,9 +310,7 @@ void SpectrumView::rebuildGeometry()
     geometryDirty = false;
     frame = getLocalBounds().toFloat();
     framePath = chamferPath (frame, 10.0f);
-    plate = sculpture && backdrop.isValid() ? frame.reduced (plateInsetX, plateInsetY) : frame;
-    platePath = chamferPath (plate, 8.0f);
-    auto area = plate.reduced (12.0f, 10.0f);
+    auto area = frame.reduced (12.0f, 10.0f);
     waveArea = {};
     if (showWave)
     {
@@ -424,48 +352,15 @@ void SpectrumView::paint (juce::Graphics& g)
     ++paintCount;
     if (geometryDirty)
         rebuildGeometry();
-    g.setColour (juce::Colour (0xff0a070f));
+    g.setColour (juce::Colour (0xff0d0d11));
     g.fillPath (framePath);
-    const bool art = backdrop.isValid();
-    if (art)
-    {
-        // the artwork is stretched to the display with a little bleed so the drift never pushes its edge into view
-        const auto artFrame = frame.reduced (8.0f, 5.0f);
-        // pre-scaled once per size so every frame is a 1:1 copy; the drift (only while audio plays) moves it by a few pixels
-        const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
-        const int pw = std::max (1, (int) std::ceil (artFrame.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (artFrame.getHeight() * pixelScale));
-        if (! backdropScaled.isValid() || backdropScaled.getWidth() != pw || backdropScaled.getHeight() != ph)
-            backdropScaled = backdrop.rescaled (pw, ph, juce::Graphics::highResamplingQuality);
-        const juce::Graphics::ScopedSaveState keep (g);
-        g.reduceClipRegion (framePath);
-        const float dx = 9.0f * std::sin (driftPhase) * activitySmoothed, dy = 3.0f * std::sin (driftPhase * 0.7f + 1.0f) * activitySmoothed;
-        g.setOpacity (juce::jmin (1.0f, backdropStrength * (1.0f + 0.12f * activitySmoothed)));
-        g.drawImage (backdropScaled, artFrame.translated (std::round (dx), std::round (dy)));
-    }
-    if (art && sculpture)
-    {
-        // the display: a dark glass plate set into the chrome, with a lit chrome rim
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff140e1c).withAlpha (plateGlass - 0.06f), 0.0f, plate.getY(), juce::Colour (0xff06040a).withAlpha (plateGlass + 0.06f), 0.0f, plate.getBottom(), false));
-        g.fillPath (platePath);
-        g.setGradientFill (juce::ColourGradient (chrome.withAlpha (0.07f), plate.getX(), plate.getY(), chrome.withAlpha (0.0f), plate.getX() + plate.getWidth() * 0.45f, plate.getY() + plate.getHeight() * 0.7f, false)); // a faint sheen: it reads as glass
-        g.fillPath (platePath);
-        juce::ColourGradient rim (chrome.withAlpha (0.85f), 0.0f, plate.getY(), pink.withAlpha (0.7f), 0.0f, plate.getBottom(), false);
-        rim.addColour (0.35, violet.withAlpha (0.8f));
-        g.setGradientFill (rim);
-        g.strokePath (platePath, juce::PathStrokeType (1.6f));
-        g.setColour (juce::Colours::black.withAlpha (0.5f));
-        g.strokePath (chamferPath (plate.reduced (1.6f), 7.0f), juce::PathStrokeType (1.0f));
-        // the chrome's light spills onto the inner edge of the glass: ultraviolet at the top, pink at the bottom
-        g.setGradientFill (juce::ColourGradient (violet.withAlpha (0.16f), 0.0f, plate.getY(), pink.withAlpha (0.14f), 0.0f, plate.getBottom(), false));
-        g.strokePath (chamferPath (plate.reduced (3.5f), 6.0f), juce::PathStrokeType (3.0f));
-    }
     g.setColour (border);
-    g.strokePath (framePath, juce::PathStrokeType (1.2f));
+    g.strokePath (framePath, juce::PathStrokeType (1.0f));
 
     g.setColour (border.withAlpha (0.6f));
     g.fillPath (gridPath);
-    g.setFont (fontOf (10.5f));
-    g.setColour (textDim.withAlpha (0.85f));
+    g.setFont (fontOf (11.0f));
+    g.setColour (textDim);
     for (const auto& l : gridLabels)
         g.drawText (l.text, l.box, l.left ? juce::Justification::centredLeft : juce::Justification::centred, false);
 
@@ -489,11 +384,6 @@ void SpectrumView::paint (juce::Graphics& g)
         fillPath.closeSubPath();
         g.setColour (colours[t].withAlpha (t == 1 ? 0.08f : 0.2f));
         g.fillPath (fillPath);
-        if (art && ! sculpture) // a dark under-stroke keeps the line legible over the chrome
-        {
-            g.setColour (juce::Colour (0xff08060d).withAlpha (0.55f));
-            g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 3.6f : 4.0f, juce::PathStrokeType::curved));
-        }
         g.setColour (colours[t].withAlpha (0.95f));
         g.strokePath (linePath, juce::PathStrokeType (t == 1 ? 1.4f : 1.8f, juce::PathStrokeType::curved));
     }
@@ -503,16 +393,16 @@ void SpectrumView::paint (juce::Graphics& g)
         {
             g.setColour (colours[t]);
             g.fillRect (legendX, legendRow.getY() + 3.0f, 8.0f, 8.0f);
-            g.setFont (labFont (10.5f));
-            g.drawText (names[t], juce::Rectangle<float> (legendX + 12.0f, legendRow.getY(), 150.0f, 14.0f), juce::Justification::centredLeft, false);
-            legendX += 24.0f + (float) juce::GlyphArrangement::getStringWidth (labFont (10.5f), names[t]);
+            g.setFont (labFont (11.0f));
+            g.drawText (displayCase (names[t]), juce::Rectangle<float> (legendX + 12.0f, legendRow.getY(), 150.0f, 14.0f), juce::Justification::centredLeft, false);
+            legendX += 24.0f + (float) juce::GlyphArrangement::getStringWidth (labFont (11.0f), displayCase (names[t]));
         }
 
     // waveform strip: the vocal input (violet) and the output (pink), newest on the right
     bool wave = false;
     if (showWave)
     {
-        g.setColour (juce::Colour (0xff0c0910));
+        g.setColour (juce::Colour (0xff0d0d11));
         g.fillRect (waveArea);
         g.setColour (border.withAlpha (0.8f));
         g.drawRect (waveArea, 1.0f);
@@ -536,27 +426,38 @@ void SpectrumView::paint (juce::Graphics& g)
             }
         }
     }
+    emblemShown = false;
     if (! any && ! wave)
     {
-        // idle: a still, quiet plate that says plainly that nothing is arriving; no trace, no baseline, nothing that looks like analysis
-        const juce::String head = "NO SIGNAL", sub = showWave ? "PLAY AUDIO THROUGH THE PLUG-IN" : "";
-        const auto headFont = labFont (showWave ? 15.0f : 12.0f), subFont = fontOf (10.5f);
-        const float tw = (float) juce::jmax (juce::GlyphArrangement::getStringWidth (headFont, head), sub.isEmpty() ? 0 : juce::GlyphArrangement::getStringWidth (subFont, sub)) + 44.0f;
-        const auto pill = juce::Rectangle<float> (tw, sub.isEmpty() ? 26.0f : 46.0f).withCentre (plot.getCentre().translated (0.0f, -6.0f));
-        g.setColour (juce::Colour (0xff08060d).withAlpha (0.86f)); // dark enough to stay readable over the artwork
+        // idle: a still, quiet presentation that says plainly that nothing is arriving: the brand emblem (decoration, only now) and a message; no trace, no baseline
+        if (emblem.isValid())
+        {
+            const float h = plot.getHeight() * 0.62f, w = h * (float) emblem.getWidth() / (float) emblem.getHeight();
+            const auto box = juce::Rectangle<float> (w, h).withCentre ({ plot.getCentreX(), plot.getY() + plot.getHeight() * 0.40f });
+            const float pixelScale = g.getInternalContext().getPhysicalPixelScaleFactor();
+            const int pw = std::max (1, (int) std::ceil (box.getWidth() * pixelScale)), ph = std::max (1, (int) std::ceil (box.getHeight() * pixelScale));
+            if (! emblemScaled.isValid() || emblemScaled.getWidth() != pw || emblemScaled.getHeight() != ph)
+                emblemScaled = emblem.rescaled (pw, ph, juce::Graphics::highResamplingQuality);
+            g.setOpacity (0.85f);
+            g.drawImage (emblemScaled, box);
+            emblemShown = true;
+        }
+        const juce::String head = "No signal", sub = showWave ? "Play audio through the plug-in" : "";
+        const auto headFont = labFont (showWave ? 14.0f : 12.0f), subFont = fontOf (11.5f);
+        const float tw = (float) juce::jmax (juce::GlyphArrangement::getStringWidth (headFont, head), sub.isEmpty() ? 0 : juce::GlyphArrangement::getStringWidth (subFont, sub)) + 36.0f;
+        const auto pill = juce::Rectangle<float> (tw, sub.isEmpty() ? 26.0f : 42.0f).withCentre (plot.getCentre().translated (0.0f, emblemShown ? plot.getHeight() * 0.26f : 0.0f));
+        g.setColour (juce::Colour (0xff101014).withAlpha (0.9f));
         g.fillPath (chamferPath (pill, 6.0f));
-        g.setColour (border.brighter (0.2f));
+        g.setColour (border);
         g.strokePath (chamferPath (pill, 6.0f), juce::PathStrokeType (1.0f));
-        g.setColour (chrome.withAlpha (0.22f)); // the lit top edge
-        g.fillRect (pill.getX() + 8.0f, pill.getY() + 1.0f, pill.getWidth() - 16.0f, 1.0f);
-        g.setColour (textBright.withAlpha (0.92f));
+        g.setColour (textBright);
         g.setFont (headFont);
         g.drawText (head, sub.isEmpty() ? pill : pill.withTrimmedBottom (18.0f), juce::Justification::centred, false);
         if (sub.isNotEmpty())
         {
             g.setColour (textDim);
             g.setFont (subFont);
-            g.drawText (sub, pill.withTrimmedTop (26.0f), juce::Justification::centred, false);
+            g.drawText (sub, pill.withTrimmedTop (22.0f), juce::Justification::centred, false);
         }
     }
 }

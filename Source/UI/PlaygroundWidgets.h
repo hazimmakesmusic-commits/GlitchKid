@@ -11,23 +11,27 @@
 // repaints unless something changed.
 namespace glitchkid::ui
 {
-// A rectangle with its top-left and bottom-right corners cut diagonally by `c` (the interface's sharp, technical corner), and a restrained neon glow
-// (a soft, low-alpha shadow of the accent colour; use sparingly).
+// A rectangle with small rounded corners (the radius follows `c`, capped at 6 px: the interface's one corner shape). drawGlow is kept so old call sites compile
+// but draws nothing: selection is shown by fill and border, not by glow.
 juce::Path chamferPath (juce::Rectangle<float>, float c);
 void drawGlow (juce::Graphics&, const juce::Path&, juce::Colour, float radius);
 
-// Palette (design tokens, locked brand colours). Void black window, deep graphite panels, ultraviolet for the primary accent (selection, focus, the main action,
-// EQ), cyber pink for secondary highlights (real processing activity, the note being tuned to, success), pale chrome for text, muted lavender-grey for secondary
-// text, divider violet for borders. Red means clipping or an error. The other colours are derived shades of these (hover, disabled, depth).
-const juce::Colour obsidian (0xff08060d), panelBottom (0xff15111b), panelTop (0xff1b1523), border (0xff392044),
-                   violet (0xffc026ff), neon (0xffd873ff), pink (0xffff3dae),
-                   textDim (0xff9b91a5), textBright (0xffe8ddf2), disabled (0xff4a4152), errorRed (0xffff4d5e),
+// Palette (design tokens). Near-black window, raised panels and secondary surfaces in two graphite steps, off-white text and a softer secondary text, violet for
+// selection and the main action, magenta sparingly for real processing activity and highlights, a neutral purple-grey for borders. Red means clipping or an error.
+// Chrome is reserved for the wordmark and the idle emblem. The other colours are derived shades of these (hover, disabled, depth).
+const juce::Colour obsidian (0xff101014), panelBottom (0xff1b1921), panelTop (0xff25222d), border (0xff3a3644),
+                   violet (0xffa83bee), neon (0xffc26cf6), pink (0xffe14cbb),
+                   textDim (0xffa7a0b2), textBright (0xfff0ecf5), disabled (0xff5a5463), errorRed (0xffff5c6c),
                    chrome (0xffe8ddf2), chromeDark (0xff4a4152);
+
+// Display case: words written in capitals in the code ("CLEAN LAB", "NO SIGNAL") are drawn in Title Case at draw time, so the interface is not shouty. Acronyms and
+// units in the keep list stay as they are, mixed-case words are left alone, and a component with the "rawText" property (user text such as a preset name) is never changed.
+juce::String displayCase (const juce::String&, bool sentence = false); // sentence = only the first word is capitalised (statuses, hints)
 
 // Inter (SIL Open Font License, bundled in Assets/Fonts and compiled in, so it is the same on every machine). Falls back to the system font if loading fails.
 juce::Font fontOf (float height, bool bold = false);
 
-// The GlitchKid dial: a thin value arc over a track around a dark cap with a pointer. `start`/`end` are JUCE rotary angles; pos is 0..1.
+// The GlitchKid dial: a thin violet value arc over a track around a flat cap with a pointer. `start`/`end` are JUCE rotary angles; pos is 0..1.
 void drawDial (juce::Graphics&, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, bool hover, bool focus);
 
 // One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small lime dot.
@@ -200,6 +204,8 @@ public:
     juce::Font getLabelFont (juce::Label&) override;
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getPopupMenuFont() override;
+    void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    void drawLabel (juce::Graphics&, juce::Label&) override;
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider&) override;
     // Tooltips: narrow, small, set beside the pointer (never under it), so a long tip does not blanket the controls around it.
