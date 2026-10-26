@@ -5,6 +5,8 @@ Status: implemented and tested on Linux with synthetic signals and generated fil
 ## What it is, and is not
 A tool that compares the broad tone of an audio file you are allowed to use with the tone of your own vocal, and proposes a small, bounded, reviewable change to the vocal's own EQ. The result is called **Reference-Inspired EQ**. It is not an exact vocal match: a finished song is a full mix (vocal, instruments, mastering), not an isolated vocal. Confidence for a full-mix reference is never "high".
 
+Formats: WAV, AIFF, FLAC, Ogg Vorbis and MP3 on every platform; M4A on macOS only (the system CoreAudio decoder). The list in the file chooser and in the error messages is built from the formats the build has registered, so it cannot drift from what can be opened. Opus is registered by JUCE but not offered (untested, switched off). Files are recognised by extension first and then by content.
+
 Not done, on purpose: no Spotify or YouTube link analysis (the plug-in has no network and no authorised route to the audio), no automatic matching of dynamics, stereo width, ambience or loudness, no changes to Gain, Mix, Pitch Tune or any parameter outside the EQ band gains, and nothing is applied without review.
 
 ## Staged plan
@@ -14,7 +16,7 @@ Not done, on purpose: no Spotify or YouTube link analysis (the plug-in has no ne
 4. Tests at every stage (`Tests/ReferenceMatchTests.cpp`) plus the existing suite, including the real-time allocation test.
 
 ## Limits to remember
-Below 200 Hz is not compared (a master's bass and drums dominate it). A full mix's tone includes its instruments. The vocal profile needs the host to play audio through the plug-in. The macOS file dialog, CoreAudio file support and FL Studio behaviour are unverified. MP3 is off in this build.
+Below 200 Hz is not compared (a master's bass and drums dominate it). A full mix's tone includes its instruments. The vocal profile needs the host to play audio through the plug-in. The macOS file dialog, CoreAudio file support and FL Studio behaviour are unverified. 
 
 ## What was built
 * `Source/Analysis/ReferenceAnalyzer.{h,cpp}`: `SpectralAccumulator` (4096-point Hann frames, hop 2048, third-octave band energies, activity gate, level-independent shape, a variability figure), `analyseReferenceFile` (reads on the calling thread, picks the loudest 20 s or a chosen section, cancellable, progress, clear errors) and `ReferenceJob` (its own low-priority thread, result delivered on the message thread, `stopJob()` guarantees no callback afterwards).
@@ -30,3 +32,6 @@ Never high for a full-mix reference. It is lowered to low when the reference sec
 
 ## Verification (Linux)
 See the final report in the session: full suite, the Reference Match groups, the existing real-time allocation tests, an AddressSanitizer + UndefinedBehaviorSanitizer run, and a fresh Release build. Not verified: macOS (file dialog, CoreAudio), FL Studio, real songs, listening.
+
+## File formats (diagnosis and fix)
+The reported "WAV only" behaviour was not a decoder or registration problem: in this build WAV, AIFF, FLAC, Ogg Vorbis and MP3 all open and analyse (tested). It came from the interface: a hard-coded chooser filter and error text that left out MP3 and M4A, and opening files by extension only. See the changelog for the details and `Tests/ReferenceMatchTests.cpp` (group "Reference Match file formats") for what is tested. Still depends on the platform: M4A/AAC (macOS CoreAudio only; untested on a Mac), copy-protected files (cannot be opened), and a partly damaged Ogg or FLAC (a decoder may conceal the damage, so it is analysed rather than refused).

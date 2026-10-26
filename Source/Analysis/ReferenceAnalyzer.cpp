@@ -138,6 +138,78 @@ SpectralProfile SpectralAccumulator::finish (int sourceChannels) const
 
 namespace
 {
+juce::AudioFormatManager& formatManager()
+{
+    static const std::unique_ptr<juce::AudioFormatManager> manager = [] { auto m = std::make_unique<juce::AudioFormatManager>(); m->registerBasicFormats(); return m; }(); // registered once; only read afterwards
+    return *manager;
+}
+}
+
+namespace
+{
+// Only the format families that are registered AND covered by tests are advertised (JUCE also registers Opus; it is not offered). On macOS the system decoder
+// (CoreAudio) adds M4A; only the .m4a extension of its long list is offered.
+bool isAdvertised (const juce::AudioFormat& f)
+{
+    const auto n = f.getFormatName();
+    return n.containsIgnoreCase ("WAV") || n.containsIgnoreCase ("AIFF") || n.containsIgnoreCase ("FLAC") || n.containsIgnoreCase ("Ogg") || n.containsIgnoreCase ("MP3") || n.containsIgnoreCase ("CoreAudio");
+}
+}
+
+juce::String referenceFileWildcard()
+{
+    juce::StringArray extensions;
+    for (int i = 0; i < formatManager().getNumKnownFormats(); ++i)
+    {
+        auto* f = formatManager().getKnownFormat (i);
+        if (! isAdvertised (*f))
+            continue;
+        if (f->getFormatName().containsIgnoreCase ("CoreAudio"))
+            extensions.add (".m4a");
+        else
+            extensions.addArray (f->getFileExtensions());
+    }
+    for (auto& e : extensions)
+        e = (e.startsWithChar ('.') ? "*" : "*.") + e;
+    extensions.removeDuplicates (true);
+    return extensions.joinIntoString (";");
+}
+
+juce::String referenceFormatNames()
+{
+    juce::StringArray names;
+    for (int i = 0; i < formatManager().getNumKnownFormats(); ++i)
+    {
+        auto* f = formatManager().getKnownFormat (i);
+        if (! isAdvertised (*f))
+            continue;
+        const auto n = f->getFormatName();
+        names.add (n.containsIgnoreCase ("WAV") ? "WAV" : n.containsIgnoreCase ("AIFF") ? "AIFF" : n.containsIgnoreCase ("FLAC") ? "FLAC" : n.containsIgnoreCase ("Ogg") ? "Ogg Vorbis"
+                   : n.containsIgnoreCase ("MP3") ? "MP3" : "M4A");
+    }
+    names.removeDuplicates (false);
+    return names.joinIntoString (", ");
+}
+
+namespace
+{
+// Opens a reader by extension first, then by looking at the file's content (a FLAC saved as .dat, an MP3 named .wav, a file with no extension).
+std::unique_ptr<juce::AudioFormatReader> openReader (const juce::File& file)
+{
+    std::unique_ptr<juce::AudioFormatReader> reader (formatManager().createReaderFor (file));
+    if (reader != nullptr)
+        return reader;
+    for (int i = 0; i < formatManager().getNumKnownFormats() && reader == nullptr; ++i)
+    {
+        auto* f = formatManager().getKnownFormat (i);
+        if (! isAdvertised (*f))
+            continue;
+        if (auto stream = file.createInputStream())
+            reader.reset (f->createReaderFor (stream.release(), true));
+    }
+    return reader;
+}
+
 ReferenceResult fail (ReferenceResult::Status s, const juce::String& m)
 {
     ReferenceResult r;
@@ -160,16 +232,22 @@ bool readMono (juce::AudioFormatReader& reader, juce::int64 from, int count, juc
 }
 }
 
+double referenceFileSeconds (const juce::File& file)
+{
+    if (! file.existsAsFile())
+        return 0.0;
+    auto reader = openReader (file);
+    return reader != nullptr && reader->sampleRate > 0.0 ? (double) reader->lengthInSamples / reader->sampleRate : 0.0;
+}
+
 ReferenceResult analyseReferenceFile (const juce::File& file, const ReferenceSection& section, const std::atomic<bool>& cancel, const std::function<void (float)>& progress)
 {
     auto report = [&] (float v) { if (progress) progress (juce::jlimit (0.0f, 1.0f, v)); };
     if (! file.existsAsFile())
         return fail (ReferenceResult::Status::missingFile, "That file could not be found.");
-    juce::AudioFormatManager formats;
-    formats.registerBasicFormats();
-    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    auto reader = openReader (file);
     if (reader == nullptr)
-        return fail (ReferenceResult::Status::unsupported, "This file type cannot be read. Use a WAV, AIFF, FLAC or Ogg Vorbis file.");
+        return fail (ReferenceResult::Status::unsupported, "This file could not be opened as audio. Formats that can be opened here: " + referenceFormatNames() + ". (A damaged or copy-protected file cannot be opened either.)");
     if (reader->lengthInSamples <= 0 || reader->numChannels == 0 || reader->sampleRate <= 0.0)
         return fail (ReferenceResult::Status::unreadable, "The file is empty or damaged.");
     if (reader->sampleRate < 32000.0)

@@ -60,6 +60,14 @@ private:
     std::array<std::pair<int, int>, SpectralProfile::numBands> binRange {};
 };
 
+// The audio formats this build can really read, taken from JUCE's registered formats (nothing is advertised that is not registered). Used by the file chooser and by
+// the error messages, so what the user is told always matches what the build can decode.
+juce::String referenceFileWildcard();  // e.g. "*.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.mp3" (plus the system formats on macOS)
+juce::String referenceFormatNames();   // e.g. "WAV, AIFF, FLAC, Ogg Vorbis, MP3"
+
+// Length of an audio file in seconds without analysing it (0 if it cannot be opened). Reads only the header.
+double referenceFileSeconds (const juce::File&);
+
 struct ReferenceSection
 {
     bool automatic = true;       // true: the most active `lengthSeconds` of the file

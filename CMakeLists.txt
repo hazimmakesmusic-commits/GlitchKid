@@ -79,6 +79,7 @@ target_sources(GlitchKid PRIVATE
 target_compile_definitions(GlitchKid PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
+    JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1 JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_OPUS=0 # the audio-file formats Reference Match reads and advertises
     JUCE_VST3_CAN_REPLACE_VST2=0
     GLITCHKID_VERSION="${PROJECT_VERSION}")
 
@@ -165,8 +166,10 @@ if(GLITCHKID_BUILD_TESTS)
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC
+        GLITCHKID_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures"
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
+        JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1 JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_OPUS=0
         GLITCHKID_VERSION="${PROJECT_VERSION}"
         JUCE_MODAL_LOOPS_PERMITTED=1) # tests only: lets the editor smoke test run its timer
     target_link_libraries(GlitchKidTests

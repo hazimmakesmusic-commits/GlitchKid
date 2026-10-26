@@ -113,7 +113,7 @@ ReferencePanel::ReferencePanel (GlitchKidProcessor& p, Hooks h) : processor (p),
     text (diffCaption, 11.0f, false, textDim, juce::Justification::centredLeft);
     diffCaption.setText ("Reference minus your vocal as it sounds now, in dB (violet: reference is stronger)", juce::dontSendNotification);
 
-    button (chooseButton, "Choose an audio file you have the right to use (WAV, AIFF, FLAC or Ogg Vorbis). The file is only read, never copied or stored.");
+    button (chooseButton, "Choose an audio file you have the right to use (" + analysis::referenceFormatNames() + "). The file is only read, never copied or stored.");
     button (analyseRefButton, "Measure the tone of the chosen file. This runs in the background and can be cancelled.");
     button (cancelRefButton, "Stop the analysis.");
     button (vocalButton, "Measure your vocal from the plug-in's input while the host plays. Press again to finish early.");
@@ -228,7 +228,7 @@ void ReferencePanel::paint (juce::Graphics& g)
 
 void ReferencePanel::chooseFile()
 {
-    chooser = std::make_unique<juce::FileChooser> ("Choose a reference audio file you have the right to use", juce::File(), "*.wav;*.aif;*.aiff;*.flac;*.ogg");
+    chooser = std::make_unique<juce::FileChooser> ("Choose a reference audio file you have the right to use", juce::File(), analysis::referenceFileWildcard()); // exactly the formats this build can decode
     juce::Component::SafePointer<ReferencePanel> safe (this);
     chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe] (const juce::FileChooser& fc)
     {
@@ -239,13 +239,11 @@ void ReferencePanel::chooseFile()
         safe->referenceProfile = {};
         safe->refResult = {};
         safe->fileSeconds = 0.0;
-        juce::AudioFormatManager formats;
-        formats.registerBasicFormats();
-        if (std::unique_ptr<juce::AudioFormatReader> reader { formats.createReaderFor (safe->file) }; reader != nullptr && reader->sampleRate > 0.0)
-            safe->fileSeconds = (double) reader->lengthInSamples / reader->sampleRate;
+        safe->fileSeconds = analysis::referenceFileSeconds (safe->file);
         safe->sectionStart.setRange (0.0, juce::jmax (1.0, safe->fileSeconds - 20.0), 0.5);
         safe->sectionStart.setVisible (! safe->autoSection.getToggleState() && safe->fileSeconds > 0.0);
-        safe->refStatus.setText (safe->fileSeconds > 0.0 ? "Ready to analyse (" + juce::String (safe->fileSeconds, 1) + " s long). Press Analyze reference." : "This file type cannot be read. Use a WAV, AIFF, FLAC or Ogg Vorbis file.", juce::dontSendNotification);
+        safe->refStatus.setText (safe->fileSeconds > 0.0 ? "Ready to analyse (" + juce::String (safe->fileSeconds, 1) + " s long). Press Analyze reference."
+                                                                         : "This file could not be opened as audio. Formats that can be opened here: " + analysis::referenceFormatNames() + ".", juce::dontSendNotification);
         safe->propose();
     });
 }

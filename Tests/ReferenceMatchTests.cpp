@@ -308,6 +308,196 @@ struct ReferenceMatchTests : public juce::UnitTest
 };
 ReferenceMatchTests referenceMatchTests;
 
+
+// Writes `data` with any JUCE format that can write (WAV, AIFF, FLAC, Ogg Vorbis); returns an empty File if the writer cannot be made.
+juce::File writeWith (juce::AudioFormat& format, const juce::File& dir, const juce::String& name, double sr, int channels, const std::vector<std::vector<float>>& data, int quality = 0)
+{
+    auto f = dir.getChildFile (name);
+    f.deleteFile();
+    std::unique_ptr<juce::FileOutputStream> os (f.createOutputStream());
+    if (os == nullptr)
+        return {};
+    std::unique_ptr<juce::AudioFormatWriter> w (format.createWriterFor (os.get(), sr, (unsigned) channels, 16, {}, quality));
+    if (w == nullptr)
+        return {};
+    os.release();
+    juce::AudioBuffer<float> b (channels, (int) data[0].size());
+    for (int c = 0; c < channels; ++c)
+        b.copyFrom (c, 0, data[(size_t) c].data(), (int) data[(size_t) c].size());
+    w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+    return f;
+}
+
+struct ReferenceFormatTests : public juce::UnitTest
+{
+    ReferenceFormatTests() : juce::UnitTest ("Reference Match file formats", "GlitchKid") {}
+
+    void runTest() override
+    {
+        const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid_reference_formats");
+        dir.createDirectory();
+        const juce::File fixtures (GLITCHKID_TEST_FIXTURES);
+        std::atomic<bool> noCancel { false };
+        const auto base = profileOf (noise (48000 * 20, 3), 48000.0); // white noise: the tone every generated file below should show
+
+        auto checkShape = [&] (const an::ReferenceResult& r, float tolerance, const juce::String& what)
+        {
+            expect (r.status == an::ReferenceResult::Status::ok, what + ": " + r.message);
+            if (r.status != an::ReferenceResult::Status::ok)
+                return;
+            for (int b = 0; b < r.profile.usedBands; ++b)
+                if (std::abs (r.profile.shapeDb[(size_t) b] - base.shapeDb[(size_t) b]) > tolerance)
+                {
+                    expect (false, what + ": band " + juce::String (b) + " differs by " + juce::String (r.profile.shapeDb[(size_t) b] - base.shapeDb[(size_t) b], 2) + " dB");
+                    return;
+                }
+        };
+
+        beginTest ("formats: the chooser filter and the list shown to the user come from the formats this build can really read, and include every format we advertise");
+        {
+            const auto wildcard = an::referenceFileWildcard();
+            for (const char* ext : { "*.wav", "*.aiff", "*.aif", "*.flac", "*.ogg", "*.mp3" })
+                expect (wildcard.contains (ext), juce::String (ext) + " is offered: " + wildcard);
+            const auto names = an::referenceFormatNames();
+            for (const char* n : { "WAV", "AIFF", "FLAC", "Ogg Vorbis", "MP3" })
+                expect (names.contains (n), juce::String (n) + " is listed: " + names);
+           #if JUCE_MAC
+            expect (wildcard.contains ("*.m4a"), "macOS offers M4A through CoreAudio");
+           #else
+            expect (! wildcard.contains ("*.m4a"), "no decoder for M4A on this platform, so it is not offered");
+           #endif
+            expect (! wildcard.contains ("*.opus") && ! names.contains ("Opus"), "Opus is registered by JUCE but not tested, so it is not offered");
+            logMessage ("REFERENCE formats offered: " + wildcard + "  |  " + names);
+        }
+
+        beginTest ("formats: WAV, AIFF, FLAC and Ogg Vorbis each open and analyse at 44.1, 48 and 96 kHz, mono and stereo, with the right tonal shape");
+        {
+            juce::WavAudioFormat wav; juce::AiffAudioFormat aiff; juce::FlacAudioFormat flac; juce::OggVorbisAudioFormat ogg;
+            struct Fmt { const char* name; juce::AudioFormat* format; const char* ext; float tolerance; int quality; };
+            for (const Fmt& f : { Fmt { "WAV", &wav, "wav", 1.0f, 0 }, Fmt { "AIFF", &aiff, "aiff", 1.0f, 0 }, Fmt { "FLAC", &flac, "flac", 1.0f, 5 }, Fmt { "Ogg Vorbis", &ogg, "ogg", 2.5f, 6 } })
+                for (double rate : { 44100.0, 48000.0, 96000.0 })
+                    for (int channels : { 1, 2 })
+                    {
+                        const auto x = noise ((int) (rate * 24), 3);
+                        const auto file = writeWith (*f.format, dir, juce::String (f.name).removeCharacters (" ") + "_" + juce::String ((int) rate) + "_" + juce::String (channels) + "." + f.ext, rate, channels,
+                                                     channels == 1 ? std::vector<std::vector<float>> { x } : std::vector<std::vector<float>> { x, x }, f.quality);
+                        const auto label = juce::String (f.name) + " " + juce::String ((int) rate) + " Hz " + (channels == 1 ? "mono" : "stereo");
+                        expect (file.existsAsFile(), label + ": the test file could be written");
+                        if (! file.existsAsFile())
+                            continue;
+                        const auto r = an::analyseReferenceFile (file, {}, noCancel);
+                        checkShape (r, f.tolerance, label);
+                        expect (r.profile.sourceChannels == channels && std::abs (r.profile.sampleRate - rate) < 1.0, label + ": channels and sample rate are read correctly");
+                        expectWithinAbsoluteError ((float) r.sectionLengthSeconds, 20.0f, 0.2f);
+                    }
+        }
+
+        beginTest ("formats: MP3 (a real encoded file) opens and analyses, mono or stereo");
+        {
+            const auto mp3 = fixtures.getChildFile ("noise_stereo_44100.mp3");
+            expect (mp3.existsAsFile(), "fixture present: " + mp3.getFullPathName());
+            const auto r = an::analyseReferenceFile (mp3, {}, noCancel);
+            checkShape (r, 2.5f, "MP3 stereo 44.1 kHz");
+            expect (r.profile.sourceChannels == 2 && std::abs (r.profile.sampleRate - 44100.0) < 1.0);
+            expectWithinAbsoluteError ((float) r.fileSeconds, 8.0f, 0.3f);
+            const auto mono = an::analyseReferenceFile (fixtures.getChildFile ("noise_mono_48000.mp3"), {}, noCancel);
+            checkShape (mono, 2.5f, "MP3 mono 48 kHz");
+            expect (mono.profile.sourceChannels == 1 && std::abs (mono.profile.sampleRate - 48000.0) < 1.0);
+        }
+
+        beginTest ("formats: M4A/AAC opens where the platform provides a decoder (macOS CoreAudio) and is refused with a clear message elsewhere");
+        {
+            const auto m4a = fixtures.getChildFile ("noise_mono_48000.m4a");
+            expect (m4a.existsAsFile(), "fixture present");
+            const auto r = an::analyseReferenceFile (m4a, {}, noCancel);
+           #if JUCE_MAC
+            checkShape (r, 3.0f, "M4A mono 48 kHz");
+           #else
+            expect (r.status == an::ReferenceResult::Status::unsupported && r.message.contains ("MP3") && r.message.contains ("FLAC"), "no decoder here, clearly said: " + r.message);
+            logMessage ("REFERENCE M4A on this platform: " + r.message);
+           #endif
+        }
+
+        beginTest ("formats: a file is recognised by its content when its extension is wrong or missing, and a file with an unknown extension is not trusted blindly");
+        {
+            juce::FlacAudioFormat flac;
+            const auto x = noise (48000 * 12, 3);
+            const auto real = writeWith (flac, dir, "tone.flac", 48000.0, 1, { x }, 5);
+            expect (real.existsAsFile());
+            const auto renamed = dir.getChildFile ("tone_flac.dat");
+            real.copyFileTo (renamed);
+            checkShape (an::analyseReferenceFile (renamed, {}, noCancel), 1.0f, "FLAC inside a .dat file");
+            const auto noExt = dir.getChildFile ("tone_noext");
+            real.copyFileTo (noExt);
+            checkShape (an::analyseReferenceFile (noExt, {}, noCancel), 1.0f, "FLAC without an extension");
+            const auto mp3AsWav = dir.getChildFile ("really_mp3.wav");
+            fixtures.getChildFile ("noise_stereo_44100.mp3").copyFileTo (mp3AsWav);
+            checkShape (an::analyseReferenceFile (mp3AsWav, {}, noCancel), 2.5f, "an MP3 named .wav");
+        }
+
+        beginTest ("formats: corrupt, truncated, empty and non-audio files give clear errors and never crash; the message lists what can be opened");
+        {
+            juce::OggVorbisAudioFormat ogg;
+            juce::FlacAudioFormat flac;
+            const auto x = noise (48000 * 12, 3);
+            for (auto [name, file] : { std::pair<const char*, juce::File> { "ogg", writeWith (ogg, dir, "c.ogg", 48000.0, 1, { x }, 6) }, { "flac", writeWith (flac, dir, "c.flac", 48000.0, 1, { x }, 5) },
+                                       { "mp3", fixtures.getChildFile ("noise_stereo_44100.mp3") } })
+            {
+                juce::MemoryBlock all;
+                expect (file.loadFileAsData (all) && all.getSize() > 4000, juce::String (name) + " source present");
+                // garbage in the middle (a damaged file)
+                juce::MemoryBlock damaged (all);
+                for (size_t i = all.getSize() / 3; i < all.getSize() / 3 + 6000 && i < all.getSize(); ++i)
+                    static_cast<char*> (damaged.getData())[i] = (char) (i * 31);
+                auto fd = dir.getChildFile (juce::String ("damaged_") + name + "." + name);
+                fd.replaceWithData (damaged.getData(), damaged.getSize());
+                const auto rd = an::analyseReferenceFile (fd, {}, noCancel);
+                expect (rd.status != an::ReferenceResult::Status::cancelled && rd.message.isNotEmpty(), juce::String (name) + " damaged: " + rd.message); // (a decoder may conceal a damaged stretch and still produce audio: that is reported as analysed, not as an error)
+                logMessage (juce::String ("REFERENCE damaged ") + name + ": status " + juce::String ((int) rd.status) + ", " + rd.message);
+                // truncated to a few hundred bytes (a broken download)
+                auto ft = dir.getChildFile (juce::String ("cut_") + name + "." + name);
+                ft.replaceWithData (all.getData(), 300);
+                const auto rt = an::analyseReferenceFile (ft, {}, noCancel);
+                expect (rt.status != an::ReferenceResult::Status::ok && rt.message.isNotEmpty(), juce::String (name) + " truncated: " + rt.message);
+            }
+            auto empty = dir.getChildFile ("empty.flac");
+            empty.replaceWithText ({});
+            const auto re = an::analyseReferenceFile (empty, {}, noCancel);
+            expect (re.status != an::ReferenceResult::Status::ok && re.message.isNotEmpty(), "empty file: " + re.message);
+            auto text = dir.getChildFile ("readme.txt");
+            text.replaceWithText ("not audio at all");
+            const auto rx = an::analyseReferenceFile (text, {}, noCancel);
+            expect (rx.status == an::ReferenceResult::Status::unsupported && rx.message.contains ("WAV") && rx.message.contains ("MP3"), "non-audio: " + rx.message);
+            expect (an::analyseReferenceFile (dir, {}, noCancel).status == an::ReferenceResult::Status::missingFile, "a folder is not a file");
+        }
+
+        beginTest ("formats: cancel and progress work for every format, a long file is read in blocks, and a silent file of every format is reported silent");
+        {
+            juce::FlacAudioFormat flac; juce::OggVorbisAudioFormat ogg; juce::AiffAudioFormat aiff;
+            const auto long1 = noise (48000 * 150, 5);
+            auto f = writeWith (flac, dir, "long.flac", 48000.0, 1, { long1 }, 0);
+            std::atomic<bool> stop { false };
+            int calls = 0;
+            const auto cancelled = an::analyseReferenceFile (f, {}, stop, [&] (float v) { if (++calls == 3 && v < 0.9f) stop.store (true); });
+            expect (cancelled.status == an::ReferenceResult::Status::cancelled, "cancelled part-way: " + cancelled.message);
+            const double t0 = juce::Time::getMillisecondCounterHiRes();
+            const auto whole = an::analyseReferenceFile (f, {}, noCancel);
+            logMessage ("REFERENCE 150 s FLAC analysed in " + juce::String (juce::Time::getMillisecondCounterHiRes() - t0, 0) + " ms (section " + juce::String (whole.sectionLengthSeconds, 1) + " s)");
+            expect (whole.status == an::ReferenceResult::Status::ok && std::abs (whole.sectionLengthSeconds - 20.0) < 0.2, whole.message);
+            const std::vector<float> zeros (48000 * 8, 0.0f);
+            for (auto* fmt : std::initializer_list<juce::AudioFormat*> { &flac, &ogg, &aiff })
+            {
+                const auto s = writeWith (*fmt, dir, "silent_" + fmt->getFormatName().removeCharacters (" -") + (fmt->getFileExtensions()[0]), 48000.0, 1, { zeros }, 5);
+                if (s.existsAsFile())
+                    expect (an::analyseReferenceFile (s, {}, noCancel).status == an::ReferenceResult::Status::silent, fmt->getFormatName() + " silent");
+            }
+        }
+
+        dir.deleteRecursively();
+    }
+};
+ReferenceFormatTests referenceFormatTests;
+
 void saveShot (GlitchKidEditor& ed, const char* name)
 {
     const juce::String dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
