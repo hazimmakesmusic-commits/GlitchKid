@@ -7,6 +7,7 @@
 #include "UI/PlaygroundWidgets.h"
 #include "UI/LabKit.h"
 #include "UI/GlitchRelic.h"
+#include "UI/ReferencePanel.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -64,6 +65,11 @@ public:
     void uiTickForTest() { timerCallback(); refreshDisplays (1.0f / 30.0f); } // runs one refresh of both timers now (tests and profiling only)
     void uiWaitForRelicForTest() { relicLoader.waitForTest(); }
     bool uiEmblemShownForTest() const { return homeView.isEmblemShownForTest(); }
+    glitchkid::ui::ReferencePanel& uiReferencePanelForTest() { return *referencePanel; }
+    bool uiCanUndoForTest() const { return undo.valid; }
+    int uiPageForTest() const { return (int) page; }
+    juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < 6 ? navButtons[index].getBounds() : index == 6 ? dryButton.getBounds() : motionButton.getBounds(); } // 0-5 the tabs, 6 DRY, 7 MOTION
+    void uiUndoForTest() { backToMine(); }
     bool uiVisualTimerRunningForTest() const { return visualTimer.isTimerRunning(); }
     bool uiTransitionRunningForTest() const { return transition < 1.0f; }
     void paintOverChildren (juce::Graphics&) override;
@@ -71,7 +77,7 @@ public:
 private:
     // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
     static constexpr int designW = 960, designH = 600;
-    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4 };
+    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;
     int category = 0;
@@ -104,7 +110,7 @@ private:
     void repaintTransitionBand (float t);
 
     juce::TextButton categoryButtons[numCategories];
-    juce::TextButton navButtons[5], undoButton { "UNDO" };
+    juce::TextButton navButtons[6], undoButton { "UNDO" };
     juce::TextButton finalButton { "FINAL TOUCH  >" }, backButton { "<  BACK TO BUILD" };
     juce::TextButton motionButton, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" };
     glitchkid::ui::ScopeStrip scope;
@@ -212,6 +218,7 @@ private:
     glitchkid::ui::LabHeading homeTitle { "SESSION", 15.0f }, homeSource { "REAL-TIME SIGNAL", 11.0f, glitchkid::ui::textDim };
     juce::Label homeHint;
     glitchkid::ui::SpectrumView homeView, beatView;
+    std::unique_ptr<glitchkid::ui::ReferencePanel> referencePanel; // the REFERENCE workspace; created after the processor-bound members, destroyed first
     glitchkid::ui::GlitchRelicLoader relicLoader; // declared after the views it feeds; stopped first in the destructor
     glitchkid::analysis::DisplaySpectrum specIn, specOut, specBeat;
     glitchkid::analysis::WaveColumns waveIn, waveOut;

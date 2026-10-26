@@ -38,3 +38,6 @@ Painting and animation run on the message thread (30 Hz timer); MOTION off makes
 
 ## Visual system
 Surfaces, controls, typography and the Glitch Relic are described in `docs/VISUAL_TRANSFORMATION_IMPLEMENTATION.md`. The relic is decoration only: it sits behind the HOME spectrum at low strength, never behind text or controls, and carries no data.
+
+## Reference tab
+A sixth tab, REFERENCE, after FINAL TOUCH: see `docs/REFERENCE_MATCH.md`. Saved tab numbers 0-4 are unchanged; 5 is REFERENCE.

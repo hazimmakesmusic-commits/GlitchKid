@@ -54,14 +54,17 @@ target_sources(GlitchKid PRIVATE
     Source/Presets/PresetController.cpp
     Source/Presets/FactoryPresets.cpp
     Source/Analysis/VocalAnalyzer.cpp
+    Source/Analysis/ReferenceAnalyzer.cpp
     Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
     Source/AutoMode/MixEngine.cpp
     Source/AutoMode/BeatLock.cpp
+    Source/AutoMode/ReferenceMatch.cpp
     Source/Macros/MacroEngine.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/LabKit.cpp
     Source/UI/GlitchRelic.cpp
+    Source/UI/ReferencePanel.cpp
     Source/Analysis/DisplaySpectrum.cpp
     Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
@@ -119,6 +122,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/UiPerfTests.cpp
         Tests/UiBehaviourTests.cpp
         Tests/VisualTests.cpp
+        Tests/ReferenceMatchTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -144,6 +148,8 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Presets/PresetController.cpp
         Source/Presets/FactoryPresets.cpp
         Source/Analysis/VocalAnalyzer.cpp
+        Source/Analysis/ReferenceAnalyzer.cpp
+        Source/AutoMode/ReferenceMatch.cpp
         Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
     Source/AutoMode/MixEngine.cpp
@@ -152,6 +158,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/LabKit.cpp
         Source/UI/GlitchRelic.cpp
+        Source/UI/ReferencePanel.cpp
         Source/Analysis/DisplaySpectrum.cpp
         Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp

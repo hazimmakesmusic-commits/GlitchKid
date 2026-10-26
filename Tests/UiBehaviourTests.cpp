@@ -196,7 +196,7 @@ struct UiBehaviourTests : public juce::UnitTest
             const int w0 = ed->getWidth(), h0 = ed->getHeight();
             struct View { int workspace, category; juce::String name; };
             std::vector<View> views = { { 0, 0, "HOME" }, { 1, 0, "CLEAN LAB" }, { 2, 0, "BEAT LOCK" }, { 3, 0, "BUILD" },
-                                        { 4, 0, "FINAL > PITCH" }, { 4, 1, "FINAL > TONE" }, { 4, 2, "FINAL > DYNAMICS" }, { 4, 3, "FINAL > SPACE" } };
+                                        { 4, 0, "FINAL > PITCH" }, { 4, 1, "FINAL > TONE" }, { 4, 2, "FINAL > DYNAMICS" }, { 4, 3, "FINAL > SPACE" }, { 5, 0, "REFERENCE" } };
             std::vector<std::set<juce::Component*>> sets;
             for (int size : { 70, 100, 150 })
             {
@@ -238,6 +238,10 @@ struct UiBehaviourTests : public juce::UnitTest
                 for (auto* c : sets[i])
                     if (sets[(size_t) final0].count (c) && ! everywhere.count (c))
                         expect (false, "a control from " + views[i].name + " is still shown in FINAL TOUCH");
+            for (size_t i = 0; i < 8; ++i) // REFERENCE (the last view) shares nothing with the others except the persistent bar
+                for (auto* c : sets[i])
+                    if (sets.back().count (c) && ! everywhere.count (c))
+                        expect (false, "a control from " + views[i].name + " is still shown on REFERENCE");
             expect (ed->getWidth() >= 0);
         }
 
@@ -249,7 +253,7 @@ struct UiBehaviourTests : public juce::UnitTest
             auto* ed = dynamic_cast<GlitchKidEditor*> (base.get());
             const int w0 = ed->getWidth(), h0 = ed->getHeight();
             for (int size : { 70, 100, 150 })
-                for (int ws = 0; ws < 5; ++ws)
+                for (int ws = 0; ws < 6; ++ws)
                 {
                     ed->setSize (w0 * size / 100, h0 * size / 100);
                     ed->uiShowWorkspaceForTest (ws);

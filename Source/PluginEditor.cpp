@@ -128,7 +128,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     using namespace glitchkid;
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
-    page = (Page) juce::jlimit (0, 4, p.getUiInt ("uiLevel", 0)); // first launch: HOME
+    {
+        const int saved = p.getUiInt ("uiLevel", 0); // first launch: HOME. 0-4 keep their old meaning, 5 is REFERENCE, anything else behaves as before (clamped to FINAL TOUCH)
+        page = (Page) (saved >= 0 && saved <= 5 ? saved : juce::jlimit (0, 4, saved));
+    }
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
     if (browsedProfile < 0 || browsedProfile >= FactoryPresets::count)
@@ -163,11 +166,12 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     };
 
     // ---- the persistent bar: back to the levels, the stage (drawn in paint), the real vocal / output levels, dry / processed, undo, motion ----
-    static const char* navText[5] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH" };
-    static const char* navTip[5] = { "The session: the real-time signal and shortcuts.", "Corrective EQ, resonance suppression and de-essing for the vocal itself.",
+    static const char* navText[6] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH", "REFERENCE" };
+    static const char* navTip[6] = { "The session: the real-time signal and shortcuts.", "Corrective EQ, resonance suppression and de-essing for the vocal itself.",
                                      "How the vocal sits against your beat (needs the beat on the Instrumental input).", "Pick a starting profile and build a starting mix from your vocal.",
-                                     "Pitch, tone, dynamics and space." };
-    for (int i = 0; i < 5; ++i)
+                                     "Pitch, tone, dynamics and space.",
+                                     "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." };
+    for (int i = 0; i < 6; ++i)
     {
         navButtons[i].setButtonText (navText[i]);
         style (navButtons[i], juce::String (navTip[i]) + " Any workspace can be opened at any time; switching never changes your sound.");
@@ -650,6 +654,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     visualTimer.onTick = [this] { visualTick(); };
     relicLoader.start ([this] (const juce::Image& image) { homeView.setEmblem (image); }); // the idle emblem (decoration)
 
+    {
+        ui::ReferencePanel::Hooks hooks;
+        hooks.beforeApply = [this] (const glitchkid::SoundState& before) { undo = { before, glitchProcessor.getPresetName(), true }; beatApplied = false; undoButton.setEnabled (true); };
+        hooks.requestUndo = [this] { backToMine(); };
+        hooks.status = [this] (const juce::String& t) { showStatus (t); };
+        referencePanel = std::make_unique<ui::ReferencePanel> (p, std::move (hooks)); // it is a child of `content` only while its tab is open
+    }
+
     refreshProfiles();
     setSize (designW, designH);
     showPage (page, false);
@@ -659,6 +671,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
 GlitchKidEditor::~GlitchKidEditor()
 {
+    if (referencePanel != nullptr)
+        referencePanel->cancelEverything(); // a running analysis must never outlive the editor
     relicLoader.stop();
     stopTimer();
     visualTimer.stopTimer();
@@ -674,7 +688,7 @@ void GlitchKidEditor::startTransition()
 
 bool GlitchKidEditor::needsDisplays() const
 {
-    return page == Page::home || page == Page::clean || page == Page::beat || (page == Page::finalTouch && category == 1);
+    return page == Page::home || page == Page::clean || page == Page::beat || page == Page::reference || (page == Page::finalTouch && category == 1);
 }
 
 void GlitchKidEditor::updateVisualTimer()
@@ -749,7 +763,7 @@ void GlitchKidEditor::showPage (Page p, bool remember)
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 6; ++i)
         navButtons[i].setToggleState (i == (int) page, juce::dontSendNotification);
     layoutContent();
     repaint();
@@ -1326,6 +1340,8 @@ void GlitchKidEditor::refreshDisplays (float dt)
 {
     using SS = GlitchKidProcessor::SourceStatus;
     const bool onHome = page == Page::home, onBeat = page == Page::beat, onClean = page == Page::clean, onTone = page == Page::finalTouch && category == 1;
+    if (page == Page::reference)
+        referencePanel->tick (dt);
     if (! (onHome || onBeat || onClean || onTone))
         return;
     const double sr = glitchProcessor.getSampleRate() > 8000.0 ? glitchProcessor.getSampleRate() : 48000.0;
@@ -1758,28 +1774,30 @@ void GlitchKidEditor::layoutContent()
     auto showK = [] (ParamKnob& k, Rect r) { k.setBounds (r); k.setVisible (true); };
 
     // Hide every control that is not part of the always-visible bar, chain and preset bar; the current page then shows what it needs.
-    const std::vector<juce::Component*> persistent = { &navButtons[0], &navButtons[1], &navButtons[2], &navButtons[3], &navButtons[4], &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &chain,
+    const std::vector<juce::Component*> persistent = { &navButtons[0], &navButtons[1], &navButtons[2], &navButtons[3], &navButtons[4], &navButtons[5], &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &chain,
                                                        &presetPrevButton, &presetMenuButton, &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB,
                                                        &abRecallA, &abRecallB, &abLabel, &presetStatus };
     for (auto* child : content.getChildren())
         if (std::find (persistent.begin(), persistent.end(), child) == persistent.end())
             child->setVisible (false);
+    if (referencePanel != nullptr && page != Page::reference && referencePanel->getParentComponent() == &content)
+        content.removeChildComponent (referencePanel.get());
     panelRects.clear();
 
     // ---- the persistent bar, the chain ----
     {
-        static const int navW[5] = { 62, 92, 90, 118, 100 };
-        int x = 168;
-        for (int i = 0; i < 5; ++i)
+        static const int navW[6] = { 54, 80, 76, 100, 86, 80 };
+        int x = 132;
+        for (int i = 0; i < 6; ++i)
         {
             show (navButtons[i], { x, 8, navW[i], 28 });
-            x += navW[i] + 4;
+            x += navW[i] + 3;
         }
     }
-    show (dryButton, { 658, 8, 46, 28 });
-    show (processedButton, { 708, 8, 86, 28 });
-    show (undoButton, { 800, 8, 46, 28 });
-    show (motionButton, { 852, 8, 92, 28 });
+    show (dryButton, { 646, 8, 46, 28 });
+    show (processedButton, { 696, 8, 86, 28 });
+    show (undoButton, { 786, 8, 46, 28 });
+    show (motionButton, { 838, 8, 106, 28 });
     show (chain, { 16, 50, 770, 48 });
     show (ioLabel, { 796, 50, 148, 48 });
 
@@ -1923,6 +1941,14 @@ void GlitchKidEditor::layoutContent()
         show (resultBody, { 600, 392, 336, 84 });
         show (autoApplyButton, { 600, 482, 160, 34 });
         show (finalButton, { 776, 504, 160, 44 });
+    }
+
+    // ---- REFERENCE (Reference Match) ----
+    else if (page == Page::reference)
+    {
+        if (referencePanel->getParentComponent() != &content)
+            content.addChildComponent (*referencePanel);
+        show (*referencePanel, { 0, 102, designW, 460 });
     }
 
     // ---- FINAL TOUCH (one category at a time) ----
