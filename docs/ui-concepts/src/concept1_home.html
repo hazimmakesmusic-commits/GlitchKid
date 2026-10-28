@@ -1,0 +1,51 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"><style>
+header{position:absolute;left:0;top:0;right:0;height:44px;display:flex;align-items:center;gap:6px;padding:0 16px;border-bottom:1px solid var(--border)}
+header .wordmark{margin-right:18px}
+.chain{position:absolute;left:16px;right:16px;top:54px;height:34px;display:flex;gap:6px;align-items:center}
+.chip{flex:1;height:30px;border-radius:5px;background:var(--panel);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;gap:6px;font-weight:700;font-size:10px;color:var(--dim)}
+.chip i{width:6px;height:6px;border-radius:50%;background:var(--off)}.chip.act{color:var(--text)}.chip.act i{background:var(--pink)}
+.arrow{color:var(--border)}
+.display{position:absolute;left:16px;top:98px;width:700px;height:270px}
+.meters{position:absolute;left:726px;top:98px;width:218px;height:270px;padding:12px}
+.cards{position:absolute;left:16px;top:378px;right:16px;height:150px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.card{padding:12px;position:relative}.card h3{font-size:13px;margin-bottom:4px}.card p{color:var(--dim);font-size:11px;line-height:1.4}
+.card .st{position:absolute;left:12px;bottom:12px;font-size:10px;font-weight:700}
+.rail{position:absolute;left:16px;right:16px;bottom:12px;height:50px;display:flex;align-items:center;gap:8px;padding:0 12px}
+.bar{width:22px;background:var(--well);border:1px solid var(--border);border-radius:3px;position:relative;height:200px}
+.bar b{position:absolute;left:2px;right:2px;bottom:2px;border-radius:2px;background:linear-gradient(var(--pink),var(--violet))}
+</style></head><body>
+<div class="tag" style="left:auto;right:10px;top:6px">CONCEPT 1 · REFINED HOME</div>
+<header><span class="wordmark">GLITCHKID</span>
+<span class="btn on">Home</span><span class="btn">Clean Lab</span><span class="btn">Beat Lock</span><span class="btn">Build My Mix</span><span class="btn">Final Touch</span><span class="btn">Reference</span></header>
+<div class="chain">
+ <div class="chip act"><i></i>Clean</div><span class="arrow">›</span><div class="chip act"><i></i>Tune</div><span class="arrow">›</span><div class="chip act"><i></i>EQ</div><span class="arrow">›</span><div class="chip act"><i></i>Comp</div><span class="arrow">›</span><div class="chip"><i></i>Warmth</div><span class="arrow">›</span><div class="chip act"><i></i>Stutter</div><span class="arrow">›</span><div class="chip"><i></i>Mutation</div><span class="arrow">›</span><div class="chip act"><i></i>Echo</div><span class="arrow">›</span><div class="chip act"><i></i>Limiter</div>
+</div>
+<div class="display well">
+<svg width="700" height="270" viewBox="0 0 700 270">
+ <g stroke="#25222D">
+  <line x1="40" y1="40" x2="690" y2="40"/><line x1="40" y1="100" x2="690" y2="100"/><line x1="40" y1="160" x2="690" y2="160"/><line x1="40" y1="220" x2="690" y2="220"/>
+  <line x1="130" y1="20" x2="130" y2="240"/><line x1="290" y1="20" x2="290" y2="240"/><line x1="450" y1="20" x2="450" y2="240"/><line x1="610" y1="20" x2="610" y2="240"/>
+ </g>
+ <g fill="#A7A0B2" font-size="9" font-family="Inter"><text x="122" y="256">100</text><text x="280" y="256">500</text><text x="440" y="256">2k</text><text x="600" y="256">10k</text><text x="10" y="44">+12</text><text x="18" y="104">0</text><text x="12" y="164">-12</text></g>
+ <path d="M40 210 C90 150 120 120 180 118 S300 110 360 128 S470 100 520 110 S620 150 690 200 L690 240 L40 240Z" fill="#A83BEE" opacity=".18"/>
+ <path d="M40 210 C90 150 120 120 180 118 S300 110 360 128 S470 100 520 110 S620 150 690 200" fill="none" stroke="#A83BEE" stroke-width="1.5"/>
+ <path d="M40 100 C150 100 160 112 210 112 S330 90 400 88 S560 82 690 70" fill="none" stroke="#E14CBB" stroke-width="2"/>
+ <g fill="#F0ECF5" stroke="#A83BEE" stroke-width="2"><circle cx="110" cy="105" r="6"/><circle cx="330" cy="92" r="6"/><circle cx="520" cy="84" r="6"/><circle cx="640" cy="74" r="6"/></g>
+ <g font-size="10" font-family="Inter" font-weight="700"><rect x="560" y="14" width="10" height="3" fill="#A83BEE"/><text x="574" y="19" fill="#A7A0B2">Input</text><rect x="616" y="14" width="10" height="3" fill="#E14CBB"/><text x="630" y="19" fill="#A7A0B2">Your EQ</text></g>
+</svg></div>
+<div class="meters panel"><div class="lbl" style="margin-bottom:8px">Levels</div>
+ <div style="display:flex;gap:10px;align-items:flex-end">
+  <div><div class="bar"><b style="height:62%"></b></div><div class="lbl" style="text-align:center;margin-top:4px">In</div></div>
+  <div><div class="bar"><b style="height:30%;background:#E14CBB"></b></div><div class="lbl" style="text-align:center;margin-top:4px">GR</div></div>
+  <div><div class="bar"><b style="height:74%"></b></div><div class="lbl" style="text-align:center;margin-top:4px">Out</div></div>
+  <div style="flex:1;font-size:11px;line-height:1.7;color:var(--dim)">Peak<br><b style="color:var(--text);font-size:16px">-3.2 dB</b><br>Latency<br><b style="color:var(--text)">6 smp</b><br>Tempo<br><b style="color:var(--text)">128.0</b></div>
+ </div></div>
+<div class="cards">
+ <div class="card panel"><h3>Clean Lab</h3><p>Removes rumble, harsh resonances and sibilance.</p><div class="st" style="color:var(--pink)">● Active · 3 fixes</div></div>
+ <div class="card panel"><h3>Beat Lock</h3><p>Listens to the beat and suggests where the vocal should sit.</p><div class="st" style="color:var(--dim)">○ No beat connected</div></div>
+ <div class="card panel" style="border-color:var(--violet)"><h3>Build My Mix</h3><p>One click builds a starting vocal mix from a profile.</p><div class="st" style="color:var(--neon)">◆ Ready to build</div></div>
+ <div class="card panel"><h3>Final Touch</h3><p>Air, width and a safe output ceiling.</p><div class="st" style="color:var(--pink)">● Ceiling -1.0 dB</div></div>
+</div>
+<div class="rail panel"><span class="lbl">Preset</span><span class="btn" style="width:220px;justify-content:space-between">Celestial Lead <span style="color:var(--dim)">▾</span></span><span class="btn">Save</span>
+ <span style="flex:1"></span><span class="lbl">A/B</span><span class="btn on">A</span><span class="btn">B</span><span class="btn">A›B</span><span class="btn">Undo</span><span class="btn pink">Bypass</span></div>
+</body></html>

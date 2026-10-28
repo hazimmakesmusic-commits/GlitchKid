@@ -1,0 +1,57 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"><style>
+header{position:absolute;left:16px;right:16px;top:12px;display:flex;align-items:center;gap:8px}
+.rack{position:absolute;left:16px;right:16px;top:56px;height:268px;display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.mod{padding:12px;position:relative;display:flex;flex-direction:column}
+.mod h3{font-size:12px;letter-spacing:.06em;display:flex;justify-content:space-between;align-items:center}
+.led{width:9px;height:9px;border-radius:50%;background:var(--off)}.on .led{background:var(--pink)}
+.mod.on{border-color:var(--violet)}
+.knobs{display:grid;grid-template-columns:1fr 1fr;gap:12px 6px;margin-top:16px}
+.foot{margin-top:auto;height:30px;border-radius:5px;background:var(--well);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:10px;color:var(--dim)}
+.on .foot{background:var(--violet);border-color:var(--violet);color:#fff}
+.pads{position:absolute;left:16px;top:334px;width:600px;height:254px;padding:14px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px}
+.pad{height:80px;border-radius:6px;background:var(--surf);border:1px solid var(--border);display:flex;flex-direction:column;justify-content:flex-end;padding:8px;font-weight:700}
+.pad small{color:var(--dim);font-size:10px;font-weight:400}
+.pad.hit{background:linear-gradient(160deg,var(--pink),var(--violet));border-color:var(--pink)}.pad.hit small{color:#fff}
+.scope{position:absolute;left:626px;top:334px;width:318px;height:254px;padding:14px}
+</style></head><body>
+<div class="tag">CONCEPT 3 · FX RACK + STUTTER PADS</div>
+<header><span class="wordmark">GLITCHKID</span><span style="flex:1"></span><span class="lbl">Host tempo 128.0 BPM</span><span class="btn">Preset ▾</span><span class="btn pink">Bypass</span></header>
+<div class="rack">
+ <div class="mod panel on"><h3>PITCH TUNE<span class="led"></span></h3><div class="knobs">
+  <div class="k"><div class="knob" style="--r:60deg"></div><div class="v">85 %</div><div class="lbl">Strength</div></div>
+  <div class="k"><div class="knob" style="--r:-90deg"></div><div class="v">12 ms</div><div class="lbl">Speed</div></div>
+  <div class="k"><div class="knob" style="--r:0deg"></div><div class="v">A min</div><div class="lbl">Key</div></div>
+  <div class="k"><div class="knob" style="--r:-30deg"></div><div class="v">−2</div><div class="lbl">Formant</div></div></div><div class="foot">ON</div></div>
+ <div class="mod panel"><h3>MUTATION<span class="led"></span></h3><div class="knobs">
+  <div class="k"><div class="knob" style="--r:-60deg"></div><div class="v">30 Hz</div><div class="lbl">Amount</div></div>
+  <div class="k"><div class="knob" style="--r:0deg"></div><div class="v">Robot</div><div class="lbl">Character</div></div>
+  <div class="k"><div class="knob" style="--r:40deg"></div><div class="v">60 %</div><div class="lbl">Blend</div></div></div><div class="foot">OFF</div></div>
+ <div class="mod panel on"><h3>DOUBLER<span class="led"></span></h3><div class="knobs">
+  <div class="k"><div class="knob" style="--r:20deg"></div><div class="v">55 %</div><div class="lbl">Double</div></div>
+  <div class="k"><div class="knob" style="--r:120deg"></div><div class="v">100 %</div><div class="lbl">Width</div></div>
+  <div class="k"><div class="knob" style="--r:-40deg"></div><div class="v">8 ct</div><div class="lbl">Detune</div></div>
+  <div class="k"><div class="knob" style="--r:-10deg"></div><div class="v">5th ↑</div><div class="lbl">Harmony</div></div></div><div class="foot">ON</div></div>
+ <div class="mod panel on"><h3>LIQUID ECHO<span class="led"></span></h3><div class="knobs">
+  <div class="k"><div class="knob" style="--r:0deg"></div><div class="v">1/8 D</div><div class="lbl">Time</div></div>
+  <div class="k"><div class="knob" style="--r:-20deg"></div><div class="v">42 %</div><div class="lbl">Feedback</div></div>
+  <div class="k"><div class="knob" style="--r:-70deg"></div><div class="v">3.2k</div><div class="lbl">Tone</div></div>
+  <div class="k"><div class="knob" style="--r:-50deg"></div><div class="v">25 %</div><div class="lbl">Mix</div></div></div><div class="foot">ON</div></div>
+ <div class="mod panel"><h3>WARMTH<span class="led"></span></h3><div class="knobs">
+  <div class="k"><div class="knob" style="--r:-135deg"></div><div class="v">0 dB</div><div class="lbl">Drive</div></div>
+  <div class="k"><div class="knob" style="--r:135deg"></div><div class="v">100 %</div><div class="lbl">Mix</div></div></div><div class="foot">OFF</div></div>
+</div>
+<div class="pads panel"><div style="display:flex;justify-content:space-between"><span class="lbl">Glitch Stutter · hold a pad to repeat</span><span class="lbl" style="color:var(--pink)">● Repeating 1/16</span></div>
+ <div class="grid">
+  <div class="pad">1/4<small>Slow repeat</small></div><div class="pad">1/8<small>Classic</small></div><div class="pad hit">1/16<small>Held</small></div><div class="pad">1/32<small>Buzz</small></div>
+  <div class="pad">Tape stop<small>Idea</small></div><div class="pad">Reverse<small>Idea</small></div><div class="pad">Gate<small>Idea</small></div><div class="pad">Scatter<small>Idea</small></div>
+ </div></div>
+<div class="scope panel"><span class="lbl">Captured slice</span>
+<svg width="290" height="170" viewBox="0 15 290 170" style="margin-top:10px">
+ <rect x="0" y="0" width="290" height="200" rx="5" fill="#0d0d11" stroke="#3A3644"/>
+ <rect x="80" y="10" width="72" height="180" fill="#E14CBB" opacity=".15"/>
+ <path d="M8 100 L14 80 L20 120 L26 60 L32 140 L38 70 L44 128 L50 90 L56 112 L62 76 L68 124 L74 96 L80 100 L86 46 L92 154 L98 38 L104 162 L110 52 L116 148 L122 64 L128 136 L134 72 L140 128 L146 86 L152 100 L158 84 L164 116 L170 74 L176 126 L182 90 L188 110 L194 82 L200 118 L206 94 L212 104 L218 88 L224 112 L230 96 L236 104 L242 92 L248 108 L254 98 L260 102 L266 96 L272 104 L282 100" fill="none" stroke="#A83BEE" stroke-width="1.5"/>
+ <text x="84" y="176" fill="#E14CBB" font-size="10" font-family="Inter" font-weight="700">LOOP · 117 ms</text>
+</svg>
+<div style="display:flex;gap:6px;margin-top:8px"><span class="btn">Stutter Mix 100 %</span><span class="btn on">Sync</span></div></div>
+</body></html>

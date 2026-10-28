@@ -1,0 +1,34 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="base.css"><style>
+header{position:absolute;left:16px;right:16px;top:12px;display:flex;align-items:center;gap:8px}
+.orb{position:absolute;left:330px;top:90px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle at 50% 40%,#f0e6ff 0%,#c026ff 18%,#7a1fd0 38%,#1a0838 70%,#050209 100%);border:1px solid var(--border)}
+.orb::before{content:"";position:absolute;left:0;right:0;top:49%;height:3px;background:#0b0712}
+.orb::after{content:"";position:absolute;left:-14px;right:-14px;top:-14px;bottom:-14px;border-radius:50%;border:3px solid transparent;border-top-color:var(--violet);border-right-color:var(--violet);transform:rotate(-30deg)}
+.center{position:absolute;left:330px;top:400px;width:300px;text-align:center}
+.center h2{font-size:24px;letter-spacing:.14em}
+.center p{color:var(--dim);font-size:12px;margin-top:4px}
+.ego{position:absolute;width:200px;padding:12px 14px}
+.ego h3{font-size:14px;letter-spacing:.08em;margin-bottom:4px}.ego p{color:var(--dim);font-size:11px;line-height:1.4}
+.ego.sel{background:var(--violet);border-color:var(--violet)}.ego.sel p{color:#f3e6ff}
+.ego .fx{margin-top:8px;display:flex;gap:4px;flex-wrap:wrap}.ego .fx span{font-size:9px;font-weight:700;padding:2px 6px;border-radius:3px;background:var(--well);color:var(--dim)}
+.ego.sel .fx span{background:#7a24b4;color:#fff}
+.macro{position:absolute;left:16px;right:16px;bottom:12px;height:74px;display:flex;align-items:center;gap:26px;padding:0 20px}
+.slider{flex:1}.slider .t{height:6px;border-radius:3px;background:var(--well);border:1px solid var(--border);position:relative;margin-top:8px}
+.slider .t b{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:var(--violet)}
+.slider .t i{position:absolute;top:-6px;width:16px;height:16px;border-radius:50%;background:var(--text)}
+</style></head><body>
+<div class="tag">CONCEPT 2 · ALTER EGO STAGE</div>
+<header><span class="wordmark">GLITCHKID</span><span style="flex:1"></span><span class="btn on">Alter Egos</span><span class="btn">Studio</span><span class="btn">Labs</span><span class="btn pink">Bypass</span></header>
+<div class="orb"></div>
+<div class="center"><h2>CELESTIAL</h2><p>Slow shimmer · airy double · long echo tail</p></div>
+<div class="ego panel sel" style="left:40px;top:80px"><h3>CELESTIAL</h3><p>Floating, angelic lead. Shimmer and width.</p><div class="fx"><span>DOUBLER</span><span>SHIMMER</span><span>ECHO</span></div></div>
+<div class="ego panel" style="left:40px;top:220px"><h3>VOIDWALKER</h3><p>Hollow undertone from the dark side.</p><div class="fx"><span>UNDERTONE</span><span>FORMANT −</span></div></div>
+<div class="ego panel" style="left:40px;top:360px"><h3>THE CLONE</h3><p>A tight, believable twin. No mutation.</p><div class="fx"><span>DOUBLER</span><span>CLEAN</span></div></div>
+<div class="ego panel" style="left:720px;top:130px"><h3>THE PARASITE</h3><p>Robotic ring-mod that eats the voice.</p><div class="fx"><span>RING MOD</span><span>STUTTER</span></div></div>
+<div class="ego panel" style="left:720px;top:290px"><h3>ALTERED STATE</h3><p>Alien pitch-shifted presence.</p><div class="fx"><span>SHIFT</span><span>DOUBLER</span><span>HARMONY</span></div></div>
+<div class="macro panel">
+ <div class="slider"><div class="lbl">Intensity</div><div class="t"><b style="width:68%"></b><i style="left:66%"></i></div></div>
+ <div class="slider"><div class="lbl">Human ⟷ Mutant</div><div class="t"><b style="width:40%"></b><i style="left:38%"></i></div></div>
+ <div class="slider"><div class="lbl">Mix</div><div class="t"><b style="width:85%"></b><i style="left:83%"></i></div></div>
+ <span class="btn">Randomise</span><span class="btn on">Save Ego</span>
+</div>
+</body></html>
