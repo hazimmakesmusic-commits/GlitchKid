@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GlitchKid Vocal Lab Prototype</title>
+<!--
+  GlitchKid Vocal Lab — redesign prototype v1. DESIGN ARTIFACT ONLY.
+  - Not connected to the JUCE plug-in. No audio is played, processed or analysed in this page.
+  - Parameter IDs, ranges, defaults and choice lists are copied from Source/PluginProcessor.cpp (createLayout) at base commit c3653aa.
+  - Profile values are copied from Source/Presets/Profiles.inc; macro mappings from Source/Macros/MacroEngine.cpp.
+  - Meters, spectrum, Build My Mix "fitted" measurements, Beat Lock and Reference Match results are SIMULATED example data.
+  - Self-contained: no network, no packages. Open the file in a desktop browser.
+  - Every string written with innerHTML comes from constants in this file or from numbers it formats; no user text is inserted.
+-->
+<style>
+:root{
+  --bg:#08070b; --bg2:#0e0c13; --panel:#14111a; --panel2:#1b1723; --raise:#241f2e; --well:#0b0a0f;
+  --line:#2a2533; --line2:#3b3447;
+  --text:#f1edf6; --dim:#b3abbf; --mute:#8a8297;
+  --uv:#a83bee; --uv2:#c47bf7; --uvd:#4b2373; --pink:#ee4fc1; --pinkd:#6d2a5e;
+  --chrome1:#ffffff; --chrome2:#bdb3cc; --chrome3:#5d5370;
+  --warn:#ffbe5c; --warnd:#5a4423; --ok:#7ee0a8;
+  --t-meta:12.5px; --t-label:13.5px; --t-body:14px; --t-head:16px; --t-title:22px;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --sans:Inter,ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:#040306;color:var(--text);font-family:var(--sans);font-size:var(--t-body)}
+button,select,input{font:inherit;color:inherit}
+/* ---------------- review toolbar (outside the plug-in) ---------------- */
+.review{position:sticky;top:0;z-index:100;display:flex;gap:14px;align-items:center;flex-wrap:wrap;padding:8px 16px;background:#120d19;border-bottom:1px solid #2b2238;font-size:13px;color:#e6d9f7}
+.review b{color:#fff;letter-spacing:.04em}
+.review .grp{display:flex;gap:4px;align-items:center}
+.review button{border:1px solid #3b3447;background:#1b1723;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:13px}
+.review button.on{background:var(--uv);border-color:var(--uv);color:#fff}
+.review .sp{flex:1}
+.review .warn{color:var(--warn)}
+.stage{padding:20px;display:flex;justify-content:center;overflow:auto}
+.scaler{flex:none;position:relative}
+/* ---------------- the plug-in frame (design space 1120 x 680) ---------------- */
+#plugin{position:absolute;left:0;top:0;width:1120px;height:680px;transform-origin:0 0;background:var(--bg);border:1px solid #2d2738;border-radius:12px;overflow:hidden;
+  display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:56px 66px minmax(0,1fr) 36px;box-shadow:0 30px 90px #000d}
+/* top bar */
+.top{display:flex;align-items:center;gap:8px;padding:0 12px;min-width:0;background:linear-gradient(180deg,#15111c,#0e0c13);border-bottom:1px solid var(--line)}
+.mark{display:flex;flex-direction:column;line-height:1;margin-right:2px;user-select:none}
+.mark .w{font-weight:900;font-size:20px;letter-spacing:.05em;background:linear-gradient(180deg,var(--chrome1) 10%,var(--chrome2) 48%,var(--chrome3) 52%,#d9cfe8 90%);-webkit-background-clip:text;background-clip:text;color:transparent;position:relative}
+.mark .w::after{content:"";position:absolute;left:0;right:0;top:55%;height:2px;background:var(--pink);opacity:.75;clip-path:inset(0 62% 0 18%)}
+.mark .s{font-size:var(--t-meta);color:var(--dim);letter-spacing:.18em;margin-top:4px;font-weight:600}
+.pbox{display:flex;align-items:stretch;height:38px;border:1px solid var(--line2);border-radius:9px;overflow:hidden;background:var(--well)}
+.pbox button{border:0;background:none;padding:0 10px;cursor:pointer;color:var(--dim);font-size:16px}
+.pbox button:hover{background:#ffffff0c;color:var(--text)}
+.pbox .pn{width:206px;text-align:left;border-left:1px solid var(--line);border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;padding:0 11px;gap:1px}
+.pbox .pn b{font-size:var(--t-label);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pbox .pn span{font-size:var(--t-meta);color:var(--mute);white-space:nowrap}
+.pbox .pn span.mod{color:var(--pink)}
+.btn{border:1px solid var(--line2);background:var(--panel2);border-radius:8px;height:36px;padding:0 12px;font-size:var(--t-label);font-weight:650;cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--uv2)}
+.btn.sm{height:30px;padding:0 10px;font-size:var(--t-meta)}
+.btn:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line)}
+.btn.pri{background:var(--uv);border-color:var(--uv);color:#fff}
+.btn.pri:hover{background:#b553f4}
+.btn.ctx{border-color:#4a3260;background:linear-gradient(180deg,#1e1529,#16111d)}
+.btn.ctx.on{border-color:var(--pink);box-shadow:inset 0 -2px 0 var(--pink)}
+.seg{display:flex;border:1px solid var(--line2);border-radius:9px;padding:2px;background:var(--well);height:38px}
+.seg button{border:0;background:none;border-radius:7px;padding:0 11px;font-size:var(--t-label);font-weight:650;color:var(--dim);cursor:pointer;white-space:nowrap;position:relative}
+.seg button:hover{color:var(--text)}
+.seg button.on{background:var(--uv);color:#fff}
+.seg button.dry.on{background:var(--pinkd);color:#fff}
+.seg button:disabled{opacity:.4;cursor:not-allowed}
+.seg button .m{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%;background:var(--pink)}
+.sp{flex:1}
+/* workspace navigation */
+.nav{display:flex;align-items:stretch;gap:5px;padding:8px 12px;background:var(--bg);border-bottom:1px solid var(--line);position:relative}
+.tab{flex:1;min-width:0;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:3px 9px 4px;overflow:hidden;cursor:pointer;display:flex;flex-direction:column;justify-content:center;gap:2px;text-align:left;position:relative}
+.tab:hover{border-color:var(--line2);background:var(--panel2)}
+.tab.on{border-color:var(--uv);background:linear-gradient(180deg,#26173a,#1a1424)}
+.tab.on::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;height:2px;background:var(--pink);border-radius:2px}
+.tab .r1{display:flex;align-items:center;gap:7px}
+.tab .n{font-weight:800;font-size:var(--t-head);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.tab .r1 .dot{flex:none}
+.tab .i{font-family:var(--mono);font-size:var(--t-meta);color:var(--mute)}
+.tab .st{font-size:13px;line-height:1.35;flex-shrink:0;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono)}
+.dot{width:9px;height:9px;border-radius:50%;border:1.5px solid var(--mute);flex:none;display:inline-block}
+.dot.on{background:var(--uv2);border-color:var(--uv2);box-shadow:0 0 0 3px #c47bf722}
+.orderbtn{flex:none;width:72px;border:1px dashed var(--line2);background:none;border-radius:10px;color:var(--dim);font-size:var(--t-meta);cursor:pointer;line-height:1.25}
+.orderbtn:hover{color:var(--text);border-color:var(--uv2)}
+.orderpop{position:absolute;right:14px;top:122px;z-index:60;width:560px;background:var(--panel2);border:1px solid var(--line2);border-radius:10px;padding:12px 14px;display:none;box-shadow:0 18px 50px #000c}
+.orderpop.show{display:block}
+.orderpop h4{margin:0 0 6px;font-size:var(--t-head)}
+.orderpop p{margin:0 0 8px;color:var(--dim);font-size:var(--t-meta);line-height:1.45}
+.olist{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.olist span{font-size:var(--t-meta);padding:3px 7px;border-radius:5px;background:var(--well);border:1px solid var(--line)}
+.olist i{font-style:normal;color:var(--mute);font-size:var(--t-meta)}
+/* body */
+.body{display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0;position:relative}
+.work{overflow:auto;padding:14px 16px 16px;min-height:0;background:radial-gradient(900px 260px at 30% -60px,#1f1430,transparent),var(--bg)}
+.whead{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+.whead h1{margin:0;font-size:var(--t-title);font-weight:850;letter-spacing:.01em}
+.whead p{margin:0;color:var(--dim);font-size:var(--t-body)}
+.drybanner{margin:-4px 0 10px;padding:7px 10px;border:1px solid var(--pinkd);border-radius:8px;background:#1d0f1a;color:#ffc8ec;font-size:var(--t-meta)}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+.card{grid-column:span 3;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:12px;padding:11px 13px 13px;min-width:0}
+.card.w6{grid-column:span 6}.card.w2{grid-column:span 2}.card.w4{grid-column:span 4}
+.card.off{background:repeating-linear-gradient(135deg,var(--panel) 0 7px,#110f16 7px 14px)}
+.card.off .ctl,.card.off .chips,.card.off .eqc{opacity:.5}
+.ch{display:flex;align-items:center;gap:9px;margin-bottom:9px;min-height:26px;flex-wrap:wrap}
+.ch b{font-size:var(--t-head);letter-spacing:.02em}
+.ch .pos{font-family:var(--mono);font-size:13px;color:var(--mute);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+.ch .state{font-size:var(--t-meta);color:var(--dim)}
+.ch .badge{font-size:var(--t-meta);font-family:var(--mono);color:var(--warn);border:1px solid var(--warnd);border-radius:999px;padding:1px 8px}
+.ch .lab{font-size:var(--t-meta);color:#ffb3e6;border:1px solid var(--pinkd);border-radius:999px;padding:1px 8px}
+.ch .more{margin-left:auto;border:0;background:none;color:var(--uv2);font-size:var(--t-meta);cursor:pointer;padding:2px 0}
+.sw{width:34px;height:20px;border-radius:10px;border:1px solid var(--line2);background:var(--well);position:relative;cursor:pointer;flex:none;padding:0}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:12px;height:12px;border-radius:50%;background:var(--mute);transition:left .1s}
+.sw.on{background:var(--uvd);border-color:var(--uv)}
+.sw.on::after{left:17px;background:#fff}
+.ctls{display:flex;flex-wrap:wrap;gap:8px 6px;align-items:flex-start}
+.ctl{width:88px;display:flex;flex-direction:column;align-items:center;gap:4px;user-select:none}
+.ctl .l{font-size:var(--t-label);color:var(--dim);font-weight:650;text-align:center;white-space:nowrap}
+.ctl svg{display:block;cursor:ns-resize}
+.ctl .v{font-family:var(--mono);font-size:13px;background:var(--well);border:1px solid var(--line);border-radius:5px;padding:2px 6px;min-width:76px;text-align:center}
+.ctl.dis{opacity:.32;pointer-events:none}
+.ctl.big{width:120px}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld .l{font-size:var(--t-label);color:var(--dim);font-weight:650}
+.fld.dis{opacity:.32;pointer-events:none}
+select{background:var(--well);border:1px solid var(--line2);border-radius:7px;padding:6px 8px;font-size:var(--t-label);color:var(--text)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chips button{border:1px solid var(--line2);background:var(--well);border-radius:7px;font-size:var(--t-label);padding:5px 9px;cursor:pointer;color:var(--dim);min-width:38px}
+.chips button:hover{color:var(--text);border-color:var(--uv2)}
+.chips button.on{background:var(--uv);border-color:var(--uv);color:#fff}
+.readout{margin-top:9px;font-family:var(--mono);font-size:var(--t-meta);color:#ffc2ec;background:var(--well);border:1px dashed var(--pinkd);border-radius:7px;padding:7px 9px;line-height:1.5}
+.readout em{font-style:normal;color:var(--warn)}
+.note{font-size:var(--t-meta);color:var(--mute);line-height:1.45;margin-top:8px}
+.row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}
+.eqc{width:100%;height:120px;display:block;border:1px solid var(--line);border-radius:8px;background:var(--well);margin-bottom:10px}
+.vbar{width:16px;height:96px;border:1px solid var(--line);border-radius:4px;background:var(--well);position:relative;overflow:hidden}
+.vbar i{position:absolute;left:0;right:0;top:0;background:var(--pink)}
+.mlbl{font-size:var(--t-meta);color:var(--dim);text-align:center;font-family:var(--mono)}
+/* studio column */
+.studio{border-left:1px solid var(--line);background:var(--bg2);display:flex;flex-direction:column;min-height:0;overflow:auto}
+.sec{padding:11px 14px;border-bottom:1px solid var(--line)}
+.sec h3{margin:0 0 8px;font-size:var(--t-meta);letter-spacing:.16em;color:var(--dim);font-weight:700;display:flex;align-items:center;gap:8px}
+.sec h3 .sim{margin-left:auto;letter-spacing:.04em;color:var(--warn);font-weight:600;font-family:var(--mono)}
+.spec{position:relative;height:92px;border:1px solid var(--line);border-radius:9px;background:var(--well);overflow:hidden}
+.spec canvas{position:absolute;inset:0;width:100%;height:100%}
+.spec .idle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--dim);font-size:var(--t-meta);gap:3px}
+.spec .idle b{color:var(--text);font-size:var(--t-label)}
+.spec .idle[hidden]{display:none}
+.lg{display:flex;gap:12px;font-size:var(--t-meta);color:var(--dim);margin-top:6px}
+.lg i{display:inline-block;width:12px;height:3px;border-radius:2px;margin-right:5px;vertical-align:middle}
+.meters{display:grid;grid-template-columns:1fr 1fr;gap:7px 12px;margin-top:9px}
+.mt .ml{display:flex;justify-content:space-between;font-size:var(--t-meta);color:var(--dim);font-family:var(--mono);margin-bottom:3px}
+.mt .bar{height:8px;border:1px solid var(--line);border-radius:4px;background:var(--well);position:relative;overflow:hidden}
+.mt .bar i{position:absolute;top:0;bottom:0;left:0;background:linear-gradient(90deg,var(--uv),var(--uv2))}
+.mt .bar.gr i{left:auto;right:0;background:var(--pink)}
+.mac{display:grid;grid-template-columns:54px 52px minmax(0,1fr) 64px;align-items:center;gap:6px;margin:6px 0}
+.mac b{font-size:var(--t-label)}
+.mac span{font-size:var(--t-meta);color:var(--mute)}
+.mac span.hi{text-align:right}
+input[type=range]{-webkit-appearance:none;appearance:none;height:5px;border-radius:3px;background:var(--line2);width:100%}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:20px;border-radius:5px;background:var(--text);border:2px solid var(--uv);cursor:pointer}
+input[type=range]::-moz-range-thumb{width:14px;height:20px;border-radius:5px;background:var(--text);border:2px solid var(--uv);cursor:pointer}
+.bmmcard{border:1px solid #4a3260;border-radius:11px;padding:11px 12px;background:linear-gradient(135deg,#21162e,#15111b)}
+.bmmcard b{font-size:var(--t-head)}
+.bmmcard p{margin:4px 0 8px;font-size:var(--t-meta);color:var(--dim);line-height:1.45}
+.ctxline{display:flex;justify-content:space-between;font-size:var(--t-meta);color:var(--dim);margin:3px 0}
+.ctxline b{color:var(--text);font-weight:600}
+/* status bar */
+.status{display:flex;align-items:center;gap:14px;padding:0 14px;border-top:1px solid var(--line);background:var(--bg2);font-size:var(--t-meta);color:var(--dim);min-width:0}
+.status .help{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status .help.hot{color:var(--text)}
+.status .msg{color:var(--ok);white-space:nowrap;max-width:420px;overflow:hidden;text-overflow:ellipsis}
+.status .lat{font-family:var(--mono);white-space:nowrap}
+.status .lat.hi{color:var(--warn)}
+/* overlays */
+.ovl{position:absolute;z-index:50;display:none}
+.ovl.show{display:flex}
+#ctxView{left:0;top:0;bottom:0;right:340px;background:var(--bg);flex-direction:column;padding:14px 16px;overflow:auto}
+#ctxView>*{flex:none}
+.ctxhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.ctxhead h1{margin:0;font-size:var(--t-title)}
+.simbanner{font-size:var(--t-meta);color:var(--warn);border:1px solid var(--warnd);border-radius:8px;padding:7px 10px;margin-bottom:10px;line-height:1.45;background:#17120a}
+.sugg{display:grid;grid-template-columns:28px 1fr auto;gap:2px 10px;align-items:start;padding:9px 10px;border:1px solid var(--line);border-radius:9px;background:var(--panel);margin-bottom:6px}
+.sugg input{margin-top:3px;width:16px;height:16px;accent-color:var(--uv)}
+.sugg b{font-size:var(--t-label)}
+.sugg .vals{font-family:var(--mono);font-size:var(--t-meta);color:var(--text);white-space:nowrap}
+.sugg .why{grid-column:2/4;font-size:var(--t-meta);color:var(--dim);line-height:1.4}
+.bands{display:flex;gap:10px;align-items:flex-end;height:110px;margin:8px 0 4px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--well)}
+.bands div{flex:1;display:flex;gap:3px;align-items:flex-end;height:100%;position:relative}
+.bands i{flex:1;display:block;border-radius:3px 3px 0 0}
+.bands span{position:absolute;bottom:-22px;left:0;right:0;text-align:center;font-size:var(--t-meta);color:var(--dim)}
+#browser{left:0;top:0;bottom:0;right:0;background:#050407ee}
+.br{width:780px;height:100%;background:var(--panel);border-right:1px solid var(--line2);display:grid;grid-template-columns:250px 1fr;min-height:0}
+.brl{border-right:1px solid var(--line);overflow:auto;padding:10px 8px}
+.brl h4{margin:12px 8px 5px;font-size:var(--t-meta);letter-spacing:.14em;color:var(--mute)}
+.brl h4 em{font-style:normal;color:var(--warn);letter-spacing:0}
+.bi{display:block;width:100%;text-align:left;border:0;background:none;border-radius:7px;padding:7px 9px;cursor:pointer;font-size:var(--t-label);color:var(--dim)}
+.bi:hover{background:#ffffff09;color:var(--text)}
+.bi.sel{background:var(--raise);color:var(--text);box-shadow:inset 3px 0 0 var(--uv)}
+.bi small{display:block;font-size:var(--t-meta);color:var(--mute)}
+.brd{padding:16px 18px;overflow:auto}
+.brd h2{margin:0;font-size:var(--t-title)}
+.brd .tag{color:var(--uv2);font-size:var(--t-body);margin:3px 0 10px}
+.brd p{font-size:var(--t-body);color:var(--dim);line-height:1.5;margin:0 0 8px}
+.brd .chipsro{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 12px}
+.brd .chipsro span{font-family:var(--mono);font-size:var(--t-meta);border:1px solid var(--line2);border-radius:5px;padding:2px 7px;color:var(--dim)}
+.brclose{flex:1}
+#bmm{right:0;top:0;bottom:0;width:600px;background:var(--panel);border-left:1px solid #4a3260;box-shadow:-24px 0 60px #000b;flex-direction:column;min-height:0}
+.bh{padding:12px 16px 8px;border-bottom:1px solid var(--line)}
+.bh h2{margin:0;font-size:var(--t-title)}
+.steps{display:flex;gap:5px;margin-top:8px}
+.steps span{flex:1;font-size:var(--t-meta);padding:5px 7px;border-radius:6px;border:1px solid var(--line);color:var(--mute);background:var(--well);white-space:nowrap}
+.steps span.on{border-color:var(--uv);color:var(--text)}
+.steps span.done{color:var(--dim)}
+.bb{flex:1;overflow:auto;padding:10px 16px;min-height:0}
+.bf{padding:10px 16px;border-top:1px solid var(--line);display:flex;gap:8px;align-items:center}
+.cat{margin:10px 0 6px;font-size:var(--t-meta);letter-spacing:.14em;color:var(--dim);font-weight:700;display:flex;align-items:center;gap:8px}
+.cat small{letter-spacing:0;font-weight:500;color:var(--mute);font-size:var(--t-meta)}
+.grow{border:1px solid var(--line);border-radius:9px;background:var(--bg2);margin-bottom:6px}
+.grow.stale{border-color:var(--warnd);background:#17120a}
+.grow .gt{display:grid;grid-template-columns:24px 1fr auto;gap:8px;align-items:center;padding:8px 10px;cursor:pointer}
+.grow .gt input{width:16px;height:16px;accent-color:var(--uv)}
+.grow .gt b{font-size:var(--t-label)}
+.grow .gt .sum{font-size:var(--t-meta);color:var(--dim);font-family:var(--mono);white-space:nowrap}
+.grow .gt .stl{grid-column:2/4;font-size:var(--t-meta);color:var(--warn)}
+.grow table{width:100%;border-collapse:collapse;margin:0 0 6px}
+.grow td{font-size:var(--t-meta);padding:4px 10px;border-top:1px solid var(--line);vertical-align:top}
+.grow td.id{font-family:var(--mono);color:var(--dim);white-space:nowrap;width:1%}
+.grow td.vv{font-family:var(--mono);white-space:nowrap;width:1%}
+.grow td.vv .chg{color:var(--warn)}
+.grow td.r{color:var(--dim);line-height:1.4}
+.dirs{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.dirs button{text-align:left;border:1px solid var(--line);background:var(--bg2);border-radius:9px;padding:8px 10px;cursor:pointer}
+.dirs button b{display:block;font-size:var(--t-label)}
+.dirs button span{font-size:var(--t-meta);color:var(--dim)}
+.dirs button.on{border-color:var(--uv);background:#22163a}
+.stalebar{padding:8px 10px;border:1px solid var(--warnd);border-radius:8px;background:#17120a;color:var(--warn);font-size:var(--t-meta);display:flex;align-items:center;gap:10px;margin-bottom:8px}
+:focus-visible{outline:2px solid var(--pink);outline-offset:2px}
+/* revision 2: Experimental Lab tab, chain strip, A/B status, confirm dialog, review table */
+.navsep{flex:none;width:1px;background:var(--line2);margin:4px 2px}
+.tab.labtab{flex:none;width:116px;border-style:dashed;border-color:#5b3157;background:repeating-linear-gradient(115deg,#160f19 0 9px,#1a111d 9px 18px)}
+.tab.labtab .n{background:linear-gradient(90deg,var(--uv2),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tab.labtab.on{border-style:solid;border-color:var(--pink)}
+.dot.pinkdot{background:var(--pink);border-color:var(--pink);box-shadow:0 0 0 3px #ee4fc122}
+.olist span.olab{border-color:var(--pinkd);color:#ffc2ec}
+.labintro{grid-column:1/-1;margin-bottom:0;padding:10px 12px;border:1px dashed #5b3157;border-radius:12px;background:#120d15}
+.chainhead{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:var(--t-meta);color:var(--dim)}
+.chainhead b{color:var(--text);font-size:var(--t-label)}
+.lg2{display:flex;align-items:center;gap:5px}
+.lg2 .k{width:12px;height:12px;border-radius:3px;border:1px solid var(--line2);background:var(--well);display:inline-block}
+.lg2 .k.lab{border-color:var(--pink);background:#3a1534}
+.chainstrip{position:relative;display:grid;grid-template-columns:repeat(17,1fr);gap:4px;align-items:center;padding-right:10px}
+.chainstrip::before{content:"";position:absolute;left:10px;right:10px;top:50%;height:2px;background:var(--line2);z-index:0}
+.chainstrip .cs{position:relative;z-index:1;height:30px;display:flex;align-items:center;justify-content:center;border-radius:7px;border:1px solid var(--line2);background:var(--panel2);font-family:var(--mono);font-size:13px;color:var(--dim)}
+.chainstrip .cs.lab{border:2px solid var(--pink);background:#2a1027;color:#ffd6f2}
+.chainstrip .cs.act{background:var(--pink);color:#fff}
+.chainstrip .cs:last-child::after{content:"";position:absolute;right:-12px;top:50%;margin-top:-5px;border:5px solid transparent;border-left:6px solid var(--line2)}
+.chainlabels{display:grid;grid-template-columns:repeat(17,1fr);gap:4px;margin-top:6px;min-height:20px;padding-right:10px}
+.chainlabels .csl{font-size:var(--t-meta);color:#ffc2ec;white-space:nowrap;position:relative}
+.chainlabels .csl b{font-family:var(--mono)}
+.chainlabels .csl.act{color:#fff}
+.abwrap{display:flex;align-items:center;gap:6px}
+.abseg{display:flex;border:1px solid var(--line2);border-radius:9px;padding:2px;background:var(--well);height:42px}
+.abseg button{border:0;background:none;border-radius:7px;width:66px;cursor:pointer;color:var(--dim);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.1}
+.abseg button b{font-size:var(--t-head)}
+.abseg button span{font-size:13px;font-weight:650}
+.abseg button.on{background:var(--uv);color:#fff}
+.abseg button.on span.ed{color:#ffd6f2}
+.abseg button span.ed{color:var(--pink)}
+.abseg button span.em{color:var(--mute)}
+.abseg button:hover{color:var(--text)}
+#confirm{left:0;top:0;right:0;bottom:0;background:#050407cc;align-items:center;justify-content:center;z-index:80}
+.dlg{width:470px;background:var(--panel2);border:1px solid var(--line2);border-radius:12px;padding:16px 18px;box-shadow:0 20px 60px #000c}
+.dlg h2{margin:0 0 6px;font-size:var(--t-head)}
+.dlg p{margin:0 0 14px;color:var(--dim);font-size:var(--t-body);line-height:1.45}
+.dlg .row{justify-content:flex-end;gap:8px}
+.chgs{border-top:1px solid var(--line)}
+.chg{display:grid;grid-template-columns:26px minmax(0,1fr) 92px 18px 96px;column-gap:8px;row-gap:3px;align-items:baseline;padding:8px 10px;border-bottom:1px solid var(--line)}
+.chg:last-child{border-bottom:0}
+.chg input{width:16px;height:16px;accent-color:var(--uv);margin:0;align-self:center;grid-row:1}
+.chg .nm{font-size:var(--t-label);font-weight:650;color:var(--text);min-width:0}
+.chg .nm code{font-family:var(--mono);font-weight:400;color:var(--mute);font-size:var(--t-meta);margin-left:6px}
+.chg .cur{font-family:var(--mono);font-size:var(--t-label);color:var(--text);text-align:right;white-space:nowrap}
+.chg .arr{color:var(--mute);text-align:center;font-size:var(--t-label)}
+.chg .pro{font-family:var(--mono);font-size:var(--t-label);color:var(--uv2);font-weight:700;white-space:nowrap}
+.chg .r{grid-column:2/6;font-size:var(--t-meta);color:var(--dim);line-height:1.45}
+.chg.off{opacity:.62}.chg.off .pro{color:var(--mute);text-decoration:line-through}
+.chg.stale{background:#17120a}.chg.stale .r{color:var(--warn)}
+.chghead{display:grid;grid-template-columns:26px minmax(0,1fr) 92px 18px 96px;column-gap:8px;padding:5px 10px 4px;font-size:var(--t-meta);color:var(--mute);font-weight:600}
+.chghead .c{text-align:right}
+.legend{display:flex;gap:14px;font-size:var(--t-meta);color:var(--dim);margin:2px 0 6px}
+.legend b{font-family:var(--mono)}
+.bclose{margin-left:auto;border:1px solid var(--line2);background:var(--panel2);border-radius:8px;width:36px;height:36px;font-size:18px;cursor:pointer;color:var(--dim)}
+.bclose:hover{color:var(--text);border-color:var(--uv2)}
+</style>
+</head>
+<body>
+<div class="review" role="toolbar" aria-label="Prototype review controls">
+  <b>GLITCHKID VOCAL LAB — DESIGN PROTOTYPE</b>
+  <span class="warn">Not connected to audio. Meters, spectrum and analysis results are simulated examples.</span>
+  <span class="sp"></span>
+  <span class="grp">Scale <button data-scale="0.8">80%</button><button data-scale="1" class="on">100%</button><button data-scale="1.5">150%</button></span>
+  <span class="grp">Signal <button data-sig="example" class="on">Example frame</button><button data-sig="idle">No signal</button></span>
+  <span class="grp"><button id="resetProto">Reset prototype</button></span>
+</div>
+
+<div class="stage"><div class="scaler" id="scaler"><div id="plugin">
+  <!-- ======================= TOP BAR ======================= -->
+  <header class="top">
+    <div class="mark" aria-label="GlitchKid Vocal Lab"><span class="w">GLITCHKID</span><span class="s">VOCAL LAB</span></div>
+    <div class="pbox" data-help="Preset: click the name to browse; arrows step through Factory Default and the starting profiles (your presets follow in the plug-in).">
+      <button id="pPrev" aria-label="Previous preset">‹</button>
+      <button class="pn" id="pOpen" aria-label="Open preset browser"><b id="pName"></b><span id="pState"></span></button>
+      <button id="pNext" aria-label="Next preset">›</button>
+    </div>
+    <div class="abwrap">
+      <div class="abseg" id="abSeg" role="group" aria-label="A/B comparison">
+        <button id="abA" data-help="Slot A."><b>A</b><span></span></button><button id="abB" data-help="Slot B."><b>B</b><span></span></button>
+      </div>
+      <button class="btn" id="abSave" data-help="Save the current sound into the active slot. If the slot already holds a sound, you are asked to confirm first.">Save to A</button>
+    </div>
+    <button class="btn" id="undoBtn" data-help="Undo the last Build My Mix, profile load, Beat Lock or Reference apply (one level).">Undo</button>
+    <span class="sp"></span>
+    <button class="btn ctx" id="ctxBeat" data-help="Beat Lock: compares your vocal with the beat on the Instrumental (sidechain) input and suggests small changes you can tick and apply.">Beat Lock</button>
+    <button class="btn ctx" id="ctxRef" data-help="Reference Match: compares your vocal's tone with a song file you have the right to use; proposes small EQ changes for review.">Reference Match</button>
+    <div class="seg" data-help="DRY = the real bypass: delay-matched, 20 ms crossfade. The output limiter still acts while DRY if it is on.">
+      <button class="dry" id="dryBtn">Dry</button><button id="procBtn">Processed</button>
+    </div>
+  </header>
+
+  <!-- ======================= WORKSPACE NAVIGATION ======================= -->
+  <nav class="nav" id="nav" role="tablist" aria-label="Workspaces"></nav>
+
+  <!-- ======================= BODY ======================= -->
+  <section class="body">
+    <main class="work" id="work"></main>
+    <aside class="studio" id="studio">
+      <div class="sec">
+        <h3>SIGNAL <span class="sim" id="sigSim">EXAMPLE FRAME</span></h3>
+        <div class="spec" data-help="In the plug-in: real FFT of the vocal input (before processing) and the output (after the limiter). Here: a fixed example frame.">
+          <canvas id="spec" width="624" height="236"></canvas>
+          <div class="idle" id="idle" hidden><b>No signal</b>Press play in your host. Nothing is drawn without audio.</div>
+        </div>
+        <div class="lg"><span><i style="background:var(--uv2)"></i>Input</span><span><i style="background:var(--pink)"></i>Output</span><span style="margin-left:auto">20 Hz – 20 kHz</span></div>
+        <div class="meters">
+          <div class="mt" data-help="Input sample peak (louder channel), before processing."><div class="ml"><span>IN</span><span id="mInV"></span></div><div class="bar"><i id="mIn"></i></div></div>
+          <div class="mt" data-help="Output sample peak after the limiter (not true peak)."><div class="ml"><span>OUT</span><span id="mOutV"></span></div><div class="bar"><i id="mOut"></i></div></div>
+          <div class="mt" data-help="Compressor gain reduction (a real DSP value in the plug-in)."><div class="ml"><span>COMP GR</span><span id="mGrV"></span></div><div class="bar gr"><i id="mGr"></i></div></div>
+          <div class="mt" data-help="Output limiter gain reduction (real in the plug-in). Empty while the limiter is off."><div class="ml"><span>LIMITER</span><span id="mLimV"></span></div><div class="bar gr"><i id="mLim"></i></div></div>
+        </div>
+      </div>
+      <div class="sec">
+        <h3>QUICK CONTROLS</h3>
+        <div id="macros"></div>
+      </div>
+      <div class="sec">
+        <div class="bmmcard">
+          <b>Build My Mix</b>
+          <p>A starting mix from your vocal. You review every change before it is applied.</p>
+          <button class="btn pri" id="bmmOpen" style="width:100%" data-help="Opens the review-first Build My Mix panel (prototype flow; today the plug-in applies the build at once).">Build my mix…</button>
+        </div>
+      </div>
+      <div class="sec" id="ctxSec">
+        <h3>CONTEXT <span class="sim">EXAMPLE STATUS</span></h3>
+        <div class="ctxline"><span>Beat input</span><b id="beatStatus">Not connected</b></div>
+        <div class="ctxline"><span>Reference</span><b id="refStatus">No file loaded</b></div>
+      </div>
+    </aside>
+
+    <!-- context view: Beat Lock / Reference Match (over the workspace, studio column stays) -->
+    <div class="ovl" id="ctxView" role="region" aria-label="Context tool"></div>
+    <!-- Build My Mix review drawer -->
+    <div class="ovl" id="bmm" role="dialog" aria-label="Build My Mix review"></div>
+    <!-- confirmation dialog (A/B) -->
+    <div class="ovl" id="confirm" role="alertdialog" aria-modal="true" aria-label="Confirm"></div>
+    <!-- preset browser -->
+    <div class="ovl" id="browser" role="dialog" aria-label="Preset browser"></div>
+  </section>
+
+  <!-- ======================= STATUS BAR ======================= -->
+  <footer class="status">
+    <span class="help" id="help">Point at any control to read what it does.</span>
+    <span class="msg" id="msg"></span>
+    <span class="lat" id="lat" data-help="Latency the plug-in reports to the host (approximate at 48 kHz): 6 samples always, plus Tune ≈31 ms, Formant ≈21 ms (when not 0), Harmony ≈31 ms, Limiter ≈1.5 ms while on."></span>
+  </footer>
+  <div class="orderpop" id="orderPop"></div>
+</div></div></div>
+
+<script>
+"use strict";
+/* ============================================================================================
+   1. Parameter definitions — copied from GlitchKidProcessor::createLayout (69 parameters).
+   ============================================================================================ */
+const P={};
+const def=(id,label,min,max,d,unit,o={})=>P[id]={id,label,min,max,def:d,unit,type:'float',...o};
+const bool=(id,label,d)=>P[id]={id,label,def:d?1:0,type:'bool'};
+const choice=(id,label,options,d)=>P[id]={id,label,options,def:d,type:'choice'};
+const KEYS=["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const SCALES=["Chromatic","Major","Natural minor","Harmonic minor","Major pentatonic","Minor pentatonic"];
+const DIVS=["1/2","1/4","1/4 dotted","1/4 triplet","1/8","1/8 dotted","1/8 triplet","1/16","1/16 dotted","1/16 triplet","1/32"];
+const INTERVALS=["Octave DOWN (-12)","Fifth DOWN (-7)","Major 3rd DOWN (-4)","Minor 3rd DOWN (-3)","Minor 3rd UP (+3)","Major 3rd UP (+4)","Fourth UP (+5)","Fifth UP (+7)","Octave UP (+12)"];
+def('gain','Gain',-60,12,0,'dB'); bool('bypass','Bypass',false);
+def('eq_lo_freq','Low freq',20,500,100,'Hz',{skew:100}); def('eq_lo_gain','Low',-15,15,0,'dB');
+def('eq_b1_freq','Body freq',100,5000,400,'Hz',{skew:700}); def('eq_b1_gain','Body',-15,15,0,'dB'); def('eq_b1_q','Body Q',0.3,10,1,'',{skew:1.5});
+def('eq_b2_freq','Pres. freq',500,16000,3000,'Hz',{skew:3000}); def('eq_b2_gain','Presence',-15,15,0,'dB'); def('eq_b2_q','Pres. Q',0.3,10,1,'',{skew:1.5});
+def('eq_hi_freq','Air freq',1000,18000,8000,'Hz',{skew:6000}); def('eq_hi_gain','Air',-15,15,0,'dB');
+def('comp_thresh','Threshold',-60,0,-18,'dB'); def('comp_ratio','Ratio',1,20,1,':1',{skew:4}); def('comp_attack','Attack',0.1,100,10,'ms',{skew:10});
+def('comp_release','Release',10,1000,100,'ms',{skew:100}); def('comp_knee','Knee',0,24,6,'dB'); def('comp_makeup','Makeup',0,24,0,'dB');
+def('sat_drive','Drive',0,18,0,'dB');
+bool('stutter_on','Stutter',false); choice('stutter_rate','Rate',["1/4","1/8","1/16","1/32"],1); def('stutter_mix','Mix',0,100,100,'%');
+bool('echo_on','Echo',false); bool('echo_sync','Sync',true); def('echo_time','Time',1,2000,350,'ms',{skew:300}); choice('echo_div','Division',DIVS,4);
+def('echo_fb','Feedback',0,90,35,'%'); def('echo_tone','Tone',400,20000,6000,'Hz',{skew:3000}); def('echo_width','Width',0,100,0,'%'); def('echo_mix','Mix',0,100,30,'%');
+bool('tune_on','Pitch Tune',false); choice('tune_key','Key',KEYS,0); choice('tune_scale','Scale',SCALES,0);
+def('tune_strength','Strength',0,100,100,'%'); def('tune_speed','Speed',0,400,20,'ms',{skew:40});
+def('formant_shift','Shift',-12,12,0,'st');
+bool('mut_on','Mutation',false); def('mut_amount','Amount',0,100,40,'%'); def('mut_character','Character',0,100,50,'%'); def('mut_blend','Blend',0,100,100,'%');
+bool('harm_on','Harmony',false); choice('harm_interval','Interval',INTERVALS,7); def('harm_level','Level',-24,0,-9,'dB');
+bool('dbl_on','Doubler',false); def('dbl_amount','Amount',0,100,50,'%'); def('dbl_width','Width',0,100,70,'%'); def('dbl_detune','Detune',0,25,8,'ct'); def('dbl_timing','Timing',5,45,18,'ms');
+bool('dim_on','Dimension',false); def('dim_width','Width',0,100,60,'%'); def('dim_detune','Detune',0,20,6,'ct'); def('dim_depth','Depth',0,100,50,'%'); def('dim_mix','Mix',0,100,100,'%');
+def('mix','Mix',0,100,100,'%');
+bool('air_on','Air Lab',false); def('air_presence','Presence',0,100,30,'%'); def('air_air','Air',0,100,30,'%'); bool('air_link','Link',true); def('air_mix','Mix',0,100,100,'%'); def('air_trim','Trim',-12,12,0,'dB');
+bool('clean_on','Clean',false); def('clean_amount','Clean',0,100,50,'%'); def('clean_tone','Corrective EQ',0,100,100,'%'); def('clean_res','Resonance',0,100,100,'%'); def('clean_ess','De-esser',0,100,100,'%');
+bool('lim_on','Limiter',false); def('lim_ceiling','Ceiling',-12,-0.1,-1,'dBFS'); def('lim_drive','Drive',0,24,0,'dB'); def('lim_release','Release',10,500,80,'ms');
+const IDS=Object.keys(P); // 69
+
+/* the 22 parameters a profile load and Build My Mix never change (PresetController / MixEngine), plus Bypass */
+const KEEP=["tune_on","tune_strength","tune_speed","tune_key","tune_scale","gain","mix","air_on","air_presence","air_air","air_link","air_mix","air_trim",
+            "clean_on","clean_amount","clean_tone","clean_res","clean_ess","lim_on","lim_ceiling","lim_drive","lim_release","bypass"];
+
+/* ============================================================================================
+   2. The eight starting profiles — overrides on Factory Default, copied from Profiles.inc / FactoryPresets.cpp.
+   ============================================================================================ */
+const PROFILES=[
+ {n:"CLEAN & NATURAL",t:"Transparent, honest, lightly polished",d:"A clean, natural vocal: gentle levelling and a touch of air, with no effects on the voice.",s:"2.5:1 compression, EQ tone shaping. Pitch Tune is left to you.",h:"Good for a vocal that already sounds right. Pair with NATURAL tuning or none.",
+  o:{eq_b1_freq:300,eq_b1_gain:-1,eq_b2_freq:3500,eq_b2_gain:1,eq_hi_freq:11000,eq_hi_gain:1,comp_thresh:-18,comp_ratio:2.5,comp_attack:15,comp_release:140,comp_knee:10,comp_makeup:3.5}},
+ {n:"MODERN MELODIC RAP",t:"Glossy, smooth, a little space",d:"The modern melodic-rap polish: smooth compression, presence and air, a light echo and a touch of width.",s:"3.0:1 compression, 2.5 dB saturation, EQ tone shaping, 1/8 dotted echo 14%, Dimension width, Doubler 20%. Pitch Tune is left to you.",h:"Works for sung or rapped melodies. Try it with LIGHT tuning.",
+  o:{eq_lo_gain:1,eq_lo_freq:100,eq_b1_freq:350,eq_b1_gain:-1.5,eq_b2_freq:4000,eq_b2_gain:2,eq_hi_freq:10000,eq_hi_gain:2,comp_thresh:-19,comp_ratio:3,comp_attack:10,comp_release:110,comp_knee:8,comp_makeup:6.5,sat_drive:2.5,echo_on:1,echo_sync:1,echo_div:5,echo_fb:22,echo_tone:4500,echo_width:40,echo_mix:14,dim_on:1,dim_width:50,dim_detune:5,dim_depth:45,dim_mix:22,dbl_on:1,dbl_amount:20,dbl_width:70,dbl_detune:6,dbl_timing:14}},
+ {n:"HARD-TUNED RAP",t:"Tight, forward, built for hard tuning",d:"A tight, forward tone with firm compression and a short echo: it stays out of the way of fast, hard-tuned vocals.",s:"4.0:1 compression, 3.0 dB saturation, EQ tone shaping, 1/16 echo 8%, Doubler 15%. Pitch Tune is left to you.",h:"Set TUNE to HARD and choose your key and scale first: this profile does not switch tuning on.",
+  o:{eq_lo_gain:-1,eq_lo_freq:100,eq_b1_freq:300,eq_b1_gain:-2,eq_b2_freq:3200,eq_b2_gain:2.5,eq_hi_freq:9500,eq_hi_gain:2,comp_thresh:-21,comp_ratio:4,comp_attack:5,comp_release:80,comp_knee:4,comp_makeup:7.5,sat_drive:3,echo_on:1,echo_sync:1,echo_div:7,echo_fb:12,echo_tone:6000,echo_width:20,echo_mix:8,dbl_on:1,dbl_amount:15,dbl_width:60,dbl_detune:4,dbl_timing:10}},
+ {n:"DARK & ATMOSPHERIC",t:"Deep, wide, moody",d:"A dark, spacious vocal: a rolled-off top, a long dotted echo, width and a soft double.",s:"3.0:1 compression, 3.5 dB saturation, EQ tone shaping, 1/4 dotted echo 28%, Dimension width, Doubler 35%. Pitch Tune is left to you.",h:"Best on a close, dry vocal. Ease ECHO MIX down if the words get blurry.",
+  o:{eq_lo_gain:2,eq_lo_freq:90,eq_b1_freq:300,eq_b1_gain:-2.5,eq_b2_freq:2500,eq_b2_gain:-0.5,eq_hi_freq:6500,eq_hi_gain:-3.5,comp_thresh:-20,comp_ratio:3,comp_attack:14,comp_release:160,comp_knee:8,comp_makeup:9,sat_drive:3.5,echo_on:1,echo_sync:1,echo_div:2,echo_fb:40,echo_tone:2200,echo_width:75,echo_mix:28,dim_on:1,dim_width:65,dim_detune:8,dim_depth:55,dim_mix:35,dbl_on:1,dbl_amount:35,dbl_width:85,dbl_detune:8,dbl_timing:20}},
+ {n:"BRIGHT & PRESENT",t:"Up front, clear words, airy top",d:"A forward, clear vocal: a lighter low end, strong presence and air, firm compression and almost no ambience.",s:"3.5:1 compression, 1.5 dB saturation, EQ tone shaping, 1/16 echo 7%, Doubler 12%. Pitch Tune is left to you.",h:"Good for a dull or buried vocal. If it gets harsh, lower HIGH or PRESENCE in MODIFY.",
+  o:{eq_lo_gain:-1.5,eq_lo_freq:120,eq_b1_freq:400,eq_b1_gain:-1.5,eq_b2_freq:4000,eq_b2_gain:3,eq_hi_freq:11000,eq_hi_gain:3,comp_thresh:-20,comp_ratio:3.5,comp_attack:6,comp_release:90,comp_knee:5,comp_makeup:6.5,sat_drive:1.5,echo_on:1,echo_sync:1,echo_div:7,echo_fb:10,echo_tone:7000,echo_width:20,echo_mix:7,dbl_on:1,dbl_amount:12,dbl_width:50,dbl_detune:4,dbl_timing:12}},
+ {n:"SMOOTH R&B",t:"Warm, soft, gently wide",d:"A warm, soft vocal: slow gentle compression, a warm low end, silky top and a soft quarter-note echo with width.",s:"2.5:1 compression, 1.2 dB saturation, EQ tone shaping, 1/4 echo 18%, Dimension width, Doubler 25%. Pitch Tune is left to you.",h:"Suits sung vocals. Pair with NATURAL or LIGHT tuning.",
+  o:{eq_lo_gain:1.5,eq_lo_freq:120,eq_b1_freq:300,eq_b1_gain:-1,eq_b2_freq:3500,eq_b2_gain:1,eq_hi_freq:9500,eq_hi_gain:1.5,comp_thresh:-17,comp_ratio:2.5,comp_attack:18,comp_release:180,comp_knee:12,comp_makeup:4,sat_drive:1.2,echo_on:1,echo_sync:1,echo_div:1,echo_fb:28,echo_tone:3500,echo_width:45,echo_mix:18,dim_on:1,dim_width:45,dim_detune:5,dim_depth:40,dim_mix:22,dbl_on:1,dbl_amount:25,dbl_width:75,dbl_detune:6,dbl_timing:16}},
+ {n:"GRITTY RAP",t:"Raw, dense, in your face",d:"A dense, gritty vocal: hard, fast compression, real saturation and a doubled edge, with no echo.",s:"5.0:1 compression, 7.0 dB saturation, EQ tone shaping, Doubler 25%. Pitch Tune is left to you.",h:"Best on a loud, dry rap. Lower SATURATION in MODIFY if it feels harsh.",
+  o:{eq_lo_gain:2,eq_lo_freq:100,eq_b1_freq:450,eq_b1_gain:-1,eq_b2_freq:2800,eq_b2_gain:2.5,eq_hi_freq:8000,eq_hi_gain:0.5,comp_thresh:-24,comp_ratio:5,comp_attack:4,comp_release:70,comp_knee:3,comp_makeup:6.5,sat_drive:7,dbl_on:1,dbl_amount:25,dbl_width:70,dbl_detune:9,dbl_timing:10}},
+ {n:"SPACIOUS LEAD",t:"Big, open, a lead that floats",d:"A big, open lead vocal: balanced tone, a clear eighth-note echo, wide Dimension and a soft double.",s:"2.8:1 compression, 1.8 dB saturation, EQ tone shaping, 1/8 echo 24%, Dimension width, Doubler 30%. Pitch Tune is left to you.",h:"Good for a hook or a sung lead. Keep ECHO MIX moderate in a busy beat.",
+  o:{eq_lo_gain:0.5,eq_lo_freq:100,eq_b1_freq:350,eq_b1_gain:-1.5,eq_b2_freq:3500,eq_b2_gain:1.5,eq_hi_freq:9500,eq_hi_gain:1.5,comp_thresh:-18,comp_ratio:2.8,comp_attack:12,comp_release:150,comp_knee:9,comp_makeup:7.5,sat_drive:1.8,echo_on:1,echo_sync:1,echo_div:4,echo_fb:32,echo_tone:4000,echo_width:60,echo_mix:24,dim_on:1,dim_width:70,dim_detune:6,dim_depth:60,dim_mix:38,dbl_on:1,dbl_amount:30,dbl_width:90,dbl_detune:7,dbl_timing:18}}];
+/* browsing groups: a PROPOSAL (the plug-in has no preset categories today) */
+const BROWSE_GROUPS=[["Clean & present",[0,4]],["Melodic",[1,5]],["Rap",[2,6]],["Atmospheric",[3,7]]];
+
+/* ============================================================================================
+   3. Signal order (verified, processChunk) and the six navigation workspaces (a design proposal).
+   ============================================================================================ */
+const ORDER=["Pitch Tune","Formant","Harmony","Mutation","Doubler","4-band EQ","CLEAN corrective","Compressor","CLEAN de-esser","Saturation","AIR LAB","Stutter","Echo","Dimension","Gain","Mix","Output Limiter"];
+const GROUP_OF={"Pitch Tune":"tune","Formant":"lab","Harmony":"lab","Mutation":"lab","Doubler":"space","4-band EQ":"tone","CLEAN corrective":"clean","Compressor":"dyn","CLEAN de-esser":"clean","Saturation":"tone","AIR LAB":"tone","Stutter":"lab","Echo":"space","Dimension":"space","Gain":"finish","Mix":"finish","Output Limiter":"finish"};
+const pos=name=>ORDER.indexOf(name)+1;
+const WS=[
+ {id:'tune',name:'TUNE',job:'Pitch Tune: pull the voice to the key and scale of your beat (stage #1).'},
+ {id:'clean',name:'CLEAN',job:'Rumble, low-mid build-up, resonances and sharp S sounds.'},
+ {id:'tone',name:'TONE',job:'Four-band EQ, saturation and AIR LAB.'},
+ {id:'dyn',name:'DYNAMICS',job:'One compressor. Ratio 1:1 means it is not compressing.'},
+ {id:'space',name:'SPACE',job:'Doubler, echo and width. Delay and width only — no reverb.'},
+ {id:'finish',name:'FINISH',job:'Output level, dry/wet blend and the output limiter — the last three stages.'},
+ {id:'lab',name:'LAB',full:'Experimental Lab',job:'Formant, Harmony, Mutation and Stutter: creative effects outside the vocal mix. Their place in the signal chain does not change.'}];
+const STD=WS.slice(0,6);
+
+/* ============================================================================================
+   4. State: live values, preset identity, A/B, undo.
+   ============================================================================================ */
+const defaults=()=>{const s={};IDS.forEach(id=>s[id]=P[id].def);return s;};
+let S, baseline, presetName, ui;
+let ab, undo, sigMode='example', proposal=null, bmmStep=0, bmmDir=1, bmmIntensity=60;
+function initialState(){
+  // EXAMPLE SESSION: Modern Melodic Rap loaded, Light tuning in A natural minor, and Mutation left on from an older session (so Build My Mix has a Lab row to show).
+  S=defaults();Object.assign(S,PROFILES[1].o);
+  S.tune_on=1;S.tune_key=9;S.tune_scale=2;S.tune_strength=75;S.tune_speed=35;
+  baseline={...S};presetName=PROFILES[1].n;
+  S.mut_on=1;S.mut_amount=18;S.mut_blend=30;
+  ab={active:'A',A:{...S},B:null};undo=null;proposal=null;bmmStep=0;
+  ui={ws:'tune',adv:{},ctx:null,browserSel:1,confirm:null};
+}
+const same=(a,b)=>IDS.every(id=>Math.abs(a[id]-b[id])<1e-6);
+const isModified=()=>!same(S,baseline);
+
+/* ============================================================================================
+   5. Formatting and knob geometry (JUCE-style skew for a centre value).
+   ============================================================================================ */
+const skewOf=p=>p.skew?Math.log(0.5)/Math.log((p.skew-p.min)/(p.max-p.min)):1;
+const toPos=(p,v)=>Math.pow((v-p.min)/(p.max-p.min),skewOf(p));
+const fromPos=(p,x)=>p.min+(p.max-p.min)*Math.pow(Math.min(1,Math.max(0,x)),1/skewOf(p));
+function fmt(id,v){const p=P[id];if(v===undefined)v=S[id];
+  if(p.type==='bool')return v>=0.5?'on':'off';
+  if(p.type==='choice')return p.options[Math.round(v)];
+  if(p.unit==='Hz')return v>=1000?(v/1000).toFixed(v>=10000?1:2)+' kHz':Math.round(v)+' Hz';
+  const a=Math.abs(v);const n=a>=100?v.toFixed(0):a>=10?v.toFixed(1):v.toFixed(p.unit===''?2:1);
+  return p.unit===':1'?n+':1':p.unit?n+' '+p.unit:n;}
+function knob(id){
+  const p=P[id],v=S[id],x=toPos(p,v),a0=-135,a1=135,a=a0+(a1-a0)*x,R=24,c=30;
+  const pt=g=>[c+R*Math.sin(g*Math.PI/180),c-R*Math.cos(g*Math.PI/180)];
+  const arc=(f,t)=>{const[x0,y0]=pt(f),[x1,y1]=pt(t);return`M${x0.toFixed(2)} ${y0.toFixed(2)} A${R} ${R} 0 ${t-f>180?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;};
+  const z=p.min<0&&p.max>0?a0+(a1-a0)*toPos(p,0):a0;const f=Math.min(z,a),t=Math.max(z,a);const[ix,iy]=pt(a);
+  const col=['gain','lim_ceiling','lim_drive','lim_release','mix'].includes(id)?'#ee4fc1':'#a83bee';
+  return`<svg width="60" height="60" viewBox="0 0 60 60" tabindex="0" role="slider" aria-label="${p.label}" aria-valuemin="${p.min}" aria-valuemax="${p.max}" aria-valuenow="${v.toFixed(2)}" aria-valuetext="${fmt(id)}">
+  <path d="${arc(a0,a1)}" stroke="#2c2636" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+  ${t-f>0.6?`<path d="${arc(f,t)}" stroke="${col}" stroke-width="4.5" fill="none" stroke-linecap="round"/>`:''}
+  <circle cx="30" cy="30" r="17" fill="url(#cap)" stroke="#463d55"/>
+  <line x1="30" y1="30" x2="${(c+(ix-c)*0.64).toFixed(2)}" y2="${(c+(iy-c)*0.64).toFixed(2)}" stroke="#f6f1fb" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+}
+
+/* ============================================================================================
+   6. Honest stage state (mirrors how the plug-in decides a stage is doing something).
+   ============================================================================================ */
+const on=id=>S[id]>=0.5;
+const labOn=()=>[Math.abs(S.formant_shift)>0.05?'Formant':null,on('harm_on')?'Harmony':null,on('mut_on')?'Mutation':null,on('stutter_on')?'Stutter':null].filter(Boolean);
+function wsStatus(w){
+  if(on('bypass'))return{lit:false,t:'bypassed (dry)'};
+  switch(w){
+    case 'tune':return on('tune_on')?{lit:true,t:KEYS[S.tune_key]+' '+['chromatic','major','minor','harm. minor','maj. penta','min. penta'][S.tune_scale]}:{lit:false,t:'off'};
+    case 'lab':{const n=labOn().length;return n?{lit:true,t:n+' of 4 on'}:{lit:false,t:'all off'};}
+    case 'clean':return on('clean_on')?{lit:true,t:'on · '+Math.round(S.clean_amount)+' %'}:{lit:false,t:'off'};
+    case 'tone':{const flat=['eq_lo_gain','eq_b1_gain','eq_b2_gain','eq_hi_gain'].every(k=>Math.abs(S[k])<0.05)&&S.sat_drive<0.05&&!on('air_on');return flat?{lit:false,t:'flat'}:{lit:true,t:'shaping'+(on('air_on')?' · Air on':'')};}
+    case 'dyn':return S.comp_ratio>1.01?{lit:true,t:'ratio '+fmt('comp_ratio')}:{lit:false,t:'1:1 (off)'};
+    case 'space':{const n=['dbl_on','echo_on','dim_on'].filter(on).length;return n?{lit:true,t:n+' of 3 on'}:{lit:false,t:'all off'};}
+    case 'finish':return{lit:true,t:fmt('gain')+(on('lim_on')?' · limiter':'')};
+  }
+}
+
+/* ============================================================================================
+   7. Rendering: navigation, workspaces, studio column, status.
+   ============================================================================================ */
+const $=id=>document.getElementById(id);
+function renderNav(){
+  const nav=$('nav');const tab=(w,i)=>{const st=wsStatus(w.id);const lab=w.id==='lab';
+    return`<button class="tab${lab?' labtab':''}${ui.ws===w.id&&!ui.ctx?' on':''}" role="tab" aria-selected="${ui.ws===w.id}" data-ws="${w.id}" data-help="${w.full||w.name}: ${w.job} Arrow keys move between workspaces.">
+    <span class="r1"><span class="n">${w.name}</span><span class="dot${st.lit?' on':''}${lab&&st.lit?' pinkdot':''}" style="margin-left:auto"></span></span><span class="st">${st.t}</span></button>`;};
+  nav.innerHTML=STD.map(tab).join('')+'<span class="navsep" aria-hidden="true"></span>'+tab(WS[6],6)+
+    `<button class="orderbtn" id="orderBtn" data-help="Show the exact processing order of all 17 stages. Workspaces are navigation groups; they never change the order.">Signal<br>order</button>`;
+  const tabs=[...nav.querySelectorAll('[data-ws]')];
+  tabs.forEach((b,i)=>{b.onclick=()=>{ui.ws=b.dataset.ws;ui.ctx=null;render();};
+    b.onkeydown=e=>{if(e.key==='ArrowRight'||e.key==='ArrowLeft'){const j=(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length;ui.ws=WS[j].id;ui.ctx=null;render();$('nav').querySelectorAll('[data-ws]')[j].focus();}};});
+  $('orderBtn').onclick=()=>$('orderPop').classList.toggle('show');
+}
+function renderOrder(){
+  $('orderPop').innerHTML=`<h4>Exact signal order (17 stages)</h4><p>The workspaces group controls so you can find them. Audio always runs in this order; nothing can be reordered. The four Experimental Lab effects (pink) keep their real places: Formant, Harmony and Mutation right after Pitch Tune, Stutter just before Echo. CLEAN is split around the compressor, TONE is interrupted by CLEAN and the compressor, and the Doubler (shown in SPACE) runs before the EQ.</p>
+   <div class="olist">${ORDER.map((n,i)=>`<span class="${GROUP_OF[n]==='lab'?'olab':''}">${i+1} ${n} <i>· ${WS.find(w=>w.id===GROUP_OF[n]).name}</i></span>`).join('<i>→</i>')}</div>`;
+}
+function ctl(id,o={}){const dis=o.dis;return`<div class="ctl${dis?' dis':''}${o.big?' big':''}" data-k="${id}" data-help="${P[id].label}: ${fmt(id,P[id].min)} … ${fmt(id,P[id].max)}, default ${fmt(id,P[id].def)}. Parameter ${id}. Drag up/down, mouse wheel or arrow keys; double-click resets.${dis?' '+dis:''}">
+  <span class="l">${o.label||P[id].label}</span>${knob(id)}<span class="v">${fmt(id)}</span></div>`;}
+function sw(id,help){return`<button class="sw${on(id)?' on':''}" data-sw="${id}" role="switch" aria-checked="${on(id)}" aria-label="${P[id].label} on/off" data-help="${help||('Switch '+P[id].label+' on or off (parameter '+id+'). Controls stay editable while off.')}"></button>`;}
+function sel(id,o={}){const p=P[id];return`<div class="fld${o.dis?' dis':''}" data-help="${p.label} (parameter ${id}).${o.dis?' '+o.dis:''}"><span class="l">${o.label||p.label}</span><select data-sel="${id}" aria-label="${p.label}">${p.options.map((x,i)=>`<option value="${i}"${Math.round(S[id])===i?' selected':''}>${x}</option>`).join('')}</select></div>`;}
+function card(o){return`<section class="card ${o.w||''}${o.off?' off':''}"><div class="ch">${o.sw||''}<b>${o.title}</b><span class="pos" data-help="Position in the signal chain (of 17 stages).">${o.pos}</span>${o.state?`<span class="state">${o.state}</span>`:''}${o.badge||''}${o.more?`<button class="more" data-adv="${o.more}">${ui.adv[o.more]?'Hide advanced':'Show advanced'}</button>`:''}</div>${o.body}</section>`;}
+const latB=t=>`<span class="badge" data-help="Adds latency while in use; GlitchKid reports it to the host so the track stays aligned.">${t}</span>`;
+const labB=`<span class="lab" data-help="An Experimental Lab effect. Its DSP, parameters and tests exist; the current plug-in interface hides it.">Lab</span>`;
+
+function chainStrip(){
+  const act=n=>(n==='Formant'&&Math.abs(S.formant_shift)>0.05)||(n==='Harmony'&&on('harm_on'))||(n==='Mutation'&&on('mut_on'))||(n==='Stutter'&&on('stutter_on'));
+  const nodes=ORDER.map((n,i)=>{const lab=GROUP_OF[n]==='lab',ws=WS.find(w=>w.id===GROUP_OF[n]);
+    return '<span class="cs'+(lab?' lab':'')+(lab&&act(n)?' act':'')+'" data-help="Stage '+(i+1)+': '+n+' ('+(ws.full||ws.name)+')'+(lab?(act(n)?' — on':' — off'):'')+'. The order is fixed."><b>'+(i+1)+'</b></span>';}).join('');
+  const lab=ORDER.map((n,i)=>GROUP_OF[n]==='lab'?{n,i}:null).filter(Boolean);
+  const labels=lab.map((x,k)=>'<span class="csl'+(act(x.n)?' act':'')+'" style="grid-column:'+(x.i+1)+';grid-row:'+(k%2+1)+'"><b>'+(x.i+1)+'</b> '+x.n+(act(x.n)?' · on':'')+'</span>').join('');
+  return '<div class="chainhead"><b>Signal chain</b><span>fixed order, left to right — stages cannot be moved</span><span class="sp"></span><span class="lg2"><i class="k lab"></i>Experimental Lab</span><span class="lg2"><i class="k"></i>other workspaces</span></div>'+
+    '<div class="chainstrip" data-help="The real processing order (17 stages). Pink stages are the Experimental Lab effects; they keep these positions whichever workspace shows their controls. Point at a stage to read its name.">'+nodes+'</div>'+
+    '<div class="chainlabels">'+labels+'</div>';
+}
+function renderWork(){
+  const w=WS.find(x=>x.id===ui.ws);let h=`<div class="whead"><h1>${w.full||(w.name[0]+w.name.slice(1).toLowerCase())}</h1><p>${w.job}</p></div>`;
+  if(on('bypass'))h+=`<div class="drybanner">DRY: you are hearing the unprocessed input. Settings are kept; nothing below is processing. The output limiter still acts if it is on.</div>`;
+  h+='<div class="grid">';
+  if(ui.ws==='tune'){
+    const style=[['Natural',50,80],['Light',75,35],['Hard',100,0]];const cur=style.findIndex(s=>Math.abs(S.tune_strength-s[1])<=3&&Math.abs(S.tune_speed-s[2])<=5);
+    h+=card({w:'w6',off:!on('tune_on'),sw:sw('tune_on','Switch Pitch Tune on or off (tune_on). Adds about 31 ms of latency while on.'),title:'Pitch Tune',pos:'#'+pos('Pitch Tune'),state:on('tune_on')?'on':'off',badge:on('tune_on')?latB('+31 ms'):'',
+      body:`<div class="row" style="gap:18px"><div class="fld" style="flex:1;min-width:0" data-help="The key of your beat (tune_key). GlitchKid does not detect your key."><span class="l">Key of your beat</span><div class="chips">${KEYS.map((k,i)=>`<button data-key="${i}" class="${Math.round(S.tune_key)===i?'on':''}">${k}</button>`).join('')}</div></div>
+       ${sel('tune_scale')}</div>
+       <div class="row" style="margin-top:10px;align-items:center">
+        <div class="fld" data-help="Tuning style: existing presets of Strength + Speed (Natural 50%/80 ms, Light 75%/35 ms, Hard 100%/0 ms). Choosing one switches Tune on."><span class="l">Style</span><div class="chips">${style.map((s,i)=>`<button data-style="${i}" class="${cur===i&&on('tune_on')?'on':''}">${s[0]}</button>`).join('')}</div></div>
+        <div class="ctls">${ctl('tune_strength')}${ctl('tune_speed')}</div>
+        <div class="readout" style="flex:1;min-width:200px;margin-top:0" data-help="In the plug-in this line shows the real detector output while Tune is on.">${on('tune_on')&&!on('bypass')?'Sung A3 −18 cents → pulled to A3<br><em>example — real detector output in the plug-in</em>':'Pitch Tune is off: the voice is not pulled to any note.'}</div></div>`});
+    const lo=labOn();
+    h+=card({w:'w6',title:'Next in the chain',pos:'#2–#4',state:lo.length?'Lab effects on: '+lo.join(', '):'no Lab effect is on',
+      body:`<div class="row" style="align-items:center"><p class="note" style="margin:0;flex:1">Formant (#2), Harmony (#3) and Mutation (#4) run right after Pitch Tune; Stutter runs at #12. Their controls live in the Experimental Lab so this page stays simple.</p><button class="btn" id="goLab">Open Experimental Lab →</button></div>`});
+  }
+  if(ui.ws==='lab'){
+    h+=`<div class="labintro">${chainStrip()}<p class="note" style="margin:8px 0 0">Optional creative effects. They are not part of a normal vocal mix: Build My Mix proposes switching them off (you can untick that). Formant and Harmony add latency while in use.</p></div>`;
+    const fOn=Math.abs(S.formant_shift)>0.05;
+    h+=card({w:'w2',off:!fOn,title:'Formant',pos:'#'+pos('Formant'),state:'after Pitch Tune (#1)',badge:(fOn?latB('+21 ms'):'')+labB,body:`<div class="ctls">${ctl('formant_shift')}</div><div class="note">0 = off. Down: bigger, darker. Up: smaller, brighter.</div>`});
+    h+=card({w:'w2',off:!on('harm_on'),sw:sw('harm_on','Switch Harmony on or off (harm_on). Adds Pitch-Tune-sized latency while on.'),title:'Harmony',pos:'#'+pos('Harmony'),state:'after Formant',badge:(on('harm_on')?latB('+31 ms'):'')+labB,body:`${sel('harm_interval')}<div class="ctls" style="margin-top:8px">${ctl('harm_level')}</div>`});
+    h+=card({w:'w2',off:!on('mut_on'),sw:sw('mut_on'),title:'Mutation',pos:'#'+pos('Mutation'),state:'before the Doubler (#5)',badge:labB,more:'mut',body:`<div class="ctls">${ctl('mut_amount')}${ctl('mut_blend')}${ui.adv.mut?ctl('mut_character'):''}</div>${ui.adv.mut?'<div class="note">Character: 0 = down (alien), 50 = robot (ring modulation), 100 = up.</div>':''}`});
+    h+=card({w:'w6',off:!on('stutter_on'),sw:sw('stutter_on'),title:'Stutter',pos:'#'+pos('Stutter'),badge:labB,state:'runs between AIR LAB (#11) and Echo (#13)',body:`<div class="row" style="align-items:flex-end">${sel('stutter_rate')}<div class="ctls">${ctl('stutter_mix')}</div><p class="note" style="flex:1;min-width:220px">Repeats the slice that played just before it was switched on; follows the host tempo. Usually automated.</p></div>`});
+  }
+  if(ui.ws==='clean'){
+    const live=on('clean_on')&&!on('bypass')&&sigMode!=='idle';
+    h+=card({w:'w6',off:!on('clean_on'),sw:sw('clean_on','Switch CLEAN on or off (clean_on). Off = the signal passes untouched (20 ms crossfade). It learns your voice while it plays.'),title:'Clean',pos:'#'+pos('CLEAN corrective')+' and #'+pos('CLEAN de-esser'),state:on('clean_on')?(live?'learned from 3 s of voice · correcting':'on · waiting for audio'):'off — signal untouched',
+      body:`<div class="row" style="align-items:center;gap:18px;flex-wrap:nowrap">
+        <div class="ctls">${ctl('clean_amount',{big:true,label:'Clean amount'})}</div>
+        <div style="flex:1;min-width:0"><canvas class="eqc" id="cleanc" width="1100" height="200" style="height:100px;margin:0" data-help="ILLUSTRATIVE: the shape of the corrections CLEAN is applying, drawn by the prototype from example values. In the plug-in this curve is calculated from the DSP's real telemetry."></canvas>
+        <div class="note" style="margin-top:4px">Limits: at most 3.5 dB on the low-mids, 6 dB per resonance, 9 dB of de-essing. Clean amount scales all three sections.</div></div></div>`});
+    const sec=(title,where,id,lines,help)=>card({w:'w2',off:!on('clean_on'),title,pos:where,body:`<div class="ctls">${ctl(id,{label:'Section trim'})}</div>
+      <div class="readout" data-help="${help}">${live?lines+'<br><em>example telemetry</em>':'not active'}</div>`});
+    h+=sec('Corrective EQ','#'+pos('CLEAN corrective'),'clean_tone','Rumble: none found<br>Low-mid: −1.2 dB at 250 Hz','In the plug-in: the real rumble and low-mid corrections (CleanLab telemetry). Example values here.');
+    h+=sec('Resonance','#'+pos('CLEAN corrective'),'clean_res','−3.0 dB at 3.1 kHz<br>−1.8 dB at 5.4 kHz','In the plug-in: up to three narrow cuts at the measured resonances. Example values here.');
+    h+=sec('De-esser','#'+pos('CLEAN de-esser'),'clean_ess','S sounds: −2.4 dB now','In the plug-in: the real de-esser gain reduction, after the compressor. Example value here.');
+  }
+  if(ui.ws==='tone'){
+    const bands=['eq_lo','eq_b1','eq_b2','eq_hi'];
+    h+=card({w:'w6',title:'4-band EQ',pos:'#'+pos('4-band EQ'),state:bands.every(k=>Math.abs(S[k+'_gain'])<0.05)?'flat — no stage switch: 0 dB is transparent':'shaping',more:'eq',
+      body:`<canvas class="eqc" id="eqc" width="1460" height="240" data-help="EQ curve drawn by the prototype with simplified shelf/bell shapes (an approximation). The plug-in draws the real response from its own DSP formulas."></canvas>
+        <div class="ctls">${bands.map(k=>ctl(k+'_gain')).join('')}${bands.map(k=>ctl(k+'_freq')).join('')}${ui.adv.eq?ctl('eq_b1_q')+ctl('eq_b2_q'):''}</div>`});
+    h+=card({w:'w2',title:'Saturation',pos:'#'+pos('Saturation'),state:S.sat_drive<0.05?'0 dB = clean':'warming',body:`<div class="ctls">${ctl('sat_drive',{label:'Warmth'})}</div><div class="note">Oversampled; part of the constant 6-sample latency.</div>`});
+    h+=card({w:'w4',off:!on('air_on'),sw:sw('air_on'),title:'AIR LAB',pos:'#'+pos('AIR LAB'),more:'air',body:`<div class="row" style="gap:10px;align-items:center;margin-bottom:6px">${sw('air_link','LINK (air_link): moving Presence also moves Air, and the reverse.')}<span style="font-size:var(--t-meta);color:var(--dim)">Link presence and air</span></div><div class="ctls">${ctl('air_presence')}${ctl('air_air')}${ui.adv.air?ctl('air_mix')+ctl('air_trim'):''}</div><div class="note">Eases off on S sounds automatically. Zero latency.</div>`});
+  }
+  if(ui.ws==='dyn'){
+    const gr=!on('bypass')&&S.comp_ratio>1.01&&sigMode!=='idle';
+    h+=card({w:'w6',title:'Compressor',pos:'#'+pos('Compressor'),state:S.comp_ratio>1.01?'compressing':'ratio 1:1 — not compressing',more:'comp',
+      body:`<div class="row" style="align-items:flex-end"><div class="ctls" style="flex:1">${ctl('comp_thresh')}${ctl('comp_ratio')}${ctl('comp_makeup')}${ctl('comp_attack')}${ctl('comp_release')}${ui.adv.comp?ctl('comp_knee'):''}</div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:5px" data-help="Gain reduction (real in the plug-in). Example value here."><div class="vbar"><i style="height:${gr?24:0}%"></i></div><span class="mlbl">GR<br>${gr?'−3.1':'0.0'}</span></div></div>
+        <div class="note">The PUNCH quick control moves ratio, threshold, attack, release, knee and makeup together. The output limiter is in FINISH because it is the very last stage.</div>`});
+  }
+  if(ui.ws==='space'){
+    h+=card({off:!on('dbl_on'),sw:sw('dbl_on'),title:'Doubler',pos:'#'+pos('Doubler'),more:'dbl',body:`<div class="ctls">${ctl('dbl_amount')}${ctl('dbl_width')}${ui.adv.dbl?ctl('dbl_detune')+ctl('dbl_timing'):''}</div><div class="note">A synthetic double. It runs before the EQ, so the EQ and compressor shape it too.</div>`});
+    const sync=on('echo_sync');
+    h+=card({off:!on('echo_on'),sw:sw('echo_on'),title:'Echo',pos:'#'+pos('Echo'),more:'echo',body:`<div class="row" style="align-items:center;gap:10px;margin-bottom:6px">${sw('echo_sync','SYNC (echo_sync): on = the echo follows the host tempo (Division); off = Time in ms.')}<span style="font-size:var(--t-meta);color:var(--dim)">Sync</span>${sel('echo_div',{dis:sync?'':'Disabled while Sync is off (Time is used).'})}</div>
+      <div class="ctls">${ctl('echo_time',{dis:sync?'Disabled while Sync is on (the echo follows the host tempo).':''})}${ctl('echo_fb')}${ctl('echo_mix')}${ui.adv.echo?ctl('echo_tone')+ctl('echo_width'):''}</div>`});
+    h+=card({w:'w6',off:!on('dim_on'),sw:sw('dim_on'),title:'Dimension',pos:'#'+pos('Dimension'),more:'dim',body:`<div class="ctls">${ctl('dim_width')}${ctl('dim_mix')}${ui.adv.dim?ctl('dim_detune')+ctl('dim_depth'):''}</div><div class="note">Stereo width from short modulated copies. Zero latency. Stutter (#12) runs just before Echo; its controls are in the Experimental Lab.</div>`});
+  }
+  if(ui.ws==='finish'){
+    h+=card({title:'Output',pos:'#'+pos('Gain')+' → #'+pos('Mix'),body:`<div class="ctls">${ctl('gain',{label:'Gain'})}${ctl('mix',{label:'Dry/wet mix'})}</div><div class="note">Gain is applied first; then Mix blends the processed signal with the delay-matched dry signal.</div>`});
+    const lg=on('lim_on')&&sigMode!=='idle';
+    h+=card({off:!on('lim_on'),sw:sw('lim_on','Switch the output limiter on or off (lim_on). Adds about 1.5 ms of latency while on; off by default.'),title:'Output Limiter',pos:'#'+pos('Output Limiter'),badge:on('lim_on')?latB('+1.5 ms'):'',
+      body:`<div class="row" style="align-items:flex-end"><div class="ctls" style="flex:1">${ctl('lim_ceiling')}${ctl('lim_drive')}${ctl('lim_release')}</div><div style="display:flex;flex-direction:column;align-items:center;gap:5px" data-help="Limiter gain reduction (real in the plug-in). Example value here."><div class="vbar"><i style="height:${lg?9:0}%"></i></div><span class="mlbl">GR<br>${lg?'−0.8':'0.0'}</span></div></div>
+      <div class="note">Sample-peak limiter, not true-peak: keep the ceiling a little below 0 dBFS. It also acts while DRY.</div>`});
+    h+=card({w:'w6',title:'Reset',pos:'—',body:`<div class="row" style="align-items:center"><button class="btn" id="resetAll" data-help="Set every control to its default (Factory Default). Asks first. A/B snapshots are kept.">Reset all to Factory Default…</button><span class="note" style="margin:0">Asks first. Undo brings the previous sound back.</span></div>`});
+  }
+  h+='</div>';
+  $('work').innerHTML=h;
+  bindWork();
+  if(ui.ws==='tone')drawEq();
+  if(ui.ws==='clean')drawClean();
+}
+function bindWork(){
+  const el=$('work');
+  el.querySelectorAll('.ctl[data-k]').forEach(w=>{const id=w.dataset.k,p=P[id],svg=w.querySelector('svg');let y0,x0;
+    svg.onpointerdown=e=>{y0=e.clientY;x0=toPos(p,S[id]);svg.setPointerCapture(e.pointerId);
+      svg.onpointermove=m=>{S[id]=fromPos(p,x0+(y0-m.clientY)/(170*scale));w.querySelector('.v').textContent=fmt(id);const t=document.createElement('div');t.innerHTML=knob(id);svg.replaceChildren(...t.firstElementChild.childNodes);};};
+    svg.onpointerup=()=>{if(svg.onpointermove){svg.onpointermove=null;changed(id);}};
+    svg.onwheel=e=>{e.preventDefault();S[id]=fromPos(p,toPos(p,S[id])-Math.sign(e.deltaY)*0.02);changed(id);};
+    svg.ondblclick=()=>{S[id]=p.def;changed(id);};
+    svg.onkeydown=e=>{const d={ArrowUp:.02,ArrowRight:.02,ArrowDown:-.02,ArrowLeft:-.02,PageUp:.1,PageDown:-.1}[e.key];
+      if(d){e.preventDefault();S[id]=fromPos(p,toPos(p,S[id])+d);changed(id);$('work').querySelector(`.ctl[data-k="${id}"] svg`).focus();}
+      if(e.key==='Home'||e.key==='End'){e.preventDefault();S[id]=e.key==='Home'?p.min:p.max;changed(id);$('work').querySelector(`.ctl[data-k="${id}"] svg`).focus();}};});
+  el.querySelectorAll('[data-sw]').forEach(b=>b.onclick=()=>{const id=b.dataset.sw;S[id]=on(id)?0:1;changed(id);});
+  el.querySelectorAll('[data-sel]').forEach(s=>s.onchange=()=>{S[s.dataset.sel]=+s.value;changed(s.dataset.sel);});
+  el.querySelectorAll('[data-key]').forEach(b=>b.onclick=()=>{S.tune_key=+b.dataset.key;changed('tune_key');});
+  el.querySelectorAll('[data-style]').forEach(b=>b.onclick=()=>{const s=[[50,80],[75,35],[100,0]][+b.dataset.style];S.tune_strength=s[0];S.tune_speed=s[1];S.tune_on=1;changed('tune_strength');});
+  el.querySelectorAll('[data-adv]').forEach(b=>b.onclick=()=>{ui.adv[b.dataset.adv]=!ui.adv[b.dataset.adv];render();});
+  const gl=$('goLab');if(gl)gl.onclick=()=>{ui.ws='lab';render();};
+  const ra=$('resetAll');if(ra)ra.onclick=()=>{if(!confirm('Reset every control to Factory Default? (Prototype: Undo brings the current sound back.)'))return;
+    undo={state:{...S},name:presetName,baseline:{...baseline}};const b=S.bypass;S=defaults();S.bypass=b;baseline={...S};presetName='Factory Default';closeBmm('Sound changed: the proposal was discarded.');render();flash('Reset to Factory Default.');};
+}
+function changed(id){
+  // AIR LAB link (prototype simplification: equal values; the plug-in moves the other control by the same amount)
+  if(on('air_link')&&(id==='air_presence'||id==='air_air'))S[id==='air_presence'?'air_air':'air_presence']=S[id];
+  if(proposal)markStale();
+  render();
+}
+function drawEq(){
+  const c=$('eqc');if(!c)return;const g=c.getContext('2d'),W=c.width,H=c.height;g.clearRect(0,0,W,H);
+  const fx=f=>Math.log(f/20)/Math.log(1000)*W, dbY=d=>H/2-d*(H/2-14)/15;
+  g.strokeStyle='#221d2b';g.lineWidth=2;g.font='26px ui-monospace,monospace';g.fillStyle='#8a8297';
+  [100,1000,10000].forEach(f=>{g.beginPath();g.moveTo(fx(f),0);g.lineTo(fx(f),H);g.stroke();g.fillText(f>=1000?f/1000+'k':f,fx(f)+6,H-10);});
+  [-12,-6,0,6,12].forEach(d=>{g.beginPath();g.moveTo(0,dbY(d));g.lineTo(W,dbY(d));g.stroke();});
+  // simplified shapes (prototype approximation, not the plug-in's exact curve)
+  const bell=(f,f0,gdb,q)=>{const x=Math.log2(f/f0)*q*1.2;return gdb*Math.exp(-x*x);};
+  const shelf=(f,f0,gdb,lo)=>{const x=Math.log2(f/f0)*2.2;return gdb/(1+Math.exp(lo?x:-x));};
+  const resp=f=>shelf(f,S.eq_lo_freq,S.eq_lo_gain,true)+bell(f,S.eq_b1_freq,S.eq_b1_gain,S.eq_b1_q)+bell(f,S.eq_b2_freq,S.eq_b2_gain,S.eq_b2_q)+shelf(f,S.eq_hi_freq,S.eq_hi_gain,false);
+  g.beginPath();for(let x=0;x<=W;x+=4){const f=20*Math.pow(1000,x/W);const y=dbY(resp(f));x?g.lineTo(x,y):g.moveTo(x,y);}
+  g.strokeStyle=on('bypass')?'#5b5068':'#c47bf7';g.lineWidth=4;g.stroke();
+  [S.eq_lo_freq,S.eq_b1_freq,S.eq_b2_freq,S.eq_hi_freq].forEach(f=>{g.beginPath();g.arc(fx(f),dbY(resp(f)),9,0,7);g.fillStyle='#14111a';g.fill();g.strokeStyle='#ee4fc1';g.lineWidth=3;g.stroke();});
+  g.fillStyle='#ffbe5c';g.font='26px ui-monospace,monospace';g.fillText('APPROXIMATE CURVE',W-320,34);
+}
+function drawClean(){
+  const c=$('cleanc');if(!c)return;const g=c.getContext('2d'),W=c.width,H=c.height;g.clearRect(0,0,W,H);
+  const fx=f=>Math.log(f/20)/Math.log(1000)*W, dbY=d=>56+(-d)*(H-86)/10;
+  g.strokeStyle='#221d2b';g.lineWidth=2;g.font='25px ui-monospace,monospace';g.fillStyle='#8a8297';
+  [100,1000,10000].forEach(f=>{g.beginPath();g.moveTo(fx(f),0);g.lineTo(fx(f),H);g.stroke();g.fillText(f>=1000?f/1000+'k':f,fx(f)+6,H-8);});
+  g.beginPath();g.moveTo(0,dbY(0));g.lineTo(W,dbY(0));g.stroke();
+  g.fillStyle='#ffbe5c';g.fillText('ILLUSTRATIVE — example values',24,30);
+  const live=on('clean_on')&&!on('bypass')&&sigMode!=='idle';if(!live){g.fillStyle='#8a8297';g.fillText(on('clean_on')?'waiting for audio':'CLEAN is off',24,64);return;}
+  const k=S.clean_amount/50, t=S.clean_tone/100, r=S.clean_res/100, e=S.clean_ess/100;
+  const bell=(f,f0,db,q)=>{const x=Math.log2(f/f0)*q;return db*Math.exp(-x*x);};
+  const resp=f=>bell(f,250,-1.2*k*t,1.2)+bell(f,3100,-3*k*r,6)+bell(f,5400,-1.8*k*r,6)+bell(f,7000,-2.4*k*e,1.5);
+  g.beginPath();for(let x=0;x<=W;x+=3){const y=dbY(Math.max(-9,resp(20*Math.pow(1000,x/W))));x?g.lineTo(x,y):g.moveTo(x,y);}
+  g.strokeStyle='#ee4fc1';g.lineWidth=4;g.stroke();
+}
+function renderStudio(){
+  const idle=sigMode==='idle',dry=on('bypass');
+  $('idle').hidden=!idle;$('sigSim').textContent=idle?'IDLE STATE':'EXAMPLE FRAME';
+  const set=(id,w,t)=>{$(id).style.width=w+'%';$(id+'V').textContent=t;};
+  set('mIn',idle?0:72,idle?'--':'−9.8 dB');set('mOut',idle?0:68,idle?'--':'−4.2 dBFS');
+  const gr=!idle&&!dry&&S.comp_ratio>1.01;set('mGr',gr?26:0,gr?'−3.1 dB':'0.0 dB');
+  const lg=!idle&&on('lim_on');set('mLim',lg?8:0,on('lim_on')?(lg?'−0.8 dB':'0.0 dB'):'off');
+  drawSpec();
+  const macros=[['Tone','Darker','Brighter',(S.eq_hi_gain+6)/12,'TONE: moves the Air (eq_hi_gain −6…+6 dB) and Presence (eq_b2_gain −1.5…+1.5 dB) EQ gains together. Middle = flat.'],
+                ['Punch','Softer','Upfront',(S.comp_ratio-1)/5,'PUNCH: compressor ratio 1…6:1, threshold −12…−26 dB, attack 15 ms, release 110 ms, knee 6 dB, makeup up to 4 dB.'],
+                ['Space','Dry','Spacious',on('echo_on')?S.echo_mix/60:0,'SPACE: Echo, Dimension and Doubler on above 2 %; echo mix 0…60 %, feedback 15…45 %, width 20…75 %, Dimension mix 0…45 %, Doubler 0…40 %. No reverb.']];
+  const cl=v=>Math.round(Math.min(1,Math.max(0,v))*100);
+  $('macros').innerHTML=macros.map(([n,lo,hi,v,help],i)=>`<div class="mac" data-help="${help} Now ${cl(v)} of 100."><b>${n}</b><span>${lo}</span><input type="range" min="0" max="100" value="${cl(v)}" data-mac="${i}" aria-label="${n}" aria-valuetext="${cl(v)} of 100"><span class="hi">${hi}</span></div>`).join('');
+  $('macros').querySelectorAll('[data-mac]').forEach(r=>r.oninput=()=>{const v=r.value/100,i=+r.dataset.mac,lerp=(a,b)=>a+(b-a)*v;
+    if(i===0){S.eq_hi_gain=lerp(-6,6);S.eq_b2_gain=lerp(-1.5,1.5);}
+    if(i===1){S.comp_ratio=1+5*v;S.comp_thresh=lerp(-12,-26);S.comp_attack=15;S.comp_release=110;S.comp_knee=6;S.comp_makeup=Math.min(4,0.8*(S.comp_ratio-1));}
+    if(i===2){const o=v>=0.02?1:0;S.echo_on=S.dim_on=S.dbl_on=o;S.echo_mix=60*v;S.echo_fb=lerp(15,45);S.echo_width=lerp(20,75);S.dim_mix=45*v;S.dbl_amount=40*v;}
+    changed('macro');const x=$('macros').querySelector(`[data-mac="${i}"]`);if(x)x.focus();});
+}
+function exSpec(shift){const out=[];for(let i=0;i<96;i++){const f=20*Math.pow(1000,i/95);let d=-90;
+  [[180,-22,.32],[360,-26,.28],[720,-30,.30],[1450,-34,.32],[2900,-38,.36],[5800,-48,.5]].forEach(([c,l,w])=>{const x=Math.log(f/c)/w;d=Math.max(d,l-6*x*x);});
+  d=Math.max(d,-64-8*Math.abs(Math.log2(f/400)));out.push(d+shift(f));}return out;}
+function drawSpec(){
+  const c=$('spec'),g=c.getContext('2d'),W=c.width,H=c.height;g.clearRect(0,0,W,H);
+  const X=i=>i/95*W,Y=d=>H*(1-(d+90)/84);
+  g.strokeStyle='#1e1a26';g.lineWidth=2;g.font='26px ui-monospace,monospace';g.fillStyle='#8a8297';
+  [100,1000,10000].forEach(f=>{const x=Math.log(f/20)/Math.log(1000)*W;g.beginPath();g.moveTo(x,0);g.lineTo(x,H);g.stroke();g.fillText(f>=1000?f/1000+'k':f,x+6,H-10);});
+  if(sigMode==='idle'){g.strokeStyle='#3b3447';g.beginPath();g.moveTo(0,H-3);g.lineTo(W,H-3);g.stroke();return;}
+  const inp=exSpec(()=>0),out=on('bypass')?inp:exSpec(f=>(f>7000?S.eq_hi_gain*0.8:0)+(f>2500&&f<6500?S.eq_b2_gain:0)+(f<150?S.eq_lo_gain:0)-1.5);
+  g.save();g.beginPath();g.moveTo(0,H);out.forEach((d,i)=>g.lineTo(X(i),Y(d)));g.lineTo(W,H);g.closePath();g.clip();
+  const gr=g.createLinearGradient(0,0,0,H);gr.addColorStop(0,'#ee4fc170');gr.addColorStop(1,'#ee4fc108');g.fillStyle=gr;g.fillRect(0,0,W,H);
+  g.fillStyle='#08070b66';for(let y=0;y<H;y+=6)g.fillRect(0,y,W,2);g.restore();
+  g.lineWidth=3.5;g.strokeStyle='#ee4fc1';g.beginPath();out.forEach((d,i)=>i?g.lineTo(X(i),Y(d)):g.moveTo(X(i),Y(d)));g.stroke();
+  g.lineWidth=3;g.strokeStyle='#c47bf7';g.setLineDash([9,6]);g.beginPath();inp.forEach((d,i)=>i?g.lineTo(X(i),Y(d)):g.moveTo(X(i),Y(d)));g.stroke();g.setLineDash([]);
+}
+function renderTop(){
+  $('pName').textContent=presetName;
+  const mod=isModified();$('pState').textContent=mod?'● modified':(presetName.startsWith('Built: ')?'built from your vocal':presetName==='Factory Default'?'all defaults':'starting profile');$('pState').className=mod?'mod':'';
+  $('dryBtn').classList.toggle('on',on('bypass'));$('procBtn').classList.toggle('on',!on('bypass'));
+  ['A','B'].forEach(k=>{const b=$('ab'+k),st=abState(k);b.classList.toggle('on',ab.active===k);b.setAttribute('aria-pressed',ab.active===k);
+    const s=b.querySelector('span');s.textContent=st.label;s.className=st.cls;b.dataset.help=st.help;b.setAttribute('aria-label','Slot '+k+': '+st.label);});
+  $('abSave').textContent='Save to '+ab.active;
+  $('undoBtn').disabled=!undo;
+  $('ctxBeat').classList.toggle('on',ui.ctx==='beat');$('ctxRef').classList.toggle('on',ui.ctx==='ref');
+  const ms=0.125+(on('tune_on')?31:0)+(Math.abs(S.formant_shift)>0.05?21:0)+(on('harm_on')?31:0)+(on('lim_on')?1.5:0);
+  $('lat').textContent='Latency ≈ '+(ms<1?'6 samples':ms.toFixed(1)+' ms');$('lat').classList.toggle('hi',ms>10);
+}
+function render(){renderTop();renderNav();if(ui.ctx)renderCtx();else{$('ctxView').classList.remove('show');renderWork();}renderStudio();if($('bmm').classList.contains('show'))renderBmm();}
+
+/* ============================================================================================
+   8. Help line and messages.
+   ============================================================================================ */
+const helpDefault='Point at any control to read what it does.';
+document.addEventListener('mouseover',e=>{const t=e.target.closest('#plugin [data-help]');$('help').textContent=t?t.dataset.help:helpDefault;$('help').classList.toggle('hot',!!t);});
+document.addEventListener('focusin',e=>{const t=e.target.closest('#plugin [data-help]');if(t){$('help').textContent=t.dataset.help;$('help').classList.add('hot');}});
+let msgTimer;function flash(t){$('msg').textContent=t;$('msg').title=t;clearTimeout(msgTimer);msgTimer=setTimeout(()=>$('msg').textContent='',5000);}
+
+/* ============================================================================================
+   9. Top-bar actions: presets, A/B, undo, dry, context tools.
+   ============================================================================================ */
+function loadProfile(i){
+  undo={state:{...S},name:presetName,baseline:{...baseline}};
+  const keep={};KEEP.forEach(id=>keep[id]=S[id]);
+  S=defaults();Object.assign(S,PROFILES[i].o,keep);baseline={...S};presetName=PROFILES[i].n;
+  closeBmm('A preset was loaded: the proposal was discarded.');render();flash('Loaded '+presetName+'. Tuning, Gain, Mix, Air Lab, Clean and the limiter were kept.');
+}
+function loadFactoryDefault(){undo={state:{...S},name:presetName,baseline:{...baseline}};const b=S.bypass;S=defaults();S.bypass=b;baseline={...S};presetName='Factory Default';closeBmm('A preset was loaded: the proposal was discarded.');render();}
+const LIST=['Factory Default',...PROFILES.map(p=>p.n)];
+function step(d){const i=LIST.indexOf(presetName);const j=((i<0?0:i)+d+LIST.length)%LIST.length;j===0?loadFactoryDefault():loadProfile(j-1);}
+$('pPrev').onclick=()=>step(-1);$('pNext').onclick=()=>step(1);
+/* A/B rules: empty slot = capture the current sound into it; occupied slot = recall it; an occupied slot is only overwritten after an explicit confirmation;
+   leaving a slot with unsaved changes asks first, so live edits are never lost silently. */
+const abEdited=()=>!!ab[ab.active]&&!same(S,ab[ab.active]);
+function abState(k){
+  if(!ab[k])return{label:'empty',cls:'em',help:'Slot '+k+' is empty. Click it to capture the current sound into '+k+'.'};
+  if(ab.active===k)return abEdited()?{label:'unsaved',cls:'ed',help:'Slot '+k+' is active and the current sound has changes not saved to '+k+'. Use "Save to '+k+'" to keep them.'}
+                                    :{label:'active',cls:'',help:'Slot '+k+' is active; the current sound matches what is saved in '+k+'.'};
+  return{label:'saved',cls:'',help:'Slot '+k+' holds a saved sound. Click it to recall it.'};
+}
+function askConfirm(title,text,buttons){
+  const d=$('confirm');d.classList.add('show');
+  d.innerHTML='<div class="dlg"><h2>'+title+'</h2><p>'+text+'</p><div class="row">'+buttons.map((b,i)=>'<button class="btn'+(b.pri?' pri':'')+'" data-cf="'+i+'">'+b.t+'</button>').join('')+'</div></div>';
+  d.querySelectorAll('[data-cf]').forEach(x=>x.onclick=()=>{d.classList.remove('show');const f=buttons[+x.dataset.cf].f;if(f)f();});
+  const first=d.querySelector('[data-cf]');if(first)first.focus();
+}
+function abSwitch(k){
+  if(!ab[k]){ab[k]={...S};ab.active=k;render();flash('Slot '+k+' was empty: the current sound was captured into '+k+'.');return;}
+  ab.active=k;S={...ab[k]};closeBmm('A/B switch: the proposal was discarded.');render();flash('Recalled slot '+k+'.');
+}
+function selectAB(k){
+  if(k===ab.active)return;
+  if(ab[k]&&abEdited()){const cur=ab.active;
+    askConfirm('Leave slot '+cur+' with unsaved changes?','The current sound has changes that are not saved in slot '+cur+'. Recalling slot '+k+' replaces the current sound.',
+      [{t:'Cancel'},{t:'Switch without saving',f:()=>abSwitch(k)},{t:'Save to '+cur+' and switch',pri:true,f:()=>{ab[cur]={...S};abSwitch(k);}}]);return;}
+  abSwitch(k);
+}
+$('abA').onclick=()=>selectAB('A');$('abB').onclick=()=>selectAB('B');
+$('abSave').onclick=()=>{const k=ab.active;
+  if(ab[k]&&!abEdited()){flash('Slot '+k+' already holds this exact sound.');return;}
+  askConfirm('Overwrite slot '+k+'?','Slot '+k+' already holds a saved sound. Saving replaces it with the current sound. This cannot be undone.',
+    [{t:'Cancel'},{t:'Overwrite '+k,pri:true,f:()=>{ab[k]={...S};render();flash('Current sound saved to slot '+k+'.');}}]);};
+$('undoBtn').onclick=()=>{if(!undo)return;S={...undo.state};presetName=undo.name;baseline=undo.baseline?{...undo.baseline}:{...S};undo=null;closeBmm('Undo: the proposal was discarded.');render();flash('Previous sound restored.');};
+$('dryBtn').onclick=()=>{S.bypass=1;render();};$('procBtn').onclick=()=>{S.bypass=0;render();};
+$('ctxBeat').onclick=()=>{ui.ctx=ui.ctx==='beat'?null:'beat';render();};
+$('ctxRef').onclick=()=>{ui.ctx=ui.ctx==='ref'?null:'ref';render();};
+
+/* ============================================================================================
+   10. Context tools (concept screens with SIMULATED results).
+   ============================================================================================ */
+let beatShown=false,beatApplied=false,refShown=false,refApplied=false;
+function renderCtx(){
+  const v=$('ctxView');v.classList.add('show');const back=WS.find(w=>w.id===ui.ws).name;
+  if(ui.ctx==='beat'){
+    const rows=[['Advice — vocal vs beat level','The beat is 8.8 dB louder than your vocal. If the words are hard to follow, raise the vocal fader in your mixer. GlitchKid cannot move it.',null],
+      ['Presence bell','The beat competes with the voice at presence (2–5 kHz): presence raised so the words stay clear (never above +4 dB in total).',['eq_b2_gain',Math.min(4,S.eq_b2_gain+1.5)]],
+      ['Body bell','The beat is busy in the low-mids: the body bell is cut a little (never below −6 dB in total).',['eq_b1_gain',Math.max(-6,S.eq_b1_gain-1)]],
+      ['Echo amount','The beat is crowded: echo reduced so the vocal does not get lost.',['echo_mix',S.echo_mix*0.85]]];
+    v.innerHTML=`<div class="ctxhead"><h1>Beat Lock</h1><span class="sp"></span><button class="btn" id="ctxBack">← Back to ${back}</button></div>
+      <div class="simbanner">SIMULATED. In the plug-in Beat Lock needs your beat on the optional Instrumental (sidechain) input, listens to both for a few seconds, then lists suggestions. It changes only this vocal's own controls; nothing is applied until you press Apply. Undo restores your sound.</div>
+      <div class="row" style="align-items:center;margin-bottom:8px"><button class="btn pri" id="beatAnalyze">${beatShown?'Analyze again':'Show example analysis'}</button><span class="note" style="margin:0">Beat input in this example: <b style="color:var(--text)">${beatShown?'live (simulated)':'not connected'}</b></span></div>
+      ${beatShown?`<div class="bands">${[['Low',30,20],['Low-mid',62,40],['Mid',35,75],['Presence',22,48],['Air',6,12]].map(([n,a,b])=>`<div><i style="height:${a}%;background:var(--uv)"></i><i style="height:${b}%;background:var(--pink)"></i><span>${n}</span></div>`).join('')}</div>
+      <div style="height:22px"></div><div class="lg" style="margin-bottom:8px"><span><i style="background:var(--uv)"></i>Vocal</span><span><i style="background:var(--pink)"></i>Beat (example energy shares)</span></div>
+      ${rows.map((r,i)=>`<div class="sugg">${r[2]?`<input type="checkbox" data-bl="${i}" checked aria-label="Apply ${r[0]}">`:'<span></span>'}<b>${r[0]}</b><span class="vals">${r[2]?fmt(r[2][0])+' → '+fmt(r[2][0],r[2][1]):'advice only'}</span><span class="why">${r[1]}</span></div>`).join('')}
+      <div class="row" style="align-items:center"><button class="btn pri" id="beatApply"${beatApplied?' disabled':''}>Apply selected</button><span class="note" style="margin:0">${beatApplied?'Applied. Undo in the top bar restores your sound.':'One apply per analysis.'}</span></div>`:''}`;
+    $('ctxBack').onclick=()=>{ui.ctx=null;render();};
+    $('beatAnalyze').onclick=()=>{beatShown=true;beatApplied=false;$('beatStatus').textContent='Live (simulated)';render();};
+    const ap=$('beatApply');if(ap)ap.onclick=()=>{undo={state:{...S},name:presetName,baseline:{...baseline}};v.querySelectorAll('[data-bl]').forEach(c=>{if(c.checked){const r=rows[+c.dataset.bl][2];S[r[0]]=r[1];}});beatApplied=true;if(proposal)markStale();render();flash('Beat Lock changes applied (simulated). Undo puts them back.');};
+  }
+  if(ui.ctx==='ref'){
+    const rows=[['Body bell gain','eq_b1_gain',Math.max(-6,S.eq_b1_gain-1.4),'The reference is about 2.9 dB thinner in the body (251–634 Hz) than your vocal. Only part of that is requested: a full mix is not a vocal.'],
+      ['Presence bell gain','eq_b2_gain',Math.min(4,S.eq_b2_gain+0.6),'The reference is about 1.2 dB brighter in the presence range (2–5 kHz).'],
+      ['High shelf gain','eq_hi_gain',Math.min(15,S.eq_hi_gain+2.5),'The reference is about 5.0 dB brighter in the air range (8–12.8 kHz).']];
+    v.innerHTML=`<div class="ctxhead"><h1>Reference Match</h1><span class="sp"></span><button class="btn" id="ctxBack">← Back to ${back}</button></div>
+      <div class="simbanner">SIMULATED. In the plug-in you choose a local song file you have the right to use (WAV, AIFF, FLAC, Ogg Vorbis or MP3; M4A on macOS). It is analysed off the audio thread and GlitchKid proposes small changes to three EQ gains only (at most 3 dB per move, 6 dB in total, presence at most +4 dB). Confidence is never “high” for a full mix.</div>
+      <div class="row" style="align-items:center;margin-bottom:10px"><button class="btn" disabled data-help="Choosing a file is not simulated in this prototype.">Choose reference file…</button><button class="btn pri" id="refShow">${refShown?'Example shown':'Show example proposal'}</button></div>
+      ${refShown?`<p style="margin:0 0 8px;font-size:var(--t-body)"><b>Confidence: medium</b> <span style="color:var(--dim)">(a full mix is never rated higher)</span></p>
+      ${rows.map((r,i)=>`<div class="sugg"><input type="checkbox" data-rf="${i}" checked aria-label="Apply ${r[0]}"><b>${r[0]}</b><span class="vals">${fmt(r[1])} → ${fmt(r[1],r[2])}</span><span class="why">${r[3]}</span></div>`).join('')}
+      <div class="row" style="align-items:center"><button class="btn pri" id="refApply"${refApplied?' disabled':''}>Apply selected</button><span class="note" style="margin:0">${refApplied?'Applied. Undo restores your sound.':'Nothing changes until you apply.'}</span></div>`:''}`;
+    $('ctxBack').onclick=()=>{ui.ctx=null;render();};
+    $('refShow').onclick=()=>{refShown=true;refApplied=false;$('refStatus').textContent='example-song.wav (simulated)';render();};
+    const ap=$('refApply');if(ap)ap.onclick=()=>{undo={state:{...S},name:presetName,baseline:{...baseline}};v.querySelectorAll('[data-rf]').forEach(c=>{if(c.checked){const r=rows[+c.dataset.rf];S[r[1]]=r[2];}});refApplied=true;if(proposal)markStale();render();flash('Reference EQ applied (simulated). Undo puts it back.');};
+  }
+}
+
+/* ============================================================================================
+   11. Preset browser (concept for the EXISTING presets).
+   ============================================================================================ */
+function renderBrowser(){
+  const b=$('browser');b.classList.add('show');const sel=ui.browserSel;
+  const item=i=>`<button class="bi${sel===i?' sel':''}" data-bi="${i}">${i<0?'Factory Default':PROFILES[i].n}<small>${i<0?'Every control at its default':PROFILES[i].t}</small></button>`;
+  const det=sel<0?{n:'Factory Default',t:'Every control at its default',d:'A neutral start: every effect off, EQ flat, compressor at 1:1.',s:'All 69 parameters at their defaults.',h:'Use it to start from scratch.',o:{}}:PROFILES[sel];
+  const mods=Object.keys(det.o).map(k=>k.split('_')[0]).filter((v,i,a)=>a.indexOf(v)===i).map(k=>({eq:'EQ',comp:'Compressor',sat:'Saturation',echo:'Echo',dim:'Dimension',dbl:'Doubler'})[k]).filter(Boolean);
+  b.innerHTML=`<div class="br"><div class="brl"><h4>START</h4>${item(-1)}<h4>STARTING PROFILES <em>(groups proposed)</em></h4>${BROWSE_GROUPS.map(([g,ix])=>`<h4 style="letter-spacing:.04em;margin-top:8px">${g}</h4>${ix.map(item).join('')}`).join('')}
+     <h4>YOUR PRESETS</h4><div class="note" style="padding:0 9px">Saved presets are listed here (files in the plug-in's user preset folder). Not simulated.</div></div>
+    <div class="brd"><h2>${det.n}</h2><div class="tag">${det.t}</div><p>${det.d}</p><p style="color:var(--text)">${det.s}</p><p>${det.h}</p>
+      <div class="chipsro">${mods.map(m=>`<span>${m}</span>`).join('')}</div>
+      <p class="note">Loading keeps your tuning (on/off, key, scale, strength, speed), Gain, Mix, Air Lab, Clean and the limiter. Undo brings the previous sound back. These descriptions are the plug-in's own texts; none of the presets has been listening-tested on real vocals yet.</p>
+      <div class="row"><button class="btn pri" id="brLoad">Load ${det.n}</button><button class="btn" id="brSave" data-help="Save the current sound as your own preset (asks before replacing one). Not simulated in this prototype.">Save current sound as preset…</button><button class="btn" id="brClose">Close</button></div></div></div><div class="brclose" id="brOutside"></div>`;
+  b.querySelectorAll('[data-bi]').forEach(x=>{x.onclick=()=>{ui.browserSel=+x.dataset.bi;renderBrowser();};x.ondblclick=()=>{ui.browserSel=+x.dataset.bi;$('brLoad').click();};});
+  $('brLoad').onclick=()=>{b.classList.remove('show');sel<0?loadFactoryDefault():loadProfile(sel);};
+  $('brClose').onclick=$('brOutside').onclick=()=>b.classList.remove('show');
+  $('brSave').onclick=()=>flash('Saving a preset is not simulated (the plug-in saves user presets as files).');
+}
+$('pOpen').onclick=()=>{ui.browserSel=Math.max(-1,PROFILES.findIndex(p=>p.n===presetName));renderBrowser();};
+
+/* ============================================================================================
+   12. Build My Mix — review first (prototype logic modelled on automode::buildMix).
+   Engine facts used: target = Factory Default with the profile's overrides; the 22 KEEP parameters and Bypass are never changed;
+   intensity scales echo_mix, dim_mix, dbl_amount and sat_drive (100 % = as saved, 0 % = half); Mutation, Harmony and Stutter are
+   switched off and Formant set to 0; `changes` lists only parameters that differ, each with a reason.
+   SIMULATED: the vocal measurements behind the "fitted" changes.
+   ============================================================================================ */
+const AMOUNT_IDS=["echo_mix","dim_mix","dbl_amount","sat_drive"];
+const LAB_GROUPS=["mut","harm","stutter","formant"];
+const groupOf=id=>id.startsWith('eq_')?id.split('_').slice(0,2).join('_'):id.split('_')[0];
+const GROUP_NAME={eq_lo:'EQ — low shelf',eq_b1:'EQ — body bell',eq_b2:'EQ — presence bell',eq_hi:'EQ — air shelf',comp:'Compressor',sat:'Saturation',echo:'Echo',dim:'Dimension',dbl:'Doubler',mut:'Mutation',harm:'Harmony',stutter:'Stutter',formant:'Formant'};
+function computeProposal(){
+  const dir=PROFILES[bmmDir],k=bmmIntensity/100,snap={...S},target={...S},why={};
+  IDS.forEach(id=>{if(!KEEP.includes(id))target[id]=P[id].def;});
+  Object.assign(target,dir.o);
+  AMOUNT_IDS.forEach(id=>target[id]=target[id]*(0.5+0.5*k));
+  target.comp_thresh=Math.max(-60,target.comp_thresh-2);why.comp_thresh='Your vocal is −21.4 dB, so the compressor threshold moved −2.0 dB to compress about as much as the profile intends. (simulated measurement)';
+  target.comp_makeup=Math.max(0,target.comp_makeup-1);why.comp_makeup='Your peaks are at −3.1 dB: makeup gain reduced by 1.0 dB to keep headroom. (simulated measurement)';
+  ['mut_on','harm_on','stutter_on'].forEach(id=>{if(on(id)){target[id]=0;why[id]='Not part of the vocal mix any more: switched off (Undo brings it back).';}});
+  if(Math.abs(S.formant_shift)>0.05){target.formant_shift=0;why.formant_shift='Not part of the vocal mix any more: set back to 0 (Undo brings it back).';}
+  const changes=IDS.filter(id=>!KEEP.includes(id)&&Math.abs(target[id]-S[id])>1e-6).map(id=>({id,from:S[id],to:target[id],reason:why[id]||('From the '+dir.n+' profile.')}));
+  changes.forEach(c=>{c.sel=true;c.stale=false;});
+  const groups={};changes.forEach(c=>{const g=groupOf(c.id);(groups[g]=groups[g]||{g,name:GROUP_NAME[g]||g,changes:[]}).changes.push(c);});
+  Object.values(groups).forEach(gr=>gr.cat=LAB_GROUPS.includes(gr.g)?'lab':gr.changes.some(c=>why[c.id])?'fit':'dir');
+  proposal={dir:dir.n,snap,groups:Object.values(groups),staleAny:false};
+}
+function markStale(){
+  if(!proposal)return;let any=false;
+  proposal.groups.forEach(g=>g.changes.forEach(c=>{const st=Math.abs(S[c.id]-proposal.snap[c.id])>1e-6;if(st&&!c.stale){c.stale=true;c.sel=false;}any=any||c.stale;}));
+  proposal.staleAny=any||!same(S,proposal.snap);
+}
+function closeBmm(reason){if($('bmm').classList.contains('show')&&proposal&&reason)setTimeout(()=>flash(reason),0);$('bmm').classList.remove('show');proposal=null;bmmStep=0;}
+const describe=c=>{const p=P[c.id],g=GROUP_NAME[groupOf(c.id)]||c.id;
+  if(p.type==='bool')return 'Switch '+g+(c.to>=0.5?' on':' off');
+  if(c.id.startsWith('eq_'))return g+': '+(c.id.endsWith('_gain')?'gain':c.id.endsWith('_freq')?'frequency':'Q');
+  return g+': '+p.label.toLowerCase();};
+function groupBlock(g){
+  const gi=proposal.groups.indexOf(g),n=g.changes.filter(c=>c.sel).length,all=n===g.changes.length;
+  const rows=g.changes.map((c,ci)=>'<div class="chg'+(c.sel?'':' off')+(c.stale?' stale':'')+'"><input type="checkbox" data-ch="'+gi+':'+ci+'"'+(c.sel?' checked':'')+' aria-label="Apply: '+describe(c)+'">'+
+    '<span class="nm">'+describe(c)+'<code>'+c.id+'</code></span><span class="cur" title="Current (active now)">'+fmt(c.id,S[c.id])+'</span><span class="arr" aria-hidden="true">→</span><span class="pro" title="Proposed (not applied)">'+fmt(c.id,c.to)+'</span>'+
+    '<span class="r">'+(c.stale?'You changed this after the proposal (it was '+fmt(c.id,c.from)+'). Unticked; tick to overwrite your value. ':'')+c.reason+'</span></div>').join('');
+  return '<div class="grow"><div class="gt"><input type="checkbox" data-gall="'+gi+'"'+(all?' checked':'')+' aria-label="Select all '+g.name+' changes"><b>'+g.name+'</b><span class="sum">'+n+' of '+g.changes.length+' selected</span></div>'+
+    '<div class="chghead"><span></span><span>Setting</span><span class="c">Current</span><span></span><span>Proposed</span></div><div class="chgs">'+rows+'</div></div>';
+}
+function catBlock(k,t,s){const gs=proposal.groups.filter(g=>g.cat===k);
+  if(!gs.length)return k==='lab'?'<div class="cat">'+t+'<small>'+s+'</small></div><p class="note" style="margin:0 0 6px">No Lab effect is on, so there is nothing to switch off.</p>':'';
+  return '<div class="cat">'+t+'<small>'+s+'</small></div>'+gs.map(groupBlock).join('');}
+function renderBmm(){
+  const b=$('bmm');b.classList.add('show');
+  const steps=['1 Direction','2 Listen','3 Review','4 Applied'].map((s,i)=>`<span class="${i===bmmStep?'on':i<bmmStep?'done':''}">${s}</span>`).join('');
+  let body='',foot='';
+  if(bmmStep===0){
+    body=`<p class="note" style="margin-top:0">Choose the direction. Your tuning, Gain, Mix, Air Lab, Clean and limiter are never changed by a build.</p><div class="dirs">${PROFILES.map((p,i)=>`<button class="${i===bmmDir?'on':''}" data-dir="${i}"><b>${p.n}</b><span>${p.t}</span></button>`).join('')}</div>
+      <div class="mac" style="margin-top:12px" data-help="Mix intensity: how much of the direction's effect amounts (echo mix, Dimension mix, Doubler amount, saturation) is used. 100 % = as saved, 0 % = half."><b>Intensity</b><input type="range" min="0" max="100" value="${bmmIntensity}" id="bmmInt" aria-label="Intensity"><span>${bmmIntensity}%</span></div>`;
+    foot=`<button class="btn" id="bmmCancel">Cancel</button><span class="sp"></span><button class="btn pri" id="bmmNext">Next: listen →</button>`;
+  }
+  if(bmmStep===1){
+    body=`<p style="font-size:var(--t-body);line-height:1.5;margin-top:0">In the plug-in: press play in your host and let GlitchKid hear your vocal for a few seconds (about 2 s of singing or rapping are needed). If the beat is on the Instrumental input it is measured too. If too little is heard, nothing is fitted and it says so.</p>
+      <div class="simbanner">SIMULATED: no audio is analysed in this page. The next step shows a proposal built from the real profile values plus two example "fitted" changes.</div>`;
+    foot=`<button class="btn" id="bmmBack">← Back</button><button class="btn" id="bmmCancel">Cancel</button><span class="sp"></span><button class="btn pri" id="bmmListen">Simulate listening</button>`;
+  }
+  if(bmmStep===2&&proposal){
+    const cats=[['fit','FITTED TO YOUR VOCAL','changed because of what was measured'],['dir','FROM THE DIRECTION','the '+proposal.dir+' profile as saved'],['lab','LAB EFFECTS','proposed off by default; untick to keep them']];
+    const all=proposal.groups.flatMap(g=>g.changes),n=all.filter(c=>c.sel).length;
+    body=`${proposal.staleAny?`<div class="stalebar">You changed the sound after this proposal was made. Those rows are unticked and marked; your values are kept unless you tick them.<span class="sp"></span><button class="btn sm" id="bmmRebuild">Rebuild</button></div>`:''}
+      <div class="simbanner" style="margin-bottom:8px">Nothing has changed yet. <b>Current</b> = what is active now; <b>Proposed</b> = what Apply would set. Only ticked rows are applied; an unticked row keeps its current value.</div>
+      <div class="row" style="align-items:center;gap:8px;flex-wrap:nowrap"><span class="note" style="margin:0">${proposal.dir} · ${bmmIntensity}% · vocal only · ${n} of ${all.length} selected</span><span class="sp"></span><button class="btn sm" id="bmmAll">Select all</button><button class="btn sm" id="bmmNone">None</button></div>
+      ${cats.map(([k,t,s])=>catBlock(k,t,s)).join('')}
+      <p class="note">Tuning, key, scale, Gain, Mix, Air Lab, Clean and the limiter are never part of a build. An unticked switch with a ticked amount is allowed: the amount is stored but stays inaudible while the effect is off.</p>`;
+    foot=`<button class="btn" id="bmmCancel" data-help="Close without changing anything.">Cancel — keep my sound</button><span class="sp"></span><button class="btn pri" id="bmmApply" ${n?'':'disabled'}>Apply ${n} selected change${n===1?'':'s'}</button>`;
+  }
+  if(bmmStep===3){
+    body=`<p style="font-size:var(--t-body);line-height:1.5;margin-top:0">Applied. The preset now reads <b>${presetName}</b>${isModified()?' with the <span style="color:var(--pink)">● modified</span> mark, because not every proposed change was applied':''}. <b>Undo</b> in the top bar restores the exact sound you had before.</p>`;
+    foot=`<span class="sp"></span><button class="btn pri" id="bmmDone">Done</button>`;
+  }
+  b.innerHTML=`<div class="bh"><div class="row" style="align-items:center"><h2>Build My Mix</h2><button class="bclose" id="bmmX" aria-label="Close without changing anything" data-help="Close without changing anything.">×</button></div><div class="steps">${steps}</div></div><div class="bb">${body}</div><div class="bf">${foot}</div>`;
+  const q=id=>b.querySelector('#'+id),onc=(id,f)=>{const e=q(id);if(e)e.onclick=f;};
+  b.querySelectorAll('[data-dir]').forEach(x=>x.onclick=()=>{bmmDir=+x.dataset.dir;renderBmm();});
+  const r=q('bmmInt');if(r)r.oninput=()=>{bmmIntensity=+r.value;r.nextElementSibling.textContent=bmmIntensity+'%';};
+  onc('bmmNext',()=>{bmmStep=1;renderBmm();});onc('bmmBack',()=>{bmmStep=0;renderBmm();});
+  onc('bmmListen',()=>{computeProposal();bmmStep=2;renderBmm();});
+  onc('bmmCancel',()=>{$('bmm').classList.remove('show');proposal=null;bmmStep=0;flash('Build cancelled: nothing changed.');});
+  onc('bmmDone',()=>{$('bmm').classList.remove('show');bmmStep=0;});
+  onc('bmmRebuild',()=>{computeProposal();renderBmm();flash('Proposal rebuilt from your current sound.');});
+  const keepScroll=f=>{const bb=b.querySelector('.bb'),y=bb?bb.scrollTop:0;f();renderBmm();const nb=b.querySelector('.bb');if(nb)nb.scrollTop=y;};
+  onc('bmmAll',()=>keepScroll(()=>proposal.groups.forEach(g=>g.changes.forEach(c=>c.sel=true))));
+  onc('bmmNone',()=>keepScroll(()=>proposal.groups.forEach(g=>g.changes.forEach(c=>c.sel=false))));
+  b.querySelectorAll('[data-ch]').forEach(x=>x.onchange=()=>keepScroll(()=>{const[g,i]=x.dataset.ch.split(':').map(Number);proposal.groups[g].changes[i].sel=x.checked;}));
+  b.querySelectorAll('[data-gall]').forEach(x=>x.onchange=()=>keepScroll(()=>proposal.groups[+x.dataset.gall].changes.forEach(c=>c.sel=x.checked)));
+  onc('bmmX',()=>{$('bmm').classList.remove('show');proposal=null;bmmStep=0;flash('Build My Mix closed: nothing changed.');});
+  onc('bmmApply',()=>{
+    const before={...S};
+    undo={state:before,name:presetName,baseline:{...baseline}};
+    proposal.groups.forEach(g=>g.changes.forEach(c=>{if(c.sel)S[c.id]=c.to;}));
+    presetName='Built: '+proposal.dir;
+    // identity baseline = the live state with EVERY proposed change applied: a partial apply therefore reads as "modified"
+    baseline={...S};proposal.groups.forEach(g=>g.changes.forEach(c=>baseline[c.id]=c.to));
+    proposal=null;bmmStep=3;render();});
+}
+$('bmmOpen').onclick=()=>{bmmStep=0;proposal=null;renderBmm();};
+
+/* ============================================================================================
+   13. Review toolbar: scale, signal mode, reset.
+   ============================================================================================ */
+let scale=1;
+function applyScale(){$('plugin').style.transform=`scale(${scale})`;const s=$('scaler');s.style.width=(1120*scale)+'px';s.style.height=(680*scale)+'px';
+  document.querySelectorAll('[data-scale]').forEach(b=>b.classList.toggle('on',+b.dataset.scale===scale));}
+document.querySelectorAll('[data-scale]').forEach(b=>b.onclick=()=>{scale=+b.dataset.scale;applyScale();});
+document.querySelectorAll('[data-sig]').forEach(b=>b.onclick=()=>{sigMode=b.dataset.sig;document.querySelectorAll('[data-sig]').forEach(x=>x.classList.toggle('on',x===b));render();});
+$('resetProto').onclick=()=>{$('bmm').classList.remove('show');$('confirm').classList.remove('show');$('browser').classList.remove('show');initialState();beatShown=beatApplied=refShown=refApplied=false;$('beatStatus').textContent='Not connected';$('refStatus').textContent='No file loaded';clearTimeout(msgTimer);$('msg').textContent='';render();};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){$('orderPop').classList.remove('show');$('browser').classList.remove('show');$('confirm').classList.remove('show');}});
+
+/* knob cap gradient, shared by every SVG knob */
+document.body.insertAdjacentHTML('beforeend','<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><radialGradient id="cap" cx="40%" cy="30%" r="80%"><stop offset="0" stop-color="#3a3346"/><stop offset="1" stop-color="#16131c"/></radialGradient></defs></svg>');
+initialState();renderOrder();applyScale();render();
+</script>
+</body>
+</html>
