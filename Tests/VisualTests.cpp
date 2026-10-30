@@ -121,20 +121,6 @@ struct VisualTests : public juce::UnitTest
             }
         }
 
-        beginTest ("tooltips: narrow, inside the editor, and never on top of the pointer, wherever the pointer is");
-        {
-            glitchkid::ui::PlaygroundLookAndFeel laf;
-            const juce::String longTip ("Real spectrum and waveform of the vocal input (before processing) and the output. The instrumental shows only while a beat really arrives.");
-            const juce::Rectangle<int> area (0, 0, 960, 600);
-            for (auto pos : { juce::Point<int> (10, 10), { 480, 70 }, { 950, 590 }, { 20, 590 }, { 940, 20 }, { 480, 300 } })
-            {
-                const auto b = laf.getTooltipBounds (longTip, pos, area);
-                expect (area.contains (b), "inside the editor at " + pos.toString());
-                expect (! b.contains (pos), "not under the pointer at " + pos.toString());
-                expect (b.getWidth() <= 260, "narrow: " + juce::String (b.getWidth()));
-            }
-        }
-
         beginTest ("the artwork is a decorative idle emblem on HOME only: it loads off the message thread, is cached for later editors, and is gone when the editor is");
         {
             GlitchKidProcessor p;

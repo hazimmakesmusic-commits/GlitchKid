@@ -3,6 +3,7 @@
 #include "../Source/DSP/ParametricEq.h"
 
 #include "TestHelpers.h"
+#include "GlitchKidBuildStamp.h"
 
 
 struct GlitchKidTests : public juce::UnitTest
@@ -316,9 +317,29 @@ struct ParametricEqTests : public juce::UnitTest
 static ParametricEqTests parametricEqTests;
 
 
+#if defined (__GNUC__) || defined (__clang__)
+__attribute__ ((noinline))
+#endif
+static float mulSubProbe (float a, float b, float c) { return a * b - c; }
+
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
+    // which source and which numeric rules built this executable (a report can be matched to a checkout, and a stale incremental build is easy to spot)
+    {
+        volatile float a = 0.1f, b = 120.0f, c = 12.0f;
+        const bool fused = mulSubProbe (a, b, c) != 0.0f; // true only if the compiler fused the multiply and the add (0.1f*120-12 is exactly 0 unfused)
+        std::printf ("GlitchKid tests: base commit %s; working tree: %s\n", GLITCHKID_BUILD_BASE, GLITCHKID_BUILD_TREE);
+        std::printf ("GlitchKid tests: built for %s; multiply-add fusion in this build: %s\n",
+                    #if defined (__aarch64__) || defined (__arm64__)
+                     "arm64",
+                    #elif defined (__x86_64__)
+                     "x86_64",
+                    #else
+                     "an unrecognised cpu",
+                    #endif
+                     fused ? "YES (unexpected: -ffp-contract=off is not in effect)" : "no (as intended)");
+    }
     juce::UnitTestRunner runner;
     runner.setAssertOnFailure (false);
     // GLITCHKID_TEST_ONLY=<text> runs only the test groups whose name contains the text (for quick measurements); without it everything runs.

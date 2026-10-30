@@ -50,10 +50,10 @@ private:
     juce::AudioProcessorValueTreeState::SliderAttachment attachment;
 };
 
-// The Experimental Lab interface: five focused workspaces (HOME, CLEAN LAB, BEAT LOCK, BUILD MY VOCAL MIX, FINAL TOUCH) reached from a persistent, compact
-// navigation bar, so any workspace can be revisited at any time and moving between them never changes the sound. The bar also holds the real vocal / output
-// status, DRY | PROCESSED, UNDO and MOTION; the real processing chain and the preset bar are always shown. HOME is built around a real-time spectrum and
-// waveform of the audio the plug-in actually receives and returns.
+// The Vocal Lab interface: a signal rail on the left lists the workspaces in the order a vocal is worked (START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, BEAT,
+// REFERENCE); a dot on a rail row shows a stage that is really changing the sound. Any workspace can be opened at any time and moving between them never changes
+// the sound. The header names the workspace and holds the real DRY | PROCESSED switch, UNDO and MOTION; the info line above the preset and A/B bar shows what the control
+// under the pointer does. START is built around a real-time spectrum and waveform of the audio the plug-in actually receives and returns.
 class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
@@ -68,15 +68,24 @@ public:
     glitchkid::ui::ReferencePanel& uiReferencePanelForTest() { return *referencePanel; }
     bool uiCanUndoForTest() const { return undo.valid; }
     int uiPageForTest() const { return (int) page; }
-    juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < 6 ? navButtons[index].getBounds() : index == 6 ? dryButton.getBounds() : motionButton.getBounds(); } // 0-5 the tabs, 6 DRY, 7 MOTION
+    juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < numRail ? navButtons[index].getBounds() : index == numRail ? dryButton.getBounds() : motionButton.getBounds(); } // 0-8 the rail, 9 DRY, 10 MOTION
+    juce::String uiHelpTextForTest() const { return infoLabel.getText(); }
+    void uiHoverForTest (juce::Component* c) { updateHelp (c); }
+    int uiRailIndexForTest() const { return railIndex(); }
+    juce::String uiNextStepForTest() const { return homeNext.getText(); }
+    void uiSelectRailForTest (int i) { selectRail (i); }
+    bool uiRailDotForTest (int index) const { return (int) navButtons[index].getProperties().getWithDefault ("led", 0) == 2; }
     void uiUndoForTest() { backToMine(); }
     bool uiVisualTimerRunningForTest() const { return visualTimer.isTimerRunning(); }
     bool uiTransitionRunningForTest() const { return transition < 1.0f; }
     void paintOverChildren (juce::Graphics&) override;
 
 private:
-    // Layout size; the window scales it to fit. Every control that is not part of the current page is hidden.
-    static constexpr int designW = 960, designH = 600;
+    // Layout size; the window scales it to fit. The signal rail takes the left railW pixels; a workspace is laid out in the 960-wide area beside it, from y = pageTop.
+    // Every control that is not part of the current workspace is hidden.
+    static constexpr int railW = 168, pageW = 960, designW = railW + pageW, designH = 600;
+    static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
+    static constexpr int numRail = 9; // the rail: START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, BEAT, REFERENCE
     enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;
@@ -90,9 +99,19 @@ private:
     void showCategory (int, bool remember);
     std::vector<juce::Rectangle<int>> panelRects;
     void timerCallback() override;
-    void refreshState (float peak, float outPeak);
+    void refreshState (float peak);
     void setBypassFromUi (bool bypassed);
-    juce::TooltipWindow tooltipWindow { this, 800 }; // the controls' tooltips need one to be shown at all (800 ms: still there when you pause on a control, but not flashing up while the pointer travels across the chain and controls)
+    // Help appears in the fixed info line above the preset bar while the pointer rests on a control; nothing floats over the controls.
+    juce::Label infoLabel;
+    void updateHelp (juce::Component*);
+    void refreshInfoLine();
+    void mouseEnter (const juce::MouseEvent& e) override { updateHelp (e.eventComponent); }
+    void mouseExit (const juce::MouseEvent&) override { updateHelp (nullptr); }
+    juce::String hoverHelp, legacyEffects;
+    int railIndex() const;
+    void selectRail (int);
+    void syncRail();
+    juce::Label railNote;
 
     // The spectrum and waveform refresh on their own ~60 Hz timer, running only while a view that needs them (or a workspace transition) is visible; the 30 Hz
     // timer keeps the state and the meters. A transition is a brief scan-line wipe (MOTION on); the new workspace is fully drawn and usable from the first frame.
@@ -109,12 +128,10 @@ private:
     bool needsDisplays() const;
     void repaintTransitionBand (float t);
 
-    juce::TextButton categoryButtons[numCategories];
-    juce::TextButton navButtons[6], undoButton { "UNDO" };
-    juce::TextButton finalButton { "FINAL TOUCH  >" }, backButton { "<  BACK TO BUILD" };
-    juce::TextButton motionButton, resetButton { "RESET" }, savePresetButton { "SAVE PRESET" };
+    juce::TextButton navButtons[numRail], undoButton { "UNDO" };
+    juce::TextButton finalButton { "FINAL TOUCH  >" };
+    juce::TextButton motionButton, resetButton { "RESET" };
     glitchkid::ui::ScopeStrip scope;
-    glitchkid::ui::ChainStrip chain;
     juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" };
     juce::String shownCompareText;
     float inPeakShown = 0.0f, outPeakShown = 0.0f;
@@ -216,7 +233,8 @@ private:
     // ---- HOME / SESSION and the persistent bar ----
     glitchkid::ui::WorkspaceTile tiles[4];
     glitchkid::ui::LabHeading homeTitle { "SESSION", 15.0f }, homeSource { "REAL-TIME SIGNAL", 11.0f, glitchkid::ui::textDim };
-    juce::Label homeHint;
+    juce::Label homeHint, homeNext;
+    int shownNextTile = -2; // the START tile that is emphasised as the next step (-1 = none)
     glitchkid::ui::SpectrumView homeView, beatView;
     std::unique_ptr<glitchkid::ui::ReferencePanel> referencePanel; // the REFERENCE workspace; created after the processor-bound members, destroyed first
     glitchkid::ui::GlitchRelicLoader relicLoader; // declared after the views it feeds; stopped first in the destructor

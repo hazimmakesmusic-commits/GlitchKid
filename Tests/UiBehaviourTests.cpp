@@ -50,8 +50,7 @@ void collectInteractive (juce::Component& content, juce::Component& root, std::v
         if (c->isVisible())
         {
             const bool interactive = dynamic_cast<juce::Button*> (c) != nullptr || dynamic_cast<juce::Slider*> (c) != nullptr || dynamic_cast<juce::ComboBox*> (c) != nullptr
-                                     || dynamic_cast<glitchkid::ui::SpectrumView*> (c) != nullptr || dynamic_cast<glitchkid::ui::EqGraph*> (c) != nullptr
-                                     || dynamic_cast<glitchkid::ui::ChainStrip*> (c) != nullptr;
+                                     || dynamic_cast<glitchkid::ui::SpectrumView*> (c) != nullptr || dynamic_cast<glitchkid::ui::EqGraph*> (c) != nullptr;
             if (interactive)
                 out.push_back (c);
             else

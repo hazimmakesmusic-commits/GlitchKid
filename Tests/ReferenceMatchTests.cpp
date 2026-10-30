@@ -552,20 +552,22 @@ struct ReferenceUiTests : public juce::UnitTest
             expectEquals (p.getParameters().size(), 69);
         }
 
-        beginTest ("the six tabs fit in the bar without touching each other or DRY, at every window size");
+        beginTest ("the nine rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
         {
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
             for (int size : { 70, 100, 150 })
             {
-                ed->setSize (960 * size / 100, 600 * size / 100);
-                for (int i = 0; i < 6; ++i)
+                ed->setSize (1128 * size / 100, 600 * size / 100);
+                for (int i = 0; i < 8; ++i)
                 {
                     const auto a = ed->uiBarButtonBoundsForTest (i), next = ed->uiBarButtonBoundsForTest (i + 1);
-                    expect (a.getRight() < next.getX(), "tab " + juce::String (i) + " ends before the next control");
-                    expect (a.getWidth() >= 54, "tab wide enough");
+                    expect (a.getBottom() <= next.getY(), "rail row " + juce::String (i) + " ends before the next row");
+                    expect (a.getWidth() >= 140 && a.getHeight() >= 28, "rail row wide and tall enough");
                 }
+                expect (! ed->uiBarButtonBoundsForTest (8).intersects (ed->uiBarButtonBoundsForTest (9)), "the rail never reaches the header controls");
+                expect (ed->uiBarButtonBoundsForTest (9).getRight() < ed->uiBarButtonBoundsForTest (10).getX(), "DRY ends before MOTION");
             }
         }
 

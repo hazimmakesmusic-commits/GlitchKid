@@ -2,6 +2,8 @@
 
 An underground cyberpunk sound laboratory on near-black, using the locked palette only: Void Black `#08060D`, Deep Graphite `#15111B`, Ultraviolet `#C026FF` (selection, focus, the main action, the vocal), Cyber Pink `#FF3DAE` (real processing activity, the output, the tuned-to note, success), Pale Chrome `#E8DDF2`, Muted Lavender Grey `#9B91A5`, Divider Violet `#392044` (red only for clipping or an error). No pixel or retro-game styling, no level select, no mascot or character, no RPG or XP idea, no blue/cyan accent. Bold, tracked-out capitals for titles and technical labels (Inter Bold), plain Inter for values and descriptions; chamfered, sharp panels; a restrained neon glow; thin header scanlines; a very short horizontal glitch when a workspace opens (MOTION off removes it and every travelling animation; meters and the display still update).
 
+**Superseded navigation: see `docs/UI_REIMAGINATION.md` (signal rail, header, info line; 1128 x 600).** The text below describes the earlier tab layout.
+
 One fixed 960 x 600 layout, scaled to fit (resizable 60 %-150 %, aspect kept). Always shown: the navigation and status bar, the processing chain and the preset bar (`<` `>`, preset menu, SAVE, DELETE, status, A/B). The last workspace and FINAL TOUCH category are remembered in the session (`uiLevel` 0-4, `uiCategory` 0-3, `uiCleanAdv`); a first launch opens HOME. Every control that is not on the current workspace is hidden (`GlitchKidEditor::layoutContent()`). Opening, closing or resizing a workspace never changes a parameter (tested).
 
 ## Navigation and status bar

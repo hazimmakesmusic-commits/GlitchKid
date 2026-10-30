@@ -343,7 +343,7 @@ const char* const eqNames[4] = { "LOW", "BODY", "PRESENCE", "AIR" };
 
 EqGraph::EqGraph (juce::AudioProcessorValueTreeState& a, std::function<double()> sr) : apvts (a), sampleRate (std::move (sr))
 {
-    setTooltip ("The EQ response, calculated from your four EQ bands. Drag a point to change its frequency and gain, use the mouse wheel to change a bell's Q, double-click a point to flatten it. There is no live spectrum.");
+    setTooltip ("The EQ response, calculated from your four EQ bands. Drag a point to change its frequency and gain, use the mouse wheel to change a bell's Q, double-click a point to flatten it. The curve is calculated from your settings; the shaded area behind it is the vocal's real spectrum while audio plays.");
 }
 
 void EqGraph::setSelectedBand (int b)
@@ -721,133 +721,6 @@ void EqGraph::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
     refresh();
 }
 
-// ---- ChainStrip ------------------------------------------------------------------------------------------------------------------------
-
-namespace
-{
-const char* const nodeNames[6] = { "INPUT", "TUNE", "TONE", "DYNAMICS", "SPACE", "OUTPUT" };
-}
-
-juce::Rectangle<int> ChainStrip::nodeBounds (int node) const
-{
-    const int gap = 30, w = (getWidth() - 5 * gap) / 6;
-    return { node * (w + gap), 0, w, getHeight() - 14 }; // the strip below is room for the hidden-effects note
-}
-
-int ChainStrip::nodeAt (juce::Point<int> p) const
-{
-    for (int i = 0; i < 6; ++i)
-        if (nodeBounds (i).contains (p))
-            return i;
-    return -1;
-}
-
-void ChainStrip::setState (const std::array<bool, numStages>& a, float inPeak, float outPeak, int sel, bool m, const juce::String& legacyNote)
-{
-    // levels fall smoothly (about 45 dB/s) so the bar is readable at 30 Hz
-    auto fall = [] (float shown, float peak) { const float t = peakToLevel (peak); return t > shown ? t : juce::jmax (t, shown - 0.025f); };
-    const float newIn = fall (inLevel, inPeak), newOut = fall (outLevel, outPeak);
-    const bool changed = a != active || sel != selected || m != motion || legacyNote != legacy || std::abs (newIn - inLevel) > 0.004f || std::abs (newOut - outLevel) > 0.004f;
-    active = a;
-    selected = sel;
-    motion = m;
-    legacy = legacyNote;
-    inLevel = newIn;
-    outLevel = newOut;
-    signalPresent = inLevel > 0.05f;
-    setTooltip (legacy.isNotEmpty() ? "Hidden effects from an older session are still switched on: " + legacy + ". BUILD MY VOCAL MIX switches them off."
-                                    : "The signal path. A lit dot means the stage is active. Click a stage to open it.");
-    if (changed)
-        repaint();
-}
-
-void ChainStrip::tick (float dt)
-{
-    if (motion && signalPresent)
-    {
-        phase = std::fmod (phase + dt * 0.7f, 1.0f);
-        repaint();
-    }
-}
-
-void ChainStrip::mouseMove (const juce::MouseEvent& e)
-{
-    const int n = nodeAt (e.getPosition());
-    setMouseCursor (n >= 1 && n <= numStages ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-}
-
-void ChainStrip::mouseUp (const juce::MouseEvent& e)
-{
-    const int n = nodeAt (e.getPosition());
-    if (n >= 1 && n <= numStages && onStage != nullptr && e.getDistanceFromDragStart() < 5)
-        onStage (n - 1);
-}
-
-void ChainStrip::paint (juce::Graphics& g)
-{
-    // connecting line with arrow heads
-    const float cy = (float) (getHeight() - 14) * 0.5f;
-    g.setColour (border.brighter (0.2f));
-    for (int i = 0; i < 5; ++i)
-    {
-        const auto a = nodeBounds (i), b = nodeBounds (i + 1);
-        const float x0 = (float) a.getRight() + 3.0f, x1 = (float) b.getX() - 3.0f;
-        g.drawLine (x0, cy, x1, cy, 1.0f);
-        g.drawLine (x1 - 4.0f, cy - 3.5f, x1, cy, 1.0f);
-        g.drawLine (x1 - 4.0f, cy + 3.5f, x1, cy, 1.0f);
-    }
-    if (motion && signalPresent) // a real signal is arriving: one small dot travels the path
-    {
-        const float x0 = (float) nodeBounds (0).getCentreX(), x1 = (float) nodeBounds (5).getCentreX();
-        g.setColour (pink.withAlpha (0.9f));
-        g.fillEllipse (x0 + (x1 - x0) * phase - 2.5f, cy - 2.5f, 5.0f, 5.0f);
-    }
-    for (int i = 0; i < 6; ++i)
-    {
-        const auto r = nodeBounds (i).toFloat();
-        const bool stage = i >= 1 && i <= numStages;
-        const bool on = stage && active[(size_t) (i - 1)];
-        const bool sel = stage && selected == i - 1;
-        g.setColour (sel ? violet.withAlpha (0.22f) : panelBottom);
-        g.fillPath (chamferPath (r, 4.0f));
-        g.setColour (sel ? violet : border);
-        g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (sel ? 1.5f : 1.0f));
-        g.setFont (fontOf (12.0f, true));
-        g.setColour (stage && ! on ? textDim : textBright);
-        if (stage)
-        {
-            g.drawText (displayCase (nodeNames[i]), r.withTrimmedLeft (22.0f), juce::Justification::centredLeft, false);
-            const auto dot = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ r.getX() + 12.0f, r.getCentreY() });
-            if (on)
-            {
-                g.setColour (pink); // a lit dot: real stage activity only
-                g.fillEllipse (dot);
-            }
-            else
-            {
-                g.setColour (textDim.withAlpha (0.7f));
-                g.drawEllipse (dot.reduced (0.5f), 1.0f);
-            }
-        }
-        else
-        {
-            g.drawText (displayCase (nodeNames[i]), r.withTrimmedLeft (10.0f).withTrimmedBottom (10.0f), juce::Justification::centredLeft, false);
-            const float level = i == 0 ? inLevel : outLevel;
-            const auto bar = juce::Rectangle<float> (r.getX() + 10.0f, r.getBottom() - 11.0f, r.getWidth() - 20.0f, 4.0f);
-            g.setColour (juce::Colour (0xff0d0d11));
-            g.fillPath (chamferPath (bar, 4.0f));
-            g.setColour (level > 0.98f ? errorRed : violet);
-            g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * level), 2.0f);
-        }
-    }
-    if (legacy.isNotEmpty())
-    {
-        g.setColour (pink);
-        g.setFont (fontOf (10.5f, true));
-        g.drawText ("OLDER-SESSION EFFECTS STILL ON: " + legacy, juce::Rectangle<float> (0.0f, (float) getHeight() - 13.0f, (float) getWidth(), 13.0f), juce::Justification::centredRight, false);
-    }
-}
-
 // ---- PlaygroundLookAndFeel -------------------------------------------------------------------------------------------------------------
 
 PlaygroundLookAndFeel::PlaygroundLookAndFeel()
@@ -865,51 +738,34 @@ PlaygroundLookAndFeel::PlaygroundLookAndFeel()
     setColour (juce::ComboBox::outlineColourId, border.brighter (0.2f));
     setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff1b1921));
     setColour (juce::PopupMenu::highlightedBackgroundColourId, violet);
-    setColour (juce::TooltipWindow::backgroundColourId, juce::Colour (0xff25222d));
-    setColour (juce::TooltipWindow::textColourId, textBright);
-    setColour (juce::TooltipWindow::outlineColourId, border.brighter (0.3f));
-}
-
-namespace
-{
-constexpr float tipMaxWidth = 230.0f;
-juce::TextLayout tipLayout (const juce::String& text, float width)
-{
-    juce::AttributedString a;
-    a.setJustification (juce::Justification::topLeft);
-    a.append (text, fontOf (11.5f, false), textBright);
-    juce::TextLayout t;
-    t.createLayoutWithBalancedLineLengths (a, width);
-    return t;
-}
-}
-
-juce::Rectangle<int> PlaygroundLookAndFeel::getTooltipBounds (const juce::String& tip, juce::Point<int> pos, juce::Rectangle<int> area)
-{
-    const auto layout = tipLayout (tip, tipMaxWidth);
-    const int w = (int) std::ceil (layout.getWidth()) + 16, h = (int) std::ceil (layout.getHeight()) + 12;
-    int x = pos.x + 16, y = pos.y + 24;
-    if (x + w > area.getRight())
-        x = pos.x - w - 8; // no room on the right: beside the pointer on the left
-    if (y + h > area.getBottom())
-        y = pos.y - h - 10; // no room below: above it
-    return juce::Rectangle<int> (x, y, w, h).constrainedWithin (area.reduced (2));
-}
-
-void PlaygroundLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height)
-{
-    const auto r = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
-    g.setColour (findColour (juce::TooltipWindow::backgroundColourId).withAlpha (0.97f));
-    g.fillRect (r);
-    g.setColour (findColour (juce::TooltipWindow::outlineColourId));
-    g.drawRect (r, 1.0f);
-    g.setColour (violet.withAlpha (0.8f)); // a short ultraviolet tick at the corner
-    g.fillRect (0.0f, 0.0f, 10.0f, 2.0f);
-    tipLayout (text, tipMaxWidth).draw (g, r.reduced (8.0f, 6.0f));
 }
 
 void PlaygroundLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool, bool)
 {
+    if ((bool) b.getProperties().getWithDefault ("rail", false))
+    {
+        // a signal-rail row: an optional status dot (1 = stage idle, 2 = stage really processing) and the workspace name
+        const int led = (int) b.getProperties().getWithDefault ("led", 0);
+        const auto r = b.getLocalBounds().toFloat();
+        if (led > 0)
+        {
+            const auto dot = juce::Rectangle<float> (8.0f, 8.0f).withCentre ({ r.getX() + 16.0f, r.getCentreY() });
+            if (led == 2)
+            {
+                g.setColour (neon);
+                g.fillEllipse (dot);
+            }
+            else
+            {
+                g.setColour (textDim.withAlpha (0.7f));
+                g.drawEllipse (dot.reduced (0.5f), 1.0f);
+            }
+        }
+        g.setFont (fontOf (13.0f, true));
+        g.setColour (b.getToggleState() ? textBright : textDim.brighter (0.3f));
+        g.drawText (b.getProperties().getWithDefault ("railText", displayCase (b.getButtonText())).toString(), r.withTrimmedLeft (32.0f), juce::Justification::centredLeft, false);
+        return;
+    }
     g.setFont (getTextButtonFont (b, b.getHeight()));
     g.setColour (b.findColour (b.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId).withMultipliedAlpha (b.isEnabled() ? 1.0f : 0.5f));
     const auto text = (bool) b.getProperties().getWithDefault ("rawText", false) ? b.getButtonText() : displayCase (b.getButtonText());
@@ -955,6 +811,24 @@ juce::Font PlaygroundLookAndFeel::getPopupMenuFont() { return fontOf (14.0f, fal
 
 void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour& bg, bool highlighted, bool down)
 {
+    if ((bool) b.getProperties().getWithDefault ("rail", false))
+    {
+        const auto r = b.getLocalBounds().toFloat();
+        const bool sel = b.getToggleState();
+        if (sel || highlighted || down)
+        {
+            g.setColour ((sel ? panelTop : panelTop.withAlpha (0.55f)).withMultipliedAlpha (down ? 0.8f : 1.0f));
+            g.fillRoundedRectangle (r.reduced (0.0f, 1.0f), 5.0f);
+        }
+        if (sel)
+        {
+            g.setColour (violet);
+            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), r.getY() + 5.0f, 3.0f, r.getHeight() - 10.0f), 1.5f);
+        }
+        if (b.hasKeyboardFocus (true))
+            focusRing (g, r.reduced (1.0f), 5.0f);
+        return;
+    }
     auto r = b.getLocalBounds().toFloat().reduced (1.0f);
     const bool on = b.getToggleState();
     const bool tab = (bool) b.getProperties().getWithDefault ("tab", false);

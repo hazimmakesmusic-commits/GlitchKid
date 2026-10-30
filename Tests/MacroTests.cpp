@@ -396,8 +396,8 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                     return out;
                 };
-                static const char* navNames[5] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH" };
-                auto openLevel = [&] (int level) // 1..4: the real navigation button, from anywhere
+                static const char* navNames[5] = { "START", "CLEAN", "BEAT", "BUILD", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
+                auto openLevel = [&] (int level) // 1..4: the real rail row, from anywhere
                 {
                     click (navNames[level]);
                 };
@@ -408,10 +408,10 @@ struct MacroTests : public juce::UnitTest
                     expectEquals ((int) cards4.size(), 4);
                     if (cards4.size() == 4)
                     {
-                        expectEquals (cards4[0]->getTitle(), juce::String ("CLEAN LAB"));
-                        expectEquals (cards4[1]->getTitle(), juce::String ("BEAT LOCK"));
-                        expectEquals (cards4[2]->getTitle(), juce::String ("BUILD MY VOCAL MIX"));
-                        expectEquals (cards4[3]->getTitle(), juce::String ("FINAL TOUCH"));
+                        expectEquals (cards4[0]->getTitle(), juce::String ("CLEAN"));
+                        expectEquals (cards4[1]->getTitle(), juce::String ("BEAT"));
+                        expectEquals (cards4[2]->getTitle(), juce::String ("BUILD"));
+                        expectEquals (cards4[3]->getTitle(), juce::String ("SHAPE"));
                         expect (cards4[0]->getStatusText().startsWith ("OFF"), "CLEAN LAB is off by default: " + cards4[0]->getStatusText());
                         expect (cards4[1]->getStatusText().contains ("NO BEAT INPUT"), cards4[1]->getStatusText());
                         expect (cards4[2]->getStatusText().contains ("NOT BUILT"), cards4[2]->getStatusText());
@@ -420,14 +420,14 @@ struct MacroTests : public juce::UnitTest
                             expect (c->isEnabled(), "no workspace is locked");
                     }
                 }
-                expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("PITCH & KEY") && ! visible ("RESET"));
-                expect (visible ("HOME") && visible ("CLEAN LAB") && visible ("BEAT LOCK") && visible ("BUILD MY MIX") && visible ("FINAL TOUCH") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the navigation and the persistent bar are always shown");
+                expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("RESET"));
+                expect (visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
                 openLevel (4);
                 expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                expect (visible ("HARD") && visible ("PITCH & KEY") && ! visible ("CLEAN"), "FINAL TOUCH opens on PITCH & KEY; CLEAN LAB is its own workspace");
+                expect (visible ("HARD") && ! visible ("FINAL TOUCH  >"), "TUNE opens the pitch controls");
 
                 click ("HARD");
                 expectEquals (th::getParam (p, "tune_on"), 1.0f);
@@ -470,7 +470,7 @@ struct MacroTests : public juce::UnitTest
                 expectEquals (p.getUiInt ("uiLevel", -1), 3);
                 expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("DRY") && ! visible ("HARD"));
                 {
-                    click ("HOME");
+                    click ("START");
                     const auto c4 = levelCards();
                     expect (c4.size() == 4 && c4[2]->getStatusText().contains ("NOT BUILT"), "opening a workspace never marks it complete");
                     openLevel (3);
@@ -492,11 +492,11 @@ struct MacroTests : public juce::UnitTest
                     click ("LOAD PROFILE");
                     expectEquals (p.getPresetName(), juce::String (glitchkid::FactoryPresets::info (first).name));
                     expect (std::abs (th::getParam (p, "echo_mix") - 61.0f) > 0.5f, "the profile replaced the sound");
-                    expectEquals (th::getParam (p, "gain"), -4.0f); // gain is the user's, a profile never sets it
+                    expectEquals (th::getParam (p, "gain"), -4.0f, "gain reads " + juce::String (th::getParam (p, "gain"), 9)); // gain is the user's, a profile never sets it
                     expect (findButton (*content, "BACK TO MY SOUND")->isEnabled());
                     click ("BACK TO MY SOUND");
                     expectEquals (th::getParam (p, "echo_mix"), 61.0f);
-                    expectEquals (th::getParam (p, "gain"), -4.0f);
+                    expectEquals (th::getParam (p, "gain"), -4.0f, "gain reads " + juce::String (th::getParam (p, "gain"), 9));
                     th::setParam (p, "gain", -2.0f);
                     th::setParam (p, "echo_mix", 0.0f);
                 }
@@ -543,9 +543,9 @@ struct MacroTests : public juce::UnitTest
 
                 click ("FINAL TOUCH  >");
                 expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                expect (visible ("PITCH & KEY") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("<  BACK TO BUILD") && visible ("RESET") && visible ("SAVE PRESET") && ! visible ("BUILD MY VOCAL MIX"));
+                expect (visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("RESET") && ! visible ("BUILD MY VOCAL MIX"));
 
-                click ("PITCH & KEY");
+                click ("TUNE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 0);
                 expect (visible ("HARD"));
                 click ("TONE");
@@ -763,35 +763,17 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
 
-                // the processing chain is a real control: clicking a stage opens its MODIFY category
+                // the rail is the navigation: a row opens its workspace (and FINAL TOUCH category) and is selected afterwards
                 {
-                    glitchkid::ui::ChainStrip* chain = nullptr;
-                    std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
-                    {
-                        for (auto* ch : c.getChildren())
-                        {
-                            if (auto* cs = dynamic_cast<glitchkid::ui::ChainStrip*> (ch))
-                                chain = cs;
-                            walk (*ch);
-                        }
-                    };
-                    walk (*content);
-                    expect (chain != nullptr && chain->isVisible(), "the chain is always shown");
-                    if (chain != nullptr)
-                    {
-                        click ("HOME");
-                        const auto b = chain->nodeBounds (3); // DYNAMICS
-                        const juce::MouseEvent down (juce::Desktop::getInstance().getMainMouseSource(), b.getCentre().toFloat(), juce::ModifierKeys(), 0.5f, 0.0f, 0.0f, 0.0f, 0.0f, chain, chain,
-                                                     juce::Time::getCurrentTime(), b.getCentre().toFloat(), juce::Time::getCurrentTime(), 1, false);
-                        chain->mouseUp (down);
-                        expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                        expectEquals (p.getUiInt ("uiCategory", -1), 2);
-                    }
+                    click ("START");
+                    click ("DYNAMICS");
+                    expectEquals (p.getUiInt ("uiLevel", -1), 4);
+                    expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 }
 
-                click ("<  BACK TO BUILD");
+                click ("BUILD");
                 expect (visible ("TRY AGAIN"), "BUILD shows the build button (TRY AGAIN after the silent attempt)");
-                click ("HOME");
+                click ("START");
                 expectEquals ((int) levelCards().size(), 4);
             }
 

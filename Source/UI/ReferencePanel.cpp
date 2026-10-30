@@ -13,8 +13,9 @@ juce::String confidenceText (automode::Confidence c)
     {
         case automode::Confidence::low: return "Confidence: low";
         case automode::Confidence::medium: return "Confidence: medium (a full mix is never rated higher)";
-        default: return "Confidence: high";
+        case automode::Confidence::high: return "Confidence: high";
     }
+    return {};
 }
 
 juce::String bandName (const juce::String& id)

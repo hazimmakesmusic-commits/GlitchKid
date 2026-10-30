@@ -218,10 +218,10 @@ struct LevelUiTests : public juce::UnitTest
             th::setParam (p, "clean_on", 1.0f);
             const auto before = p.captureSoundState();
             const auto presetName = p.getPresetName();
-            for (const char* name : { "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH", "HOME", "FINAL TOUCH", "HOME" })
+            for (const char* name : { "CLEAN", "BEAT", "BUILD", "TUNE", "START", "TONE", "START" })
             {
                 auto* b = findButton (*content, name);
-                expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the navigation bar");
+                expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the rail");
                 if (b != nullptr)
                     b->triggerClick();
                 pump (60);
@@ -231,7 +231,7 @@ struct LevelUiTests : public juce::UnitTest
             for (const auto& e : before.values)
                 expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
             expectEquals (p.getPresetName(), presetName);
-            findButton (*content, "BEAT LOCK")->triggerClick();
+            findButton (*content, "BEAT")->triggerClick();
             pump (60);
             juce::MemoryBlock mb;
             p.getStateInformation (mb);
@@ -263,7 +263,7 @@ struct LevelUiTests : public juce::UnitTest
             for (int i = 0; i < 12; ++i) { play (0.06); pump (16); }
             snapshot (*ed, "home_signal");
             auto* content = ed->getChildComponent (0);
-            findButton (*content, "CLEAN LAB")->triggerClick();
+            findButton (*content, "CLEAN")->triggerClick();
             pump (60);
             for (int i = 0; i < 12; ++i) { play (0.06); pump (16); }
             snapshot (*ed, "clean_signal");

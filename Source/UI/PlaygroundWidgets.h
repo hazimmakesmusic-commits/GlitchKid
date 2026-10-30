@@ -170,30 +170,6 @@ private:
     bool haveCurve = false;
 };
 
-// The processing chain INPUT -> TUNE -> TONE -> DYNAMICS -> SPACE -> OUTPUT. The four middle stages are the real stages of the engine and their dots show whether
-// each is really doing something (from the actual parameters); clicking one opens its FINAL TOUCH category. INPUT and OUTPUT show the real peak level. While a
-// signal is really arriving and motion is on, a small dot travels along the line.
-class ChainStrip : public juce::Component, public juce::SettableTooltipClient
-{
-public:
-    static constexpr int numStages = 4; // TUNE, TONE, DYNAMICS, SPACE
-    void setState (const std::array<bool, numStages>& active, float inPeak, float outPeak, int selectedStage, bool motion, const juce::String& legacyNote);
-    void tick (float dtSeconds);
-    std::function<void (int)> onStage;
-    juce::Rectangle<int> nodeBounds (int node) const; // 0 = INPUT, 1..4 = stages, 5 = OUTPUT
-    void paint (juce::Graphics&) override;
-    void mouseMove (const juce::MouseEvent&) override;
-    void mouseUp (const juce::MouseEvent&) override;
-
-private:
-    int nodeAt (juce::Point<int>) const;
-    std::array<bool, numStages> active {};
-    float inLevel = 0.0f, outLevel = 0.0f, phase = 0.0f; // levels 0..1 on a -60..0 dB scale
-    int selected = -1;
-    bool motion = true, signalPresent = false;
-    juce::String legacy;
-};
-
 // One look for every control: flat graphite buttons with a thin outline, violet when selected, thin-arc rotary knobs, slim sliders and small switches.
 class PlaygroundLookAndFeel : public juce::LookAndFeel_V4
 {
@@ -208,9 +184,6 @@ public:
     void drawLabel (juce::Graphics&, juce::Label&) override;
     void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
     void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos, float startAngle, float endAngle, juce::Slider&) override;
-    // Tooltips: narrow, small, set beside the pointer (never under it), so a long tip does not blanket the controls around it.
-    juce::Rectangle<int> getTooltipBounds (const juce::String& tip, juce::Point<int> screenPos, juce::Rectangle<int> parentArea) override;
-    void drawTooltip (juce::Graphics&, const juce::String& text, int width, int height) override;
     void drawLinearSlider (juce::Graphics&, int x, int y, int w, int h, float pos, float minPos, float maxPos, juce::Slider::SliderStyle, juce::Slider&) override;
 };
 }

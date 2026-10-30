@@ -180,7 +180,7 @@ struct UiPerfTests : public juce::UnitTest
             {
                 ed->uiShowWorkspaceForTest (3);
                 const int w = ed->getWidth(), h = ed->getHeight();
-                const juce::Rectangle<int> band (0, (int) ((102.0f + 0.5f * 458.0f - 20.0f) * (float) h / 600.0f), w, (int) (42.0f * (float) h / 600.0f));
+                const juce::Rectangle<int> band ((int) (168.0f * (float) w / 1128.0f), (int) ((58.0f + 0.5f * 458.0f - 20.0f) * (float) h / 600.0f), w - (int) (168.0f * (float) w / 1128.0f), (int) (42.0f * (float) h / 600.0f));
                 std::vector<double> t;
                 for (int k = 0; k < 40; ++k)
                 {

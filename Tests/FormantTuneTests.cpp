@@ -177,10 +177,22 @@ struct FormantTuneTests : public juce::UnitTest
                         const auto got = stream (r.p, in, block);
                         const auto want = moduleOutput (in, sr, shift);
                         bool same = true;
+                        double maxDifference = 0.0;
+                        int firstDifferent = -1;
                         for (int ch = 0; ch < channels; ++ch)
                             for (int i = 0; i < in.getNumSamples(); ++i)
-                                same &= juce::exactlyEqual (got.getSample (ch, i), i >= pluginLatency ? want.getSample (ch, i - pluginLatency) : 0.0f);
-                        expect (same, juce::String (channels) + " ch, " + juce::String (shift) + " st, " + juce::String (sr) + " Hz, block " + juce::String (block));
+                            {
+                                const float expected = i >= pluginLatency ? want.getSample (ch, i - pluginLatency) : 0.0f;
+                                const bool equal = juce::exactlyEqual (got.getSample (ch, i), expected);
+                                same &= equal;
+                                if (! equal)
+                                {
+                                    maxDifference = std::max (maxDifference, std::abs ((double) got.getSample (ch, i) - (double) expected));
+                                    firstDifferent = firstDifferent < 0 ? i : firstDifferent;
+                                }
+                            }
+                        expect (same, juce::String (channels) + " ch, " + juce::String (shift) + " st, " + juce::String (sr) + " Hz, block " + juce::String (block)
+                                          + (same ? juce::String() : " (largest difference " + juce::String (maxDifference, 9) + ", first at sample " + juce::String (firstDifferent) + ")"));
                     }
 
         beginTest ("In the plug-in the notes stay and the formants move: vowels vs the same vowel with moved formants");

@@ -320,7 +320,7 @@ struct OutputLimiterTests : public juce::UnitTest
             for (int i = 0; i < 4; ++i)
                 expectEquals (juce::String (dynamic_cast<juce::RangedAudioParameter*> (p.getParameters()[65 + i])->paramID), juce::String (ids[i]));
             expectEquals (th::getParam (p, "lim_on"), 0.0f);
-            expectEquals (th::getParam (p, "lim_ceiling"), -1.0f);
+            expectEquals (th::getParam (p, "lim_ceiling"), -1.0f, "lim_ceiling default reads " + juce::String (th::getParam (p, "lim_ceiling"), 9));
             expectEquals (th::getParam (p, "lim_drive"), 0.0f);
             expectEquals (th::getParam (p, "lim_release"), 80.0f);
             p.prepareToPlay (48000.0, blockSize);
@@ -439,7 +439,7 @@ struct OutputLimiterTests : public juce::UnitTest
                 GlitchKidProcessor c;
                 c.setStateInformation (old.getData(), (int) old.getSize());
                 expectEquals (th::getParam (c, "lim_on"), 0.0f);
-                expectEquals (th::getParam (c, "lim_ceiling"), -1.0f);
+                expectEquals (th::getParam (c, "lim_ceiling"), -1.0f, "lim_ceiling after restore reads " + juce::String (th::getParam (c, "lim_ceiling"), 9));
                 expectEquals (th::getParam (c, "lim_release"), 80.0f);
             }
 

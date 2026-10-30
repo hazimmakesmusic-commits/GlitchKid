@@ -111,6 +111,27 @@ void ParamKnob::setBounds (juce::Rectangle<int> r)
 }
 
 
+namespace
+{
+// The signal rail, in the order a vocal is worked. page / category are the saved workspace numbers (Page and the FINAL TOUCH category), so a session saved before the
+// rail existed opens on the same workspace.
+struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
+const RailItem railItems[9] = {
+    { "START", 0, 0, "Start", "Your session: the real signal in and out, and the next step.", "Your session: the real-time signal and shortcuts." },
+    { "BUILD", 3, 0, "Build", "Pick a starting sound, then build a first mix from your vocal.", "Pick a starting sound and build a starting mix from your vocal." },
+    { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
+    { "TUNE", 4, 0, "Tune", "Pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
+    { "TONE", 4, 1, "Tone", "Darker to brighter: EQ, air and warmth.", "A darker-to-brighter control, four EQ gains, air and warmth (saturation)." },
+    { "DYNAMICS", 4, 2, "Dynamics", "Level and punch, and a limiter that protects the output.", "A softer-to-more-upfront control, the compressor, the output level and the limiter." },
+    { "SPACE", 4, 3, "Space", "Echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
+    { "BEAT", 2, 0, "Beat", "How the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat on the Instrumental input)." },
+    { "REFERENCE", 5, 0, "Reference", "Compare your tone with a song you have the right to use; review small EQ suggestions.",
+      "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." } };
+constexpr int railRowY[9] = { 80, 112, 168, 200, 232, 264, 296, 352, 384 };
+constexpr int railGroupY[3] = { 62, 150, 334 };
+const char* const railGroupName[3] = { "SESSION", "SHAPE THE VOICE", "CONTEXT" };
+}
+
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     : AudioProcessorEditor (&p),
       glitchProcessor (p),
@@ -165,21 +186,20 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         }
     };
 
-    // ---- the persistent bar: back to the levels, the stage (drawn in paint), the real vocal / output levels, dry / processed, undo, motion ----
-    static const char* navText[6] = { "HOME", "CLEAN LAB", "BEAT LOCK", "BUILD MY MIX", "FINAL TOUCH", "REFERENCE" };
-    static const char* navTip[6] = { "The session: the real-time signal and shortcuts.", "Corrective EQ, resonance suppression and de-essing for the vocal itself.",
-                                     "How the vocal sits against your beat (needs the beat on the Instrumental input).", "Pick a starting profile and build a starting mix from your vocal.",
-                                     "Pitch, tone, dynamics and space.",
-                                     "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." };
-    for (int i = 0; i < 6; ++i)
+    // ---- the signal rail: the workspaces in the order a vocal is worked, each a real control; the dot shows a stage that is processing audio right now ----
+    for (int i = 0; i < numRail; ++i)
     {
-        navButtons[i].setButtonText (navText[i]);
-        style (navButtons[i], juce::String (navTip[i]) + " Any workspace can be opened at any time; switching never changes your sound.");
-        navButtons[i].getProperties().set ("tab", true); // the look-and-feel draws the selected tab with a lit underline
-        navButtons[i].setColour (juce::TextButton::textColourOffId, ui::textDim.brighter (0.3f)); // an unselected workspace is quieter but stays legible
-        navButtons[i].setColour (juce::TextButton::textColourOnId, juce::Colours::white);
-        navButtons[i].onClick = [this, i] { showPage ((Page) i, true); };
+        navButtons[i].setButtonText (railItems[i].name);
+        style (navButtons[i], juce::String (railItems[i].tip) + " Any workspace can be opened at any time; switching never changes your sound.");
+        navButtons[i].getProperties().set ("rail", true); // the look-and-feel draws a rail row: a status dot, the name and a lit bar when selected
+        navButtons[i].onClick = [this, i] { selectRail (i); };
     }
+    label (railNote, 10.5f, false, ui::textDim, juce::Justification::topLeft);
+    railNote.setText ("A lit dot: that stage is changing the sound right now.", juce::dontSendNotification);
+    label (infoLabel, 12.0f, false, ui::textDim, juce::Justification::centredLeft);
+    infoLabel.setInterceptsMouseClicks (false, false);
+    railNote.setInterceptsMouseClicks (false, false);
+    content.addMouseListener (this, true); // hover help for every control (the tooltips of the controls are shown in infoLabel)
     style (undoButton, "Put back the sound you had before the last build, profile load or BEAT LOCK change.");
     undoButton.onClick = [this] { backToMine(); };
     undoButton.setEnabled (false);
@@ -199,12 +219,6 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     processedButton.setColour (juce::TextButton::buttonOnColourId, ui::violet);
     dryButton.onClick = [this] { setBypassFromUi (true); };
     processedButton.onClick = [this] { setBypassFromUi (false); };
-    content.addAndMakeVisible (chain);
-    chain.onStage = [this] (int stage)
-    {
-        showCategory (stage, true);
-        showPage (Page::finalTouch, true);
-    };
 
     // ---- the preset bar and A/B (always available) ----
     presetMenuButton.getProperties().set ("rawText", true); // it shows a preset name: user text, never re-cased
@@ -234,20 +248,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     label (abLabel, 12.0f, true, ui::textDim, juce::Justification::centredRight);
     label (presetStatus, 11.5f, false, ui::textDim);
 
-    // ---- FINAL TOUCH navigation and actions ----
-    static const char* catText[numCategories] = { "PITCH & KEY", "TONE", "DYNAMICS", "SPACE" };
-    static const char* catTip[numCategories] = { "Pitch Tune: on/off, key, scale, tuning style, strength and speed.", "A darker-to-brighter control, four EQ gains and warmth (saturation).",
-                                                 "A softer-to-more-upfront control, the compressor and the output level.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." };
-    for (int i = 0; i < numCategories; ++i)
-    {
-        categoryButtons[i].setButtonText (catText[i]);
-        style (categoryButtons[i], catTip[i]);
-        categoryButtons[i].onClick = [this, i] { showCategory (i, true); };
-    }
+    // ---- the refine workspaces' actions ----
     style (finalButton, "Refine the sound, one category at a time.");
     finalButton.onClick = [this] { showPage (Page::finalTouch, true); };
-    style (backButton, "Back to the profiles and BUILD MY VOCAL MIX.");
-    backButton.onClick = [this] { showPage (Page::build, true); };
     style (resetButton, "Set every control back to its default (Factory Default). Asks first. Your A/B snapshots are kept.", ui::pink);
     resetButton.onClick = [this]
     {
@@ -262,8 +265,6 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
                       safe->refreshPresetBar();
                   });
     };
-    style (savePresetButton, "Save the current sound as your own preset. Existing presets are never replaced without asking.");
-    savePresetButton.onClick = [this] { askSavePreset(); };
 
     // ---- TUNE: note pad, scale chips, tuning style ----
     choices (tuneKeyBox, GlitchKidProcessor::tuneKeyId);
@@ -425,7 +426,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     warmthKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
     warmthKnob[0]->addTo (content);
     label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
-    eqNote.setText ("Violet: your EQ. Pink: what CLEAN LAB is applying. Both are calculated from real settings; there is no live spectrum.", juce::dontSendNotification);
+    eqNote.setText ("Violet: your EQ. Pink: what CLEAN is applying. Both curves are calculated from real settings. The shaded area is the vocal's real spectrum while audio plays.", juce::dontSendNotification);
 
     // AIR LAB strip
     auto airSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
@@ -582,22 +583,23 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
 
     // ---- HOME / SESSION ----
     {
-        static const char* names[4] = { "CLEAN LAB", "BEAT LOCK", "BUILD MY VOCAL MIX", "FINAL TOUCH" };
+        static const char* names[4] = { "CLEAN", "BEAT", "BUILD", "SHAPE" };
         static const char* descs[4] = {
             "Rumble, mud, harsh resonances and sharp S sounds.",
-            "How your vocal sits against the beat.",
-            "Pick a profile and build a starting mix.",
-            "Pitch, tone, dynamics and space." };
+            "How your vocal sits against the beat (optional).",
+            "Pick a starting sound and build a first mix.",
+            "Tune, tone, dynamics and space." };
         static const int targets[4] = { 1, 2, 3, 4 };
         for (int i = 0; i < 4; ++i)
         {
-            tiles[i].setContent (names[i], descs[i], i == 2);
+            tiles[i].setContent (names[i], descs[i], false);
             tiles[i].setStatus ("...", ui::TileStatus::idle);
             tiles[i].onClick = [this, i] { showPage ((Page) targets[i], true); };
             content.addAndMakeVisible (tiles[i]);
         }
         addAll ({ &homeTitle, &homeSource, &homeView });
         label (homeHint, 11.5f, false, ui::textDim, juce::Justification::centredRight);
+        label (homeNext, 14.0f, true, ui::textBright);
         homeView.setTooltip ("Real spectrum and waveform of the vocal input (before processing) and the output. The instrumental shows only while a beat really arrives.");
     }
 
@@ -706,8 +708,8 @@ void GlitchKidEditor::updateVisualTimer()
 // The scan line of a workspace transition sits over a band of the workspace area; only that band is repainted each frame.
 void GlitchKidEditor::repaintTransitionBand (float t)
 {
-    const float y = 102.0f + juce::jlimit (0.0f, 1.0f, t) * 458.0f;
-    repaint (juce::Rectangle<int> (0, (int) ((y - 20.0f) * scaleFactor), getWidth(), (int) (42.0f * scaleFactor) + 2));
+    const float y = (float) pageTop + juce::jlimit (0.0f, 1.0f, t) * 458.0f;
+    repaint (juce::Rectangle<int> ((int) ((float) railW * scaleFactor), (int) ((y - 20.0f) * scaleFactor), getWidth(), (int) (42.0f * scaleFactor) + 2));
 }
 
 void GlitchKidEditor::visualTick()
@@ -731,12 +733,12 @@ void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
     if (transition >= 1.0f)
         return;
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
-    const float y = 102.0f + transition * 458.0f;
+    const float y = (float) pageTop + transition * 458.0f;
     juce::ColourGradient glow (ui::violet.withAlpha (0.0f), 0.0f, y - 18.0f, ui::pink.withAlpha (0.28f), 0.0f, y, false);
     g.setGradientFill (glow);
-    g.fillRect (0.0f, y - 18.0f, (float) designW, 18.0f);
+    g.fillRect ((float) railW, y - 18.0f, (float) pageW, 18.0f);
     g.setColour (ui::pink.withAlpha (0.9f));
-    g.fillRect (0.0f, y, (float) designW, 2.0f);
+    g.fillRect ((float) railW, y, (float) pageW, 2.0f);
 }
 
 void GlitchKidEditor::refreshTunePad()
@@ -763,8 +765,7 @@ void GlitchKidEditor::showPage (Page p, bool remember)
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
-    for (int i = 0; i < 6; ++i)
-        navButtons[i].setToggleState (i == (int) page, juce::dontSendNotification);
+    syncRail();
     layoutContent();
     repaint();
     if (changedPage)
@@ -773,12 +774,68 @@ void GlitchKidEditor::showPage (Page p, bool remember)
         updateVisualTimer();
 }
 
+int GlitchKidEditor::railIndex() const
+{
+    switch (page)
+    {
+        case Page::home: return 0;
+        case Page::build: return 1;
+        case Page::clean: return 2;
+        case Page::finalTouch: return 3 + category;
+        case Page::beat: return 7;
+        case Page::reference: return 8;
+    }
+    return 0;
+}
+
+void GlitchKidEditor::syncRail()
+{
+    for (int i = 0; i < numRail; ++i)
+        navButtons[i].setToggleState (i == railIndex(), juce::dontSendNotification);
+}
+
+void GlitchKidEditor::selectRail (int i)
+{
+    const auto& item = railItems[juce::jlimit (0, numRail - 1, i)];
+    if (item.page == (int) Page::finalTouch)
+        showCategory (item.category, true);
+    showPage ((Page) item.page, true);
+}
+
+void GlitchKidEditor::updateHelp (juce::Component* c)
+{
+    juce::String text;
+    for (; c != nullptr && c != this; c = c->getParentComponent())
+        if (auto* t = dynamic_cast<juce::TooltipClient*> (c); t != nullptr && t->getTooltip().isNotEmpty())
+        {
+            text = t->getTooltip();
+            break;
+        }
+    if (text != hoverHelp)
+    {
+        hoverHelp = text;
+        refreshInfoLine();
+    }
+}
+
+void GlitchKidEditor::refreshInfoLine()
+{
+    const bool legacy = hoverHelp.isEmpty() && legacyEffects.isNotEmpty();
+    const auto text = hoverHelp.isNotEmpty() ? hoverHelp
+                      : legacy               ? "Effects from an older session are still switched on: " + legacyEffects + ". BUILD switches them off."
+                                             : juce::String ("Point at any control to read what it does.");
+    if (text != infoLabel.getText())
+        infoLabel.setText (text, juce::dontSendNotification);
+    infoLabel.setColour (juce::Label::textColourId, legacy ? ui::pink : hoverHelp.isNotEmpty() ? ui::textBright : ui::textDim);
+}
+
 void GlitchKidEditor::showCategory (int c, bool remember)
 {
     const bool changedCategory = juce::jlimit (0, numCategories - 1, c) != category;
     category = juce::jlimit (0, numCategories - 1, c);
     if (remember)
         glitchProcessor.setUiInt ("uiCategory", category);
+    syncRail();
     layoutContent();
     repaint();
     if (changedCategory)
@@ -852,9 +909,9 @@ void GlitchKidEditor::applyContentTransform (float dx)
     content.setTransform (juce::AffineTransform::scale (scaleFactor).translated (dx * scaleFactor, 0.0f));
 }
 
-// One 30 Hz tick: the real input level into the scope and the chain, the TUNE read-outs and the processing chain from the real parameters, the dry/processed
+// One 30 Hz tick: the real input level into the scope, the TUNE read-outs and the rail's stage dots from the real parameters, the dry/processed
 // switch from the Bypass parameter. Nothing here touches the audio thread.
-void GlitchKidEditor::refreshState (float peak, float outPeak)
+void GlitchKidEditor::refreshState (float peak)
 {
     namespace fx = glitchkid::fx;
     constexpr float dt = 1.0f / 30.0f;
@@ -884,9 +941,9 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
     const bool dry = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::bypassId)->load() >= 0.5f;
     const auto all = glitchProcessor.captureSoundState();
 
-    // the processing chain: each stage lit only if it really does something right now (nothing is processed while DRY)
+    // the stages of the rail: each lit only if it really does something right now (nothing is processed while DRY)
     {
-        std::array<bool, ui::ChainStrip::numStages> act {};
+        std::array<bool, 4> act {}; // TUNE, TONE, DYNAMICS, SPACE
         const bool cleanOn = all.get ("clean_on", 0.0f) >= 0.5f && all.get ("clean_amount", 0.0f) > 0.05f;
         const auto ca = glitchProcessor.getCleanApplied();
         const bool cleanTone = cleanOn && (ca.rumbleAmount > 0.02f || ca.mudDb > 0.05f || ca.resDb[0] > 0.05f || ca.resDb[1] > 0.05f || ca.resDb[2] > 0.05f);
@@ -894,8 +951,8 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
         if (! dry)
         {
             act[0] = fx::isActive (fx::pitchTune, all);
-            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f || cleanTone;
-            act[2] = fx::isActive (fx::compressor, all) || cleanEss || all.get ("lim_on", 0.0f) >= 0.5f;
+            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f;
+            act[2] = fx::isActive (fx::compressor, all) || all.get ("lim_on", 0.0f) >= 0.5f;
             act[3] = fx::isActive (fx::echo, all) || fx::isActive (fx::dimension, all) || fx::isActive (fx::doubler, all);
         }
         juce::StringArray legacy; // effects the interface no longer offers but an older session may still have switched on
@@ -903,8 +960,16 @@ void GlitchKidEditor::refreshState (float peak, float outPeak)
             if (fx::isActive (e, all))
                 legacy.add (juce::String (fx::info (e).name).toUpperCase());
         stageActive = act;
-        chain.setState (act, peak, outPeak, page == Page::finalTouch ? category : -1, motionOn, legacy.joinIntoString (", "));
-        chain.tick (dt);
+        legacyEffects = legacy.joinIntoString (", ");
+        refreshInfoLine();
+        // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, TONE, DYNAMICS and SPACE as in the stages above (nothing is processed while DRY)
+        const std::array<bool, numRail> dots = { false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], false, false };
+        for (int i : { 2, 3, 4, 5, 6 })
+            if ((int) navButtons[i].getProperties().getWithDefault ("led", 0) != (dots[(size_t) i] ? 2 : 1))
+            {
+                navButtons[i].getProperties().set ("led", dots[(size_t) i] ? 2 : 1);
+                navButtons[i].repaint();
+            }
     }
 
     {
@@ -1332,6 +1397,40 @@ void GlitchKidEditor::refreshStatus (float inPeak, float outPeak)
         const bool dry = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::bypassId)->load() >= 0.5f;
         tiles[3].setStatus (dry ? "DRY - NO STAGE IS PROCESSING" : juce::String (n) + " OF 4 STAGES ACTIVE", n > 0 ? ui::TileStatus::ready : ui::TileStatus::idle);
     }
+
+    // START: the next step, read from the real state (no signal, no sound chosen yet, CLEAN off, otherwise refine). It only suggests; every workspace stays open.
+    {
+        const auto name = glitchProcessor.getPresetName();
+        const bool soundChosen = name.isNotEmpty() && name != glitchkid::PresetController::factoryDefaultName;
+        int next = 3; // the tile to emphasise: index into tiles[]
+        juce::String text = "Refine the sound with TUNE, TONE, DYNAMICS and SPACE, then save it as a preset.";
+        if (signalTicks > 30)
+        {
+            text = "No signal yet: press play in your host so GlitchKid can hear your vocal.";
+            next = -1;
+        }
+        else if (! soundChosen)
+        {
+            text = "Next: pick a starting sound and build a first mix.";
+            next = 2;
+        }
+        else if (! cleanOn)
+        {
+            text = "Next: switch CLEAN on to take out rumble, mud and harsh S sounds.";
+            next = 0;
+        }
+        if (text != homeNext.getText())
+            homeNext.setText (text, juce::dontSendNotification);
+        if (next != shownNextTile)
+        {
+            shownNextTile = next;
+            static const char* names[4] = { "CLEAN", "BEAT", "BUILD", "SHAPE" };
+            static const char* descs[4] = { "Rumble, mud, harsh resonances and sharp S sounds.", "How your vocal sits against the beat (optional).",
+                                            "Pick a starting sound and build a first mix.", "Tune, tone, dynamics and space." };
+            for (int i = 0; i < 4; ++i)
+                tiles[i].setContent (names[i], descs[i], i == next);
+        }
+    }
 }
 
 // The real-time views: the newest audio from the processor's taps (the vocal input before processing, the output after it, the Instrumental input), a windowed FFT
@@ -1681,7 +1780,7 @@ void GlitchKidEditor::timerCallback()
     const float inPeak = glitchProcessor.consumeInputPeak(), outPeak = glitchProcessor.consumeOutputPeak();
     inMeter.pushPeak (inPeak);
     outMeter.pushPeak (outPeak);
-    refreshState (inPeak, outPeak);
+    refreshState (inPeak);
     refreshBeatLock (inPeak, glitchProcessor.consumeBeatPeak());
     refreshStatus (inPeak, outPeak);
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
@@ -1718,19 +1817,17 @@ void GlitchKidEditor::timerCallback()
 
 void GlitchKidEditor::paint (juce::Graphics& g)
 {
-    constexpr float W = (float) designW;
+    constexpr float W = (float) designW, R = (float) railW;
     g.fillAll (ui::obsidian);
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
 
-    // the persistent bar: a flat raised strip with a hairline under it
+    // the signal rail: a flat graphite column with the wordmark, the workspaces in working order and the real levels at the foot
     g.setColour (ui::panelBottom);
-    g.fillRect (0.0f, 0.0f, W, 44.0f);
+    g.fillRect (0.0f, 0.0f, R, (float) designH);
     g.setColour (ui::border);
-    g.fillRect (0.0f, 44.0f, W, 1.0f);
-
-    // the wordmark: compact, a chrome gradient (the one place chrome is used), and a quiet sub line
+    g.fillRect (R - 1.0f, 0.0f, 1.0f, (float) designH);
     {
-        const juce::Rectangle<float> r (16.0f, 4.0f, 150.0f, 24.0f);
+        const juce::Rectangle<float> r (18.0f, 8.0f, 140.0f, 24.0f);
         g.setFont (ui::fontOf (20.0f, true));
         juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 3.0f, juce::Colour (0xff9d8fb8), 0.0f, r.getBottom() - 2.0f, false);
         chromeFill.addColour (0.46, juce::Colour (0xffd9cbe8));
@@ -1740,20 +1837,43 @@ void GlitchKidEditor::paint (juce::Graphics& g)
         g.drawText ("GLITCHKID", r, juce::Justification::centredLeft, false);
         g.setFont (ui::fontOf (11.0f));
         g.setColour (ui::textDim);
-        g.drawText ("Vocal Lab", juce::Rectangle<float> (17.0f, 26.0f, 100.0f, 14.0f), juce::Justification::centredLeft, false);
+        g.drawText ("Vocal Lab", juce::Rectangle<float> (19.0f, 31.0f, 120.0f, 14.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::border);
+        g.fillRect (12.0f, 52.0f, R - 24.0f, 1.0f);
+    }
+    g.setFont (ui::fontOf (10.5f, true));
+    g.setColour (ui::textDim);
+    for (int i = 0; i < 3; ++i)
+        g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], 140.0f, 14.0f), juce::Justification::centredLeft, false);
+
+    // the header: the workspace you are in and what it is for
+    {
+        const auto& item = railItems[railIndex()];
+        g.setColour (ui::panelBottom);
+        g.fillRect (R, 0.0f, W - R, 52.0f);
+        g.setColour (ui::border);
+        g.fillRect (R, 52.0f, W - R, 1.0f);
+        g.setColour (ui::textBright);
+        g.setFont (ui::fontOf (20.0f, true));
+        g.drawText (item.title, juce::Rectangle<float> (R + 20.0f, 6.0f, 360.0f, 26.0f), juce::Justification::centredLeft, false);
+        g.setColour (ui::textDim);
+        g.setFont (ui::fontOf (12.0f));
+        g.drawFittedText (item.job, juce::Rectangle<int> (railW + 20, 31, 640, 16), juce::Justification::centredLeft, 1, 0.9f);
     }
 
     if (page == Page::build)
     {
         g.setColour (ui::border);
-        g.fillRect (586.0f, 104.0f, 1.0f, 444.0f);
+        g.fillRect ((float) (railW + 586), (float) (104 + pageDy), 1.0f, 444.0f);
     }
 
-    // the preset and A/B rail, the same on every workspace
-    g.setColour (ui::panelBottom);
-    g.fillRect (0.0f, 562.0f, W, 38.0f);
+    // the info line (hover help) and the preset and A/B bar, the same on every workspace
     g.setColour (ui::border);
-    g.fillRect (0.0f, 562.0f, W, 1.0f);
+    g.fillRect (R, 522.0f, W - R, 1.0f);
+    g.setColour (ui::panelBottom);
+    g.fillRect (R, 562.0f, W - R, 38.0f);
+    g.setColour (ui::border);
+    g.fillRect (R, 562.0f, W - R, 1.0f);
 
     for (const auto& r : panelRects)
         ui::drawPanel (g, r.toFloat());
@@ -1770,70 +1890,72 @@ void GlitchKidEditor::resized()
 void GlitchKidEditor::layoutContent()
 {
     using Rect = juce::Rectangle<int>;
-    auto show = [] (juce::Component& c, Rect r) { c.setBounds (r); c.setVisible (true); };
-    auto showK = [] (ParamKnob& k, Rect r) { k.setBounds (r); k.setVisible (true); };
 
-    // Hide every control that is not part of the always-visible bar, chain and preset bar; the current page then shows what it needs.
-    const std::vector<juce::Component*> persistent = { &navButtons[0], &navButtons[1], &navButtons[2], &navButtons[3], &navButtons[4], &navButtons[5], &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &chain,
-                                                       &presetPrevButton, &presetMenuButton, &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB,
-                                                       &abRecallA, &abRecallB, &abLabel, &presetStatus };
+    // Hide every control that is not part of the always-visible rail, header controls and preset bar; the current workspace then shows what it needs.
+    // A workspace is written in the old coordinates (top at 102); `oy` lifts it to just under the header (FINAL TOUCH has no tab row any more, so it sits lower).
+    std::vector<juce::Component*> persistent = { &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &infoLabel, &railNote,
+                                                 &presetPrevButton, &presetMenuButton, &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB,
+                                                 &abRecallA, &abRecallB, &abLabel, &presetStatus };
+    for (auto& b : navButtons)
+        persistent.push_back (&b);
     for (auto* child : content.getChildren())
         if (std::find (persistent.begin(), persistent.end(), child) == persistent.end())
             child->setVisible (false);
     if (referencePanel != nullptr && page != Page::reference && referencePanel->getParentComponent() == &content)
         content.removeChildComponent (referencePanel.get());
     panelRects.clear();
+    const int ox = railW, oy = page == Page::finalTouch ? -56 : pageDy;
+    auto show = [ox, oy] (juce::Component& c, Rect r) { c.setBounds (r.translated (ox, oy)); c.setVisible (true); };
+    auto showK = [ox, oy] (ParamKnob& k, Rect r) { k.setBounds (r.translated (ox, oy)); k.setVisible (true); };
+    auto place = [] (juce::Component& c, Rect r) { c.setBounds (r); c.setVisible (true); }; // chrome: the rail, the header controls and the bars do not move with the workspace
+    auto panel = [this, ox, oy] (Rect r) { panelRects.push_back (r.translated (ox, oy)); };
 
-    // ---- the persistent bar, the chain ----
-    {
-        static const int navW[6] = { 54, 80, 76, 100, 86, 80 };
-        int x = 132;
-        for (int i = 0; i < 6; ++i)
-        {
-            show (navButtons[i], { x, 8, navW[i], 28 });
-            x += navW[i] + 3;
-        }
-    }
-    show (dryButton, { 646, 8, 46, 28 });
-    show (processedButton, { 696, 8, 86, 28 });
-    show (undoButton, { 786, 8, 46, 28 });
-    show (motionButton, { 838, 8, 106, 28 });
-    show (chain, { 16, 50, 770, 48 });
-    show (ioLabel, { 796, 50, 148, 48 });
+    // ---- the rail, the header controls, the info line ----
+    for (int i = 0; i < numRail; ++i)
+        place (navButtons[i], { 8, railRowY[i], railW - 16, 30 });
+    place (railNote, { 18, 428, railW - 32, 40 });
+    place (ioLabel, { 18, 508, railW - 28, 44 });
+    place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 46, 12, 46, 28 });
+    place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });
+    place (undoButton, { designW - 16 - 70 - 4 - 46, 12, 46, 28 });
+    place (motionButton, { designW - 16 - 70, 12, 70, 28 });
+    place (infoLabel, { railW + 20, 526, pageW - 40, 32 });
 
     // ---- bottom bar: presets and A/B (always available) ----
-    Rect bar (16, 568, designW - 32, 26);
-    show (presetPrevButton, bar.removeFromLeft (28));
+    Rect bar (railW + 16, 568, pageW - 32, 26);
+    place (presetPrevButton, bar.removeFromLeft (28));
     bar.removeFromLeft (4);
-    show (presetMenuButton, bar.removeFromLeft (270));
+    place (presetMenuButton, bar.removeFromLeft (270));
     bar.removeFromLeft (4);
-    show (presetNextButton, bar.removeFromLeft (28));
+    place (presetNextButton, bar.removeFromLeft (28));
     bar.removeFromLeft (6);
-    show (presetSaveButton, bar.removeFromLeft (60));
+    place (presetSaveButton, bar.removeFromLeft (60));
     bar.removeFromLeft (6);
-    show (presetDeleteButton, bar.removeFromLeft (70));
+    place (presetDeleteButton, bar.removeFromLeft (70));
     bar.removeFromLeft (12);
-    show (abRecallB, bar.removeFromRight (40));
+    place (abRecallB, bar.removeFromRight (40));
     bar.removeFromRight (4);
-    show (abRecallA, bar.removeFromRight (40));
+    place (abRecallA, bar.removeFromRight (40));
     bar.removeFromRight (8);
-    show (abSetB, bar.removeFromRight (60));
+    place (abSetB, bar.removeFromRight (60));
     bar.removeFromRight (4);
-    show (abSetA, bar.removeFromRight (60));
+    place (abSetA, bar.removeFromRight (60));
     bar.removeFromRight (6);
-    show (abLabel, bar.removeFromRight (34));
-    show (presetStatus, bar);
+    place (abLabel, bar.removeFromRight (34));
+    place (presetStatus, bar);
 
     // ---- HOME / SESSION ----
     if (page == Page::home)
     {
-        show (homeTitle, { 24, 106, 300, 18 });
+        homeTitle.setVisible (false);
         homeSource.setVisible (false); // "REAL-TIME SIGNAL" only repeated what the display already says
-        show (homeHint, { 540, 106, 396, 18 });
-        show (homeView, { 24, 130, 912, 276 });
-        static const int tx[4] = { 24, 242, 460, 720 }, tw[4] = { 212, 212, 254, 216 };
+        show (homeNext, { 24, 102, 560, 24 });
+        show (homeHint, { 590, 104, 346, 18 });
+        show (homeView, { 24, 130, 912, 316 });
+        // the path, in working order: BUILD, CLEAN, FINAL TOUCH's stages (tune, tone, dynamics, space), then the optional BEAT comparison
+        static const int order[4] = { 2, 0, 3, 1 };
         for (int i = 0; i < 4; ++i)
-            show (tiles[i], { tx[i], 420, tw[i], 96 });
+            show (tiles[order[i]], { 24 + i * 230, 460, 222, 96 });
     }
 
     // ---- CLEAN LAB ----
@@ -1861,7 +1983,7 @@ void GlitchKidEditor::layoutContent()
         show (eqNote, { 24, 454, 590, 30 });
         if (cleanAdvanced)
         {
-            panelRects.push_back ({ 24, 492, 912, 62 });
+            panel ({ 24, 492, 912, 62 });
             juce::Component* trimHeads[3] = { &toneTrimLabel, &resTrimLabel, &essTrimLabel };
             juce::Slider* sliders[3] = { &cleanToneSlider, &cleanResSlider, &cleanEssSlider };
             static const char* names[3] = { "CORRECTIVE EQ", "RESONANCE", "DE-ESSER" };
@@ -1954,15 +2076,8 @@ void GlitchKidEditor::layoutContent()
     // ---- FINAL TOUCH (one category at a time) ----
     else
     {
-        for (int i = 0; i < numCategories; ++i)
-        {
-            show (categoryButtons[i], { 24 + i * 158, 100, 150, 34 });
-            categoryButtons[i].setToggleState (i == category, juce::dontSendNotification);
-        }
-        panelRects.push_back ({ 24, 144, 912, 352 });
-        show (backButton, { 24, 506, 160, 40 });
-        show (resetButton, { 192, 506, 100, 40 });
-        show (savePresetButton, { 300, 506, 140, 40 });
+        panel ({ 24, 144, 912, 352 });
+        show (resetButton, { 836, 506, 100, 32 });
 
         // categories 1..3 start with their high-level slider
         if (category >= 1 && category <= 3)
@@ -2037,7 +2152,7 @@ void GlitchKidEditor::layoutContent()
                 show (outMeter, { 904, 192, 22, 138 });
                 show (inLabel, { 864, 334, 38, 14 });
                 show (outLabel, { 896, 334, 38, 14 });
-                panelRects.push_back ({ 24, 358, 912, 138 });
+                panel ({ 24, 358, 912, 138 });
                 show (limHeading, { 36, 366, 240, 16 });
                 show (limOnButton, { 36, 392, 110, 28 });
                 for (int i = 0; i < limKnobs.size(); ++i)

@@ -90,10 +90,27 @@ target_link_libraries(GlitchKid
     PUBLIC  juce::juce_recommended_config_flags
             juce::juce_recommended_warning_flags)
 
+# Floating-point contraction off. Apple Silicon (and any x86 build with FMA enabled) compilers fuse a*b+c into one instruction that rounds once, and make that choice
+# separately for every inlined copy of the same code. That makes (1) parameter values land one rounding step off their grid (JUCE's snap to 0.1 dB computes
+# -12 + 0.1f * 120, which fused is 1.8e-7 instead of exactly 0, and a -1 dB ceiling reads -0.99999982), and (2) the same DSP function give results that differ by one
+# float step depending on where it was inlined (the plug-in's Formant shifter against the standalone one). The product promises exact neutral defaults and bit-exact
+# paths, so the same source must give the same bits on every platform; the cost (separate multiply and add) is negligible for this plug-in.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(GlitchKid PUBLIC -ffp-contract=off)
+endif()
+
+
 # Unit tests for the processor: cmake -S . -B build -DGLITCHKID_BUILD_TESTS=ON && ctest --test-dir build
 option(GLITCHKID_BUILD_TESTS "Build the GlitchKid unit tests" OFF)
 if(GLITCHKID_BUILD_TESTS)
     enable_testing()
+    # which source the test executable was built from: a header regenerated on EVERY build (see cmake/BuildStamp.cmake), printed at the start of a test run
+    set(GLITCHKID_STAMP_HEADER "${CMAKE_BINARY_DIR}/generated/GlitchKidBuildStamp.h")
+    execute_process(COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DOUT=${GLITCHKID_STAMP_HEADER} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildStamp.cmake)
+    add_custom_target(GlitchKidBuildStamp
+        COMMAND ${CMAKE_COMMAND} -DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR} -DOUT=${GLITCHKID_STAMP_HEADER} -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/BuildStamp.cmake
+        BYPRODUCTS ${GLITCHKID_STAMP_HEADER}
+        COMMENT "Recording which source this build is made from")
     juce_add_console_app(GlitchKidTests PRODUCT_NAME "GlitchKidTests")
     target_sources(GlitchKidTests PRIVATE
         Tests/main.cpp
@@ -122,8 +139,10 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/OutputLimiterTests.cpp
         Tests/UiPerfTests.cpp
         Tests/UiBehaviourTests.cpp
+        Tests/ShellTests.cpp
         Tests/VisualTests.cpp
         Tests/ReferenceMatchTests.cpp
+        Tests/FloatDeterminismTests.cpp
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
@@ -178,6 +197,11 @@ if(GLITCHKID_BUILD_TESTS)
                 GlitchKidAssets
         PUBLIC  juce::juce_recommended_config_flags
                 juce::juce_recommended_warning_flags)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+        target_compile_options(GlitchKidTests PRIVATE -ffp-contract=off) # the same numeric rules as the plug-in (see above)
+    endif()
+    add_dependencies(GlitchKidTests GlitchKidBuildStamp)
+    target_include_directories(GlitchKidTests PRIVATE ${CMAKE_BINARY_DIR}/generated)
     add_test(NAME GlitchKidProcessor COMMAND GlitchKidTests)
 endif()
 
