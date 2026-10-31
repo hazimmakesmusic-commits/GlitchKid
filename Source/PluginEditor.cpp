@@ -117,7 +117,7 @@ namespace
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
 const RailItem railItems[11] = {
-    { "KID", 6, 0, "KID", "Your vocal director: say what you hear in your head, review every change, Apply.",
+    { "KID", 6, 0, "KID", "Your vocal producer: load or play your vocal, say the sound you want, review every change, Apply.",
       "KID, your vocal director: talk or type, review exactly what it would change, then Apply. Nothing changes until you do." },
     { "START", 0, 0, "Start", "Your session: the real signal in and out, and the next step.", "Your session: the real-time signal and shortcuts." },
     { "BUILD", 3, 0, "Build", "Pick a starting sound, then build a first mix from your vocal.", "Pick a starting sound and build a starting mix from your vocal." },

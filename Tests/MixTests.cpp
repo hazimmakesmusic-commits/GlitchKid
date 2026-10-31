@@ -140,6 +140,45 @@ struct MixTests : public juce::UnitTest
             q.setStateInformation (state.getData(), (int) state.getSize());
             expectWithinAbsoluteError (getParam (q, "mix"), 37.5f, 0.06f);
         }
+
+        beginTest ("level-matched compare: measures processed vs dry loudness; bypass with matching on plays the dry at that loudness; off stays exact");
+        {
+            auto rms = [] (const Buf& b, int from) {
+                double s = 0.0;
+                for (int ch = 0; ch < b.getNumChannels(); ++ch)
+                    for (int i = from; i < b.getNumSamples(); ++i)
+                        s += (double) b.getSample (ch, i) * b.getSample (ch, i);
+                return (float) std::sqrt (s / (double) (b.getNumChannels() * (b.getNumSamples() - from)));
+            };
+            Buf in = makeNoise (2, 48000 * 12);
+            in.applyGain (0.2f); // about -25 dBFS RMS: well inside the limiter's ceiling at +6 dB
+            for (float gainDb : { 6.0f, -6.0f })
+            {
+                GlitchKidProcessor p;
+                p.prepareToPlay (48000.0, 512);
+                expect (! p.isLevelMatchedCompare(), "off by default");
+                setParam (p, "gain", gainDb);
+                Buf processed;
+                stream (p, in, processed);
+                expectWithinAbsoluteError (p.getCompareGainDb(), gainDb, 0.3f, "measured " + juce::String (p.getCompareGainDb()));
+
+                p.setLevelMatchedCompare (true);
+                setParam (p, "bypass", 1.0f);
+                Buf matched;
+                stream (p, in, matched);
+                expectWithinAbsoluteError (p.getCompareGainDb(), gainDb, 0.3f, "bypassed blocks never move the measurement");
+                const float procDb = juce::Decibels::gainToDecibels (rms (processed, 48000 * 6)),
+                            origDb = juce::Decibels::gainToDecibels (rms (matched, 48000));
+                expectWithinAbsoluteError (origDb, procDb, 0.5f, "ORIGINAL " + juce::String (origDb) + " dB vs PROCESSED " + juce::String (procDb) + " dB");
+
+                p.setLevelMatchedCompare (false);
+                Buf exact;
+                stream (p, in, exact);
+                for (int i = 48000; i < exact.getNumSamples(); i += 97)
+                    for (int ch = 0; ch < 2; ++ch)
+                        expectEquals (exact.getSample (ch, i), in.getSample (ch, i - pluginLatency));
+            }
+        }
     }
 };
 

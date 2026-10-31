@@ -236,6 +236,12 @@ public:
     bool isStutterTempoFromHost() const { return tempoFromHost.load(); }
     int getStutterLoopLength() const { return shownLoopLength.load(); } // 0 when not repeating
 
+    // ORIGINAL vs PROCESSED at equal loudness (opt-in, used by the Vocal Producer's compare switch). While processed audio plays, the long-term loudness of the
+    // output is compared with the dry input; while bypassed with matching on, the dry signal is played at that loudness, so "louder" never wins the comparison.
+    // Off (the default): bypass is exactly the time-aligned dry signal, as before. Real-time safe (two running averages and a smoothed gain).
+    void setLevelMatchedCompare (bool on) { levelMatch.store (on); }
+    bool isLevelMatchedCompare() const { return levelMatch.load(); }
+    float getCompareGainDb() const { return compareGainDb.load(); } // processed minus dry loudness in dB (0 until something has been measured)
     // Pitch Tune read-outs for the UI: MIDI note numbers (fractional), -1 when no voice is being corrected.
     float getTuneDetectedMidi() const { return shownDetectedMidi.load(); }
     float getTuneTargetMidi() const { return shownTargetMidi.load(); }
@@ -332,6 +338,10 @@ private:
     void runOutputLimiter (juce::AudioBuffer<float>&, int numChannels, int numSamples) noexcept;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
+    std::atomic<bool> levelMatch { false };
+    std::atomic<float> compareGainDb { 0.0f };
+    double compareDryEnergy = 0.0, compareWetEnergy = 0.0; // running mean squares (audio thread only)
+    juce::SmoothedValue<float> dryMatchGain { 1.0f };      // linear, applied to the dry signal while bypassed with matching on
     juce::SmoothedValue<float> wetMix { 1.0f };       // 1 = processed, 0 = dry (bypass)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (GlitchKidProcessor)

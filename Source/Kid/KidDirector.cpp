@@ -1,4 +1,6 @@
 #include "KidDirector.h"
+#include "../Analysis/VocalFileAnalysis.h"
+#include "../Macros/MacroEngine.h"
 #include <regex>
 
 namespace glitchkid::kid
@@ -29,7 +31,37 @@ const Lex lexicon[] = {
     { "\\b(experimental|weird|alien|strange|mutate|mutated|robotic|robot|crazy|wild)\\b", { 0, 0, 0, 0, 0, 0, 0, 1 }, nullptr },
     { "\\b(glitchy|glitch|choppy|chop|stutter)\\b",                                { 0, 0, 0, 0, 0, 0, 0, 1 }, "glitch" },
     { "\\bmelodic\\b",                                                             { 0.5f, 0, 0, 0, 0.5f, 0.5f, 0, 0 }, nullptr },
-    { "\\b(rapper|rap|bars)\\b",                                                   { 0, 0, 0.5f, 0.5f, 0, 0, 0, 0 }, nullptr } };
+    { "\\b(rapper|rap|bars)\\b",                                                   { 0, 0, 0.5f, 0.5f, 0, 0, 0, 0 }, nullptr },
+    { "\\b(emotional|emotive|heartfelt|sad|vulnerable)\\b",                          { 0.25f, 0.5f, 0, 0, 0, 0.5f, 0, 0 }, nullptr },
+    { "\\b(expensive|polished|glossy|professional|radio ready|finished)\\b",        { 0.5f, 0, 0.5f, 0.25f, 0, 0, 0.5f, 0 }, nullptr },
+    { "\\bsits? (?:better )?(?:with|in|on) (?:the )?(?:beat|mix|track|instrumental)\\b", { 0, 0, 0.5f, 0, 0, 0, 0.5f, 0 }, nullptr } };
+
+struct Pick { const char* pattern; int value; };
+// Producer profiles by name, then artist references (a direction in that spirit, never a copy). Matched first and removed, so "melodic" or "rap" are not counted twice.
+const Pick profileWords[] = {
+    { "\\b(melodic pop-? ?rap|pop-? ?rap|melodic rap)\\b", 1 }, { "\\batmospheric rap\\b", 2 },
+    { "\\b(intimate rap|intimate vocal|bedroom vocal)\\b", 3 }, { "\\b(experimental vocal|experimental profile)\\b", 4 } };
+const Pick artistWords[] = {
+    { "\\b(the kid laroi|kid laroi|laroi|juice wrld|post malone|lil tecca|iann dior)\\b", 1 },
+    { "\\b(travis scott|don toliver|kid cudi)\\b", 2 },
+    { "\\b(drake|j cole|frank ocean|mac miller)\\b", 3 },
+    { "\\b(playboi carti|carti|yeat|bon iver)\\b", 4 } };
+// Pitch Tune words, strongest meaning first (value = IntentFrame::tune).
+const Pick tuneWords[] = {
+    { "\\b(no auto-? ?tune|no tuning|without (?:auto-? ?tune|tuning)|tuning off|turn (?:off )?(?:the )?tuning(?: off)?)\\b", -1 },
+    { "\\b(less robotic|not robotic|not so robotic|natural tuning|tuning (?:more )?natural|subtle tuning|gentle tuning|gentle correction|softer tuning|tuning softer)\\b", 1 },
+    { "\\b(harder tuning|tuning (?:much |a lot |even )?harder|hard-? ?tune|hard tuned|more auto-? ?tune|heavy auto-? ?tune|robotic tuning)\\b", 3 },
+    { "\\b(auto-? ?tune|tune it|tune me|tune my vocal|pitch correct(?:ion)?|correct (?:the |my )?pitch|in key|in tune|tuning)\\b", 2 } };
+
+const ProducerProfile profiles[numProfiles] = {
+    { "Melodic Pop-Rap", "Modern emotional melodic rap: smooth pitch correction, forward presence, controlled compression, a little saturation, tasteful echo and width.",
+      "MODERN MELODIC RAP", 2, { 0.25f, 0.25f, 0.5f, 0, 0.25f, 0, 0, 0 }, nullptr },
+    { "Atmospheric Rap", "Spacious, experimental modern rap: wide ambience, creative echo, more audible effects, and the low-mid build-up kept in check.",
+      "DARK & ATMOSPHERIC", 2, { 0, 0, 0, 0, 0.75f, 0.75f, 0.5f, 0 }, "mud" },
+    { "Intimate Rap", "Close, personal production: natural pitch correction, clear presence, controlled dynamics and almost no ambience.",
+      "CLEAN & NATURAL", 1, { 0, 0.25f, 0.75f, 0.25f, -0.5f, -1.0f, 0, 0 }, "natural" },
+    { "Experimental Vocal", "Unconventional textures: creative hard tuning, harder processing, Mutation, width and movement.",
+      "HARD-TUNED RAP", 3, { 0, 0.5f, 0, 0.5f, 0.75f, 0.25f, 0, 1.0f }, nullptr } };
 
 struct Keep { const char* pattern; const char* a; const char* b; };
 const Keep keeps[] = {
@@ -62,6 +94,45 @@ std::string normalise (const juce::String& text)
 
 float clampDir (float v) { return juce::jlimit (-2.0f, 2.0f, v); }
 float round2 (float v) { return std::round (v * 100.0f) / 100.0f; }
+
+int pick (std::string& t, const Pick* table, size_t n, juce::String* heard = nullptr)
+{
+    std::string m;
+    for (size_t i = 0; i < n; ++i)
+        if (find (t, table[i].pattern, &m))
+        {
+            if (heard != nullptr) *heard = juce::String (m).trim();
+            t = std::regex_replace (t, std::regex (table[i].pattern), " ");
+            return table[i].value;
+        }
+    return 0;
+}
+}
+
+const ProducerProfile& producerProfile (int index) { return profiles[juce::jlimit (1, numProfiles, index) - 1]; }
+
+juce::String artistDisclaimer (const juce::String& artist, int profile)
+{
+    const auto& p = producerProfile (profile);
+    return "I can't copy " + artist.toUpperCase() + "'s voice or vocal chain, and I don't claim to. I'll take it as a direction: " + juce::String (p.name)
+         + " (" + juce::String (p.tagline).upToFirstOccurrenceOf (":", false, false).toLowerCase() + "), built only from GlitchKid's own effects.";
+}
+
+automode::MixProposal buildFoundation (int profile, const SoundState& current, const SoundState& factoryDefault, const analysis::VocalAnalysis& lead, const automode::RangeLookup& ranges)
+{
+    automode::MixInput in;
+    in.profile = profile > 0 ? FactoryPresets::indexOfName (producerProfile (profile).foundation) : -1;
+    in.current = current;
+    in.factoryDefault = factoryDefault;
+    in.lead = lead;
+    in.allowProfileOnly = true;
+    const bool heard = lead.status == analysis::VocalAnalysis::Status::ready || lead.status == analysis::VocalAnalysis::Status::tooShort;
+    if (! heard)
+        in.lead.status = analysis::VocalAnalysis::Status::tooShort; // nothing heard yet: the engine's own "profile as saved" path, not fitted to the voice
+    auto p = automode::buildMix (in, ranges);
+    if (p.usable && ! heard)
+        p.message = "No vocal heard yet: the " + p.profileName + " foundation as saved, not fitted to your voice.";
+    return p;
 }
 
 bool IntentFrame::anyOps() const
@@ -74,7 +145,8 @@ bool IntentFrame::anyOps() const
 
 bool IntentFrame::understood() const
 {
-    return anyOps() || scale > 0.0f || more || improve || reset || ! locks.isEmpty() || role.isNotEmpty() || ! flags.isEmpty() || ! notes.isEmpty();
+    return anyOps() || scale > 0.0f || more || improve || reset || ! locks.isEmpty() || role.isNotEmpty() || ! flags.isEmpty() || ! notes.isEmpty()
+        || profile > 0 || tune != 0 || cleanLevel > 0 || buildMix;
 }
 
 IntentFrame parse (const juce::String& text)
@@ -91,6 +163,30 @@ IntentFrame parse (const juce::String& text)
             f.heard.add (juce::String (m).trim());
             t = std::regex_replace (t, std::regex (k.pattern), " ", std::regex_constants::format_first_only);
         }
+    if (const int a = pick (t, artistWords, std::size (artistWords), &f.artist); a > 0)
+        f.profile = a;
+    else if (const int pr = pick (t, profileWords, std::size (profileWords)); pr > 0)
+        f.profile = pr;
+    else if (find (t, "\\b(sound like|sounds like|in the style of|style of)\\b"))
+        f.notes.add ("I don't have a direction for that name. Pick a profile, or describe the sound: wide, dark, close, glitchy...");
+    if (f.profile > 0) f.heard.add (f.artist.isNotEmpty() ? f.artist : juce::String (producerProfile (f.profile).name));
+    if (find (t, "\\b(build my mix|build (?:me )?a mix|build the mix|mix it for me|make me a mix)\\b", &m))
+    {
+        f.buildMix = true;
+        f.heard.add (m);
+        t = std::regex_replace (t, std::regex ("\\b(build my mix|build (?:me )?a mix|build the mix|mix it for me|make me a mix)\\b"), " ");
+    }
+    if (find (t, "\\bclean (?:up )?(?:my |the |this )?(?:vocal|voice)\\b", &m))
+    {
+        f.cleanLevel = find (t, "\\b(gentle|gently|light|lightly|subtle)\\b") ? 1 : find (t, "\\b(aggressive|aggressively|heavy|heavily|hard)\\b") ? 3 : 2;
+        f.heard.add (m);
+        t = std::regex_replace (t, std::regex ("\\bclean (?:up )?(?:my |the |this )?(?:vocal|voice)\\b|\\b(gentle|gently|light|lightly|subtle|aggressive|aggressively|heavy|heavily|hard|balanced)\\b"), " ");
+    }
+    {
+        juce::String w;
+        f.tune = pick (t, tuneWords, std::size (tuneWords), &w);
+        if (f.tune != 0) f.heard.add (w);
+    }
     if (find (t, "\\b(start over|reset|forget that|forget it|from scratch)\\b"))
     {
         f.reset = true;
@@ -133,7 +229,8 @@ IntentFrame parse (const juce::String& text)
     }
     if (find (t, "\\b(natural|transparent|realistic|honest)\\b", &m)) { f.flags.addIfNotAlreadyThere ("natural"); f.heard.add (m); }
     if (find (t, "\\b(louder|quieter|volume|loud)\\b")) f.notes.add ("Level stays yours: I never touch Gain, Mix or the limiter.");
-    if (find (t, "\\b(autotune|auto-tune|tune|tuned|tuning|pitch|in key)\\b")) f.notes.add ("Tuning stays yours: Pitch Tune is on the TUNE page.");
+    if (find (t, "\\bsits? (?:better )?(?:with|in|on) (?:the )?(?:beat|mix|track|instrumental)\\b") || find (t, "\\b(the beat|my beat|the instrumental)\\b"))
+        f.notes.add ("I only hear this vocal (and the beat, if you route it to GlitchKid's instrumental input on BEAT), not your whole project.");
     return f;
 }
 
@@ -143,7 +240,7 @@ Director::Director (automode::RangeLookup r) : ranges (std::move (r)) {}
 
 bool Director::isAllowed (const juce::String& id)
 {
-    return ! (id.startsWith ("tune_") || id.startsWith ("lim_") || id == "gain" || id == "mix" || id == "bypass") && id.isNotEmpty();
+    return ! (id.startsWith ("lim_") || id == "gain" || id == "mix" || id == "bypass") && id.isNotEmpty(); // level and the safety limiter stay the artist's
 }
 
 int Director::stageOf (const juce::String& id)
@@ -168,7 +265,7 @@ int Director::stageOf (const juce::String& id)
     return 0;
 }
 
-bool Director::needsAnalysis (const IntentFrame& f) { return f.improve || f.ops[clean] > 0.0f; }
+bool Director::needsAnalysis (const IntentFrame& f) { return f.improve || f.buildMix || f.ops[clean] > 0.0f; }
 
 int Director::selectedCount() const
 {
@@ -198,7 +295,23 @@ void Director::updateDirection (const IntentFrame& f)
         roleName = "lead";
         unticked.clear();
         lastTouched.clear();
+        foundation.clear();
+        profileIndex = tuneChoice = cleanChoice = 0;
     }
+    if (f.profile > 0)
+    {
+        const auto& p = producerProfile (f.profile);
+        profileIndex = f.profile;
+        dir = p.direction; // a profile replaces the direction; the words in the same sentence are added on top
+        tuneChoice = p.tune;
+        if (p.flag != nullptr) flags.insert (p.flag);
+        lastTouched.clear();
+        for (int d = 0; d < numDims; ++d)
+            if (std::abs (dir[(size_t) d]) > 1e-6f)
+                lastTouched.push_back ((Dim) d);
+    }
+    if (f.tune != 0) tuneChoice = f.tune;
+    if (f.cleanLevel > 0) cleanChoice = f.cleanLevel;
     if (f.scale > 0.0f && ! touched.empty())
         for (auto d : touched)
             dir[(size_t) d] = round2 (dir[(size_t) d] * f.scale); // "a little less dark": scale what is there
@@ -232,7 +345,7 @@ std::vector<Change> Director::decide()
     const bool front = locks.count ("front") > 0, adlib = roleName == "adlib", keepPresence = locks.count ("presence") > 0;
     auto B = [this] (const char* id) { return base.get (id, 0.0f); };
     auto cur = [&] (const char* id) { auto it = T.find (id); return it != T.end() ? it->second : B (id); };
-    auto put = [&] (const char* id, float v, const char* why)
+    auto put = [&] (const juce::String& id, float v, const juce::String& why)
     {
         automode::Range r;
         if (! isAllowed (id) || ! ranges || ! ranges (id, r) || ! std::isfinite (v))
@@ -245,8 +358,10 @@ std::vector<Change> Director::decide()
             v = r.snap (v);
         T[id] = v;
         auto& w = W[id];
-        w = w.isEmpty() || w == why ? juce::String (why) : w + "; " + why;
+        w = w.isEmpty() || w == why ? why : w + "; " + why;
     };
+    for (const auto& c : foundation) // Build My Mix: the profile's foundation first; everything below moves from there
+        put (c.id, c.to, "Foundation (" + foundationName + "): " + c.reason);
     auto add = [&] (const char* id, float dv, const char* why) { put (id, cur (id) + dv, why); };
     auto k = [] (float x) { return juce::jmin (1.0f, std::abs (x) / 1.5f); }; // how far toward a goal: 1.5 units of direction = all the way
     auto toward = [&] (const char* id, float goal, float amount, const char* why) { const float c = cur (id); if (std::abs (goal - c) > 1e-6f) put (id, c + (goal - c) * amount, why); };
@@ -362,6 +477,32 @@ std::vector<Change> Director::decide()
             if (B ("mut_on") < 0.5f) put ("mut_blend", 40.0f + 20.0f * d[exp], "Some of your real voice stays");
         }
     }
+    if (cleanChoice > 0) // Clean My Vocal: CLEAN LAB only (rumble, low-mid build-up, resonances, de-esser), conservative unless asked
+    {
+        static const char* level[] = { "Gentle", "Balanced", "Aggressive" };
+        static const float amount[] = { 35.0f, 60.0f, 90.0f }, trim[] = { 70.0f, 100.0f, 100.0f };
+        const int i = juce::jlimit (1, 3, cleanChoice) - 1;
+        const juce::String why = "Clean My Vocal (" + juce::String (level[i]) + ")";
+        put ("clean_on", 1.0f, why + ": CLEAN on");
+        put ("clean_amount", amount[i], why + ": how hard CLEAN may work");
+        for (auto* id : { "clean_tone", "clean_res", "clean_ess" })
+            put (id, trim[i], why + juce::String (i == 0 ? ": each section held back" : ": each section at full strength"));
+    }
+    if (tuneChoice > 0)
+    {
+        static const char* why[] = { "Natural tuning: gentle correction with a slow glide", "Light tuning: firm but smooth correction", "Hard tuning: every note snaps to the scale" };
+        SoundState t;
+        macros::apply ((macros::TuneStyle) (juce::jlimit (1, 3, tuneChoice) - 1), t);
+        for (auto* id : { "tune_on", "tune_strength", "tune_speed" })
+            put (id, t.get (id, 0.0f), why[juce::jlimit (1, 3, tuneChoice) - 1]);
+        if (keyKnown) // only from a reliable estimate of a loaded vocal file
+        {
+            put ("tune_key", (float) keyRoot, "Key estimated from your vocal file");
+            put ("tune_scale", keyIsMinor ? 2.0f : 1.0f, "Scale estimated from your vocal file");
+        }
+    }
+    else if (tuneChoice < 0 && B ("tune_on") >= 0.5f)
+        put ("tune_on", 0.0f, "Pitch Tune off: your natural pitch");
     if (flags.count ("natural") > 0)
     {
         if (cur ("sat_drive") > 2.0f) put ("sat_drive", 2.0f, "Natural: light saturation only");
@@ -406,6 +547,18 @@ void Director::rebuild()
 
 juce::String Director::respond (IntentFrame f, const AnalysisFacts* facts)
 {
+    if (facts != nullptr && facts->valid && facts->keyReliable)
+    {
+        keyKnown = true;
+        keyRoot = facts->keyTonic;
+        keyIsMinor = facts->keyMinor;
+    }
+    if (f.buildMix && facts != nullptr && facts->valid) // the foundation already fits tone and dynamics to the voice; KID adds what it does not touch
+    {
+        if (facts->sibilanceIndex > 0.25f || facts->bandFraction[1] > 0.35f) f.cleanLevel = juce::jmax (f.cleanLevel, cleanChoice, 1);
+        if (facts->fromFile && facts->voicedShare > 0.5f && facts->offNoteCents > 15.0f && f.tune == 0 && tuneChoice == 0) f.tune = 1;
+        if (facts->clippedSamples > 0) f.notes.add ("Your recording clips. Lower the input level when you record; GlitchKid can't repair clipping.");
+    }
     if (f.improve && facts != nullptr && facts->valid)
     {
         if (facts->sibilanceIndex > 0.25f) { f.ops[clean] = juce::jmax (f.ops[clean], 1.0f); f.flags.addIfNotAlreadyThere ("ess"); }
@@ -413,6 +566,7 @@ juce::String Director::respond (IntentFrame f, const AnalysisFacts* facts)
         if (facts->dynamicRangeDb > 12.0f) f.ops[punch] += 0.5f;
         if (facts->bandFraction[3] + facts->bandFraction[4] < 0.25f) f.ops[bright] += 0.5f;
         if (facts->clippedSamples > 0) f.notes.add ("Your recording clips. Lower the input level when you record; I don't fix clipping with Gain.");
+        if (facts->fromFile && facts->voicedShare > 0.5f && facts->offNoteCents > 15.0f && f.tune == 0 && tuneChoice == 0) f.tune = 1;
     }
     updateDirection (f);
     rebuild();
@@ -452,6 +606,29 @@ juce::String Director::reply (const IntentFrame& f, const AnalysisFacts* facts) 
     if (f.locks.contains ("char")) parts.add ("Your Lab effects stay exactly as they are.");
     if (f.role == "adlib") parts.add ("For the ad-libs: further back, thinner, with longer throws.");
     if (f.flags.contains ("natural")) parts.add ("Keeping it natural: light saturation, no Lab effects.");
+    if (f.artist.isNotEmpty()) parts.add (artistDisclaimer (f.artist, f.profile));
+    else if (f.profile > 0) parts.add (juce::String (producerProfile (f.profile).name) + ": " + producerProfile (f.profile).tagline);
+    if (f.buildMix || f.profile > 0)
+        parts.add (hasFoundation() ? "Foundation: " + foundationName + "." : juce::String ("No foundation yet: the direction alone, from your current sound."));
+    if (f.tune != 0 || (f.profile > 0 && tuneChoice > 0) || (tuneChoice > 0 && (f.improve || f.buildMix)))
+    {
+        static const char* style[] = { "Natural", "Light", "Hard" };
+        if (tuneChoice < 0) parts.add ("Pitch Tune off.");
+        else if (tuneChoice > 0)
+            parts.add ("Pitch Tune: " + juce::String (style[juce::jlimit (1, 3, tuneChoice) - 1]) + ". "
+                       + (keyKnown ? "Key " + analysis::keyName (keyRoot, keyIsMinor) + ", estimated from your vocal file: check it on TUNE."
+                                   : juce::String ("It pulls to the key set on TUNE. I haven't detected your key: load your vocal file, or set the key on TUNE.")));
+    }
+    if (f.cleanLevel > 0 || (cleanChoice > 0 && f.buildMix))
+    {
+        static const char* level[] = { "Gentle", "Balanced", "Aggressive" };
+        parts.add ("Clean My Vocal (" + juce::String (level[juce::jlimit (1, 3, cleanChoice) - 1]) + "): CLEAN takes out rumble, eases low-mid build-up, tames resonances and sharp S's."
+                   " It does not remove background noise, room reverb or clipping: GlitchKid has no noise reduction.");
+        if (cleanChoice >= 3) parts.add ("Aggressive can thin your tone: compare with ORIGINAL.");
+        if (facts != nullptr && facts->noiseKnown && facts->noiseFloorDb > -60.0f)
+            parts.add ("The quiet moments in your file sit at about " + juce::String (juce::roundToInt (facts->noiseFloorDb)) + " dBFS: that background stays.");
+    }
+    if (f.buildMix && ! rows.empty()) parts.add (summary());
     parts.addArray (f.notes);
     if (! f.understood())
         return "I didn't hear a sound in that. Try \"warmer\", \"wider\", \"more distant\", or \"I don't know, improve it\".";
@@ -459,6 +636,56 @@ juce::String Director::reply (const IntentFrame& f, const AnalysisFacts* facts) 
     if (! rows.empty()) parts.add (juce::String (n) + (n == 1 ? " change" : " changes") + " ready. Apply when it's right, or tell me what to change.");
     else parts.add ("That lands on your current sound: nothing to change.");
     return parts.joinIntoString (" ");
+}
+
+void Director::setFoundation (const automode::MixProposal& p)
+{
+    foundation.clear();
+    foundationName = {};
+    if (! p.usable)
+        return;
+    foundation = p.changes;
+    foundationName = p.profileName;
+}
+
+juce::String Director::summary() const
+{
+    auto row = [this] (const char* id) -> const Change* { for (auto& r : rows) if (r.selected && r.id == id) return &r; return nullptr; };
+    auto any = [this] (const char* prefix) { for (auto& r : rows) if (r.selected && r.id.startsWith (prefix)) return true; return false; };
+    juce::StringArray did;
+    if (auto* on = row ("tune_on"); on != nullptr && on->to < 0.5f) did.add ("switched pitch correction off");
+    else if (any ("tune_"))
+    {
+        const auto* st = row ("tune_strength");
+        const float strength = st != nullptr ? st->to : base.get ("tune_strength", 75.0f);
+        did.add (juce::String (strength <= 55.0f ? "added gentle" : strength <= 80.0f ? "added smooth" : "added hard") + " pitch correction");
+    }
+    if (any ("clean_")) did.add ("cleaned rumble, mud, resonances and sharp S's");
+    if (any ("comp_"))
+    {
+        const auto* ratio = row ("comp_ratio");
+        did.add (ratio != nullptr && ratio->to < ratio->from ? "eased the compression" : "controlled the dynamics");
+    }
+    if (any ("eq_")) did.add ("shaped the tone");
+    if (auto* sat = row ("sat_drive")) did.add (sat->to > sat->from ? "added saturation" : "pulled the saturation back");
+    if (any ("air_")) did.add ("opened up the top");
+    if (any ("dbl_") || any ("dim_"))
+    {
+        const auto* d1 = row ("dbl_on"); const auto* d2 = row ("dim_on");
+        did.add ((d1 != nullptr && d1->to < 0.5f) || (d2 != nullptr && d2->to < 0.5f) ? "narrowed the image" : "widened it with doubles and Dimension");
+    }
+    if (any ("echo_"))
+    {
+        const auto* e = row ("echo_on");
+        did.add (e != nullptr && e->to < 0.5f ? "took the echo out" : "added echo for space");
+    }
+    for (auto [id, what] : { std::pair { "mut_on", "Mutation" }, std::pair { "stutter_on", "Stutter" }, std::pair { "harm_on", "Harmony" } })
+        if (auto* r = row (id))
+            did.add ((r->to >= 0.5f ? juce::String ("added ") : juce::String ("switched off ")) + what);
+    if (did.isEmpty())
+        return "Nothing to change.";
+    auto text = did.size() == 1 ? did[0] : did.joinIntoString (", ", 0, did.size() - 1) + " and " + did[did.size() - 1];
+    return text.substring (0, 1).toUpperCase() + text.substring (1) + ".";
 }
 
 void Director::setSelected (const juce::String& id, bool on)
@@ -505,6 +732,9 @@ void Director::accepted (const SoundState& now)
     previous.clear();
     rows.clear();
     removedIds.clear();
+    foundation.clear();
+    foundationName = {};
+    profileIndex = tuneChoice = cleanChoice = 0;
 }
 
 void Director::cancel() { accepted (base); }

@@ -73,6 +73,7 @@ target_sources(GlitchKid PRIVATE
     Source/Presets/PresetController.cpp
     Source/Presets/FactoryPresets.cpp
     Source/Analysis/VocalAnalyzer.cpp
+    Source/Analysis/VocalFileAnalysis.cpp
     Source/Analysis/ReferenceAnalyzer.cpp
     Source/AutoMode/AutoMix.cpp
     Source/AutoMode/SourceRelationship.cpp
@@ -174,6 +175,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
         Tests/KidTests.cpp
+        Tests/VocalFileTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -196,6 +198,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Presets/PresetController.cpp
         Source/Presets/FactoryPresets.cpp
         Source/Analysis/VocalAnalyzer.cpp
+        Source/Analysis/VocalFileAnalysis.cpp
         Source/Analysis/ReferenceAnalyzer.cpp
         Source/AutoMode/ReferenceMatch.cpp
         Source/AutoMode/AutoMix.cpp

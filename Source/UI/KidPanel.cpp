@@ -1,31 +1,46 @@
 #include "KidPanel.h"
 #include "PlaygroundWidgets.h"
+#include "../Analysis/ReferenceAnalyzer.h"
+#include "../Macros/MacroEngine.h"
 
 namespace glitchkid::ui
 {
 namespace
 {
-const juce::Colour kidPink (0xffe14cbb), kidPinkSoft (0xffffc6ea), shapeCol (0xffcbbcff), spaceCol (0xff8d84ff), finishCol (0xffcfc8da), amber (0xffffb54c),
-                   plum (0xff1a0f1b), stageBg (0xff0c0a11);
-const char* const stationName[17] = { "Tune", "Formant", "Harmony", "Mutation", "Doubler", "EQ", "Clean", "Comp", "De-ess", "Warmth", "Air", "Stutter", "Echo", "Dimension", "Gain", "Mix", "Limiter" };
+// GlitchKid's own palette for the producer screen: near-black and plum, with ultraviolet, magenta and pink accents.
+const juce::Colour kidPink (0xffe14cbb), kidPinkSoft (0xffffc6ea), ultra (0xff7d3cff), lilac (0xffb5aeff), amber (0xffffb54c),
+                   plum (0xff1d0f22), plumDeep (0xff120a16), ink (0xff0b0910), mint (0xff62e0a6);
 const char* const stageName[18] = { "", "Pitch Tune", "Formant", "Harmony", "Mutation", "Doubler", "4-band EQ", "CLEAN corrective", "Compressor", "CLEAN de-esser",
                                     "Saturation", "AIR LAB", "Stutter", "Echo", "Dimension", "Gain", "Mix", "Output Limiter" };
 const char* const dimName[kid::numDims][2] = { { "BRIGHTER", "DARKER" }, { "WARMER", "COOLER" }, { "MORE PRESENT", "FURTHER BACK" }, { "HARDER", "SOFTER" },
                                                { "WIDER", "NARROWER" }, { "MORE SPACE", "CLOSER" }, { "CLEANER", "CLEANER" }, { "STRANGER", "STRANGER" } };
-juce::Colour worldOf (int stage)
+const char* const intensityName[3] = { "GENTLE", "BALANCED", "AGGRESSIVE" };
+constexpr int advancedStage[6] = { 1, 7, 8, 6, 13, 4 }; // Tune, Clean, Dynamics, Tone, Space, Creative (LAB)
+const char* const advancedName[6] = { "TUNE", "CLEAN", "DYNAMICS", "TONE", "SPACE", "CREATIVE" };
+
+// A tactile panel: a plum-to-ink face, a lit top edge and a dark lower lip, so the screen reads as one physical instrument.
+void bezel (juce::Graphics& g, juce::Rectangle<int> r, juce::Colour top, juce::Colour bottom, float radius = 14.0f)
 {
-    switch (stage)
-    {
-        case 2: case 3: case 4: case 12: return kidPink;
-        case 5: case 13: case 14: return spaceCol;
-        case 15: case 16: case 17: return finishCol;
-        default: return shapeCol;
-    }
-}
-constexpr int maxLines = 60;
+    const auto f = r.toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.45f));
+    g.fillRoundedRectangle (f.translated (0.0f, 2.0f), radius);
+    g.setGradientFill (juce::ColourGradient (top, 0.0f, f.getY(), bottom, 0.0f, f.getBottom(), false));
+    g.fillRoundedRectangle (f, radius);
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    g.drawRoundedRectangle (f.reduced (0.5f), radius, 1.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.fillRect (f.getX() + radius, f.getY() + 1.0f, f.getWidth() - 2.0f * radius, 1.0f);
 }
 
-// ---- the push-to-talk button ----
+void caption (juce::Graphics& g, const juce::String& t, int x, int y, int w, juce::Colour c = textDim)
+{
+    g.setFont (fontOf (11.5f, true));
+    g.setColour (c);
+    g.drawText (t, x, y, w, 14, juce::Justification::centredLeft, true);
+}
+}
+
+// ---- the push-to-talk button ----// ---- the push-to-talk button ----
 void KidPanel::MicButton::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
@@ -101,8 +116,8 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
     lastSeen = proc.captureSoundState();
     director.begin (lastSeen);
     tapScratch.resize (2048);
-    say ("I'm KID. Hold the mic, or type, and tell me what you hear in your head: \"warmer\", \"wider but keep me upfront\", or just \"I don't know, improve it\". "
-         "I show you every change before anything happens.");
+    say ("I'm KID, your vocal producer. Load your vocal or play your track, then tell me the sound in your head: \"warmer\", \"wide melodic rap but keep me upfront\", "
+         "a profile below, or just \"I don't know, improve it\". I show you every change before anything happens.");
 
     mic.setTitle ("Talk to KID");
     mic.setDescription ("Push to talk: hold to speak, or tap once to start and again to stop.");
@@ -112,10 +127,11 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
     addAndMakeVisible (mic);
 
     input.setFont (fontOf (14.0f));
-    input.setTextToShowWhenEmpty ("...or type to KID", textDim);
-    input.setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff0b090e));
+    input.setTextToShowWhenEmpty ("...or type to KID: \"make it more emotional and less robotic\"", textDim);
+    input.setColour (juce::TextEditor::backgroundColourId, ink);
     input.setColour (juce::TextEditor::outlineColourId, border);
     input.setColour (juce::TextEditor::textColourId, textBright);
+    input.setTitle ("Command for KID");
     input.getProperties().set ("rawText", true);
     input.onReturnKey = [this] { send (input.getText(), false); input.clear(); };
     addAndMakeVisible (input);
@@ -129,7 +145,8 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
         {
             if (safe == nullptr) return;
             safe->phase = safe->director.proposal().empty() ? Phase::ready : Phase::review;
-            safe->say (ok ? juce::String ("Speech is ready. Hold the mic and talk to me.") : msg);
+            if (ok) safe->say ("Speech is ready. Hold the mic and talk to me.");
+            else safe->fail (msg);
             safe->refreshButtons();
             safe->repaint();
         });
@@ -138,20 +155,57 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
     };
     applyButton.onClick = [this] { apply(); };
     cancelButton.onClick = [this] { cancelTake(); };
+    analyseButton.setTooltip ("Listen to the vocal on this track while your project plays (2-8 s of singing or rapping). GlitchKid only hears this track, not your whole project.");
     analyseButton.onClick = [this] { pendingText = {}; analysisStartCount = proc.getAnalyzer().completedCount(); proc.startSourceAnalysis(); analysisStartedMs = juce::Time::getMillisecondCounter(); phase = Phase::analysing; refreshButtons(); repaint(); };
+    loadButton.setTooltip ("Analyse a vocal recording (" + analysis::referenceFormatNames() + "). It is read, not played and not copied: you still hear GlitchKid by playing your track in the DAW.");
+    loadButton.onClick = [this] { chooseFile(); };
     const char* tabNames[3] = { "TAKE", "VOCAL READ", "LIMITS" };
     for (int i = 0; i < 3; ++i)
     {
         tabButtons[i].setButtonText (tabNames[i]);
-        tabButtons[i].setClickingTogglesState (false);
         tabButtons[i].onClick = [this, i] { tab = (Tab) i; takeScroll = 0.0f; refreshButtons(); repaint(); };
         addAndMakeVisible (tabButtons[i]);
     }
-    for (auto* b : { &sendButton, &setupButton, &applyButton, &cancelButton, &analyseButton })
+    for (int i = 0; i < kid::numProfiles; ++i)
+    {
+        const auto& prof = kid::producerProfile (i + 1);
+        profileButtons[i].setButtonText (juce::String (prof.name).toUpperCase());
+        profileButtons[i].setTooltip (juce::String (prof.tagline) + " An original GlitchKid direction, not anyone's vocal chain.");
+        profileButtons[i].onClick = [this, i] { chosenProfile = i + 1; send ("Give me the " + juce::String (kid::producerProfile (i + 1).name) + " sound", false); };
+        addAndMakeVisible (profileButtons[i]);
+    }
+    buildButton.setTooltip ("Analyses your vocal (the loaded file, or the live input), builds a whole mix from the chosen profile with GlitchKid's own effects, and shows every change before Apply. UNDO goes back.");
+    buildButton.onClick = [this] { send (chosenProfile > 0 ? "Build my mix: " + juce::String (kid::producerProfile (chosenProfile).name) : juce::String ("Build my mix"), false); };
+    cleanButton.setTooltip ("CLEAN LAB only: rumble, low-mid build-up, resonances and harsh S's. It is not noise reduction and does not remove reverb or clipping.");
+    cleanButton.onClick = [this] { send (cleanIntensity == 0 ? "Clean my vocal gently" : cleanIntensity == 2 ? "Clean my vocal aggressively" : "Clean my vocal", false); };
+    for (int i = 0; i < 3; ++i)
+    {
+        intensityButtons[i].setButtonText (intensityName[i]);
+        intensityButtons[i].setTooltip (i == 0 ? "Gentle: CLEAN at 35 %, each section held back." : i == 1 ? "Balanced: CLEAN at 60 %." : "Aggressive: CLEAN at 90 %. Can thin your tone: compare with ORIGINAL.");
+        intensityButtons[i].onClick = [this, i] { cleanIntensity = i; refreshButtons(); };
+        addAndMakeVisible (intensityButtons[i]);
+    }
+    originalButton.setTooltip ("Hear your untouched vocal (the real bypass, delay-matched). With LEVEL MATCH on it plays at the processed loudness, so louder never wins.");
+    processedButton.setTooltip ("Hear GlitchKid.");
+    originalButton.onClick = [this] { setCompare (true); };
+    processedButton.onClick = [this] { setCompare (false); };
+    originalButton.setColour (juce::TextButton::buttonOnColourId, kidPink.darker (0.45f));
+    processedButton.setColour (juce::TextButton::buttonOnColourId, ultra);
+    matchButton.setTooltip ("Level match: ORIGINAL is played at the long-term loudness GlitchKid measured for PROCESSED (up to 24 dB). Off: ORIGINAL is the exact input.");
+    matchButton.onClick = [this] { levelMatch = ! levelMatch; proc.setLevelMatchedCompare (levelMatch && isVisible() && getParentComponent() != nullptr); refreshButtons(); repaint (compareBox); };
+    for (int i = 0; i < 6; ++i)
+    {
+        advancedButtons[i].setButtonText (advancedName[i]);
+        advancedButtons[i].setTooltip ("Open the detailed " + juce::String (advancedName[i]).toLowerCase() + " controls. KID is the way back.");
+        advancedButtons[i].onClick = [this, i] { if (hooks.openStage) hooks.openStage (advancedStage[i]); };
+        addAndMakeVisible (advancedButtons[i]);
+    }
+    for (auto* b : { &sendButton, &setupButton, &applyButton, &cancelButton, &analyseButton, &loadButton, &buildButton, &cleanButton, &originalButton, &processedButton, &matchButton })
         addAndMakeVisible (b);
     sendButton.setTooltip ("Send what you typed to KID.");
     applyButton.setTooltip ("Apply the ticked changes. UNDO (top right) brings your previous sound back.");
     cancelButton.setTooltip ("Drop KID's take. Your sound has not changed.");
+    setupDials();
     refreshChips();
     refreshButtons();
 }
@@ -160,10 +214,13 @@ KidPanel::~KidPanel()
 {
     stopTimer();
     commandMic.stop();
+    fileJob.stopJob();
+    proc.setLevelMatchedCompare (false);
 }
 
 void KidPanel::visibilityChanged()
 {
+    proc.setLevelMatchedCompare (levelMatch && isVisible() && getParentComponent() != nullptr); // matching belongs to this screen's compare switch; everywhere else bypass is exact
     if (isShowing()) startTimerHz (30);
     else
     {
@@ -180,11 +237,133 @@ float KidPanel::value (const char* id) const
     return 0.0f;
 }
 
+void KidPanel::setParam (const char* id, float plain)
+{
+    auto* r = dynamic_cast<juce::RangedAudioParameter*> (proc.apvts.getParameter (id));
+    if (r == nullptr || ! std::isfinite (plain))
+        return;
+    const float v = juce::jlimit (0.0f, 1.0f, r->convertTo0to1 (plain));
+    if (std::abs (v - r->getValue()) < 1.0e-6f)
+        return;
+    r->beginChangeGesture();
+    r->setValueNotifyingHost (v);
+    r->endChangeGesture();
+}
+
+void KidPanel::setupDials()
+{
+    auto pct = [] (float v) { return juce::String (juce::roundToInt (v)) + " %"; };
+    auto macroDial = [this] (macros::Macro m)
+    {
+        return std::pair<std::function<float()>, std::function<void (float)>> (
+            [this, m] { return 100.0f * macros::read (m, proc.captureSoundState()); },
+            [this, m] (float v) { auto s = proc.captureSoundState(); macros::apply (m, v / 100.0f, s); proc.applyParameterChanges (s); });
+    };
+    auto& clean = dials[0];
+    clean.name = "CLEAN";
+    clean.what = "CLEAN LAB amount: rumble, low-mid build-up, resonances and harsh S's. 0 switches CLEAN off. It is not noise reduction.";
+    clean.accent = mint;
+    clean.stage = 7;
+    clean.get = [this] { return value ("clean_on") >= 0.5f ? value ("clean_amount") : 0.0f; };
+    clean.set = [this] (float v) { if (v >= 0.5f) { setParam ("clean_amount", v); setParam ("clean_on", 1.0f); } else setParam ("clean_on", 0.0f); };
+    clean.text = [pct] (float v) { return v < 0.5f ? juce::String ("Off") : pct (v); };
+
+    auto& tune = dials[1];
+    tune.name = "TUNE";
+    tune.what = "Pitch Tune strength toward the key and scale set on TUNE. 0 switches it off. Pitch Tune adds about 31 ms of latency while on.";
+    tune.accent = lilac;
+    tune.stage = 1;
+    tune.get = [this] { return value ("tune_on") >= 0.5f ? value ("tune_strength") : 0.0f; };
+    tune.set = [this] (float v) { if (v >= 0.5f) { setParam ("tune_strength", v); setParam ("tune_on", 1.0f); } else setParam ("tune_on", 0.0f); };
+    tune.text = [this, pct] (float v)
+    {
+        if (v < 0.5f) return juce::String ("Off");
+        static const char* style[] = { "Natural", "Light", "Hard" };
+        const int s = macros::readTuneStyle (proc.captureSoundState());
+        return pct (v) + (s >= 0 ? juce::String (" ") + style[s] : juce::String());
+    };
+
+    auto& punch = dials[2];
+    punch.name = "STYLE";
+    punch.what = "Punch: how firmly the compressor holds your voice (the PUNCH macro: ratio, threshold, attack, release, makeup).";
+    punch.accent = kidPink;
+    punch.stage = 8;
+    std::tie (punch.get, punch.set) = macroDial (macros::Macro::punch);
+    punch.text = [pct] (float v) { return pct (v) + " punch"; };
+
+    auto& space = dials[3];
+    space.name = "SPACE";
+    space.what = "Echo, Dimension and doubles together (the SPACE macro). GlitchKid has no reverb: space is delay and width.";
+    space.accent = ultra.brighter (0.3f);
+    space.stage = 13;
+    std::tie (space.get, space.set) = macroDial (macros::Macro::space);
+    space.text = pct;
+
+    auto& presence = dials[4];
+    presence.name = "PRESENCE";
+    presence.what = "The EQ presence band (eq_b2_gain): where words cut through.";
+    presence.accent = kidPinkSoft;
+    presence.stage = 6;
+    presence.get = [this] { return value ("eq_b2_gain"); };
+    presence.set = [this] (float v) { setParam ("eq_b2_gain", v); };
+    presence.text = [] (float v) { return (v > 0.05f ? "+" : "") + juce::String (v, 1) + " dB"; };
+
+    auto& mixDial = dials[5];
+    mixDial.name = "MIX";
+    mixDial.what = "Processed vs. untouched voice (the Mix parameter). KID never moves this: it is yours.";
+    mixDial.accent = juce::Colour (0xffcfc8da);
+    mixDial.stage = 16;
+    mixDial.get = [this] { return value ("mix"); };
+    mixDial.set = [this] (float v) { setParam ("mix", v); };
+    mixDial.text = pct;
+
+    for (size_t i = 0; i < dials.size(); ++i)
+    {
+        auto& d = dials[i];
+        juce::NormalisableRange<double> range (0.0, 100.0, 0.1);
+        if (i == 4)
+            if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (proc.apvts.getParameter ("eq_b2_gain")))
+                range = { (double) r->getNormalisableRange().start, (double) r->getNormalisableRange().end, 0.1 };
+        d.slider.setNormalisableRange (range);
+        d.slider.setTitle (d.name);
+        d.slider.setTooltip (d.what);
+        d.slider.setColour (juce::Slider::rotarySliderFillColourId, d.accent);
+        d.slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.2f, juce::MathConstants<float>::pi * 2.8f, true);
+        d.slider.setValue (d.get(), juce::dontSendNotification);
+        d.slider.onValueChange = [this, i] { auto& x = dials[i]; x.set ((float) x.slider.getValue()); repaint (dialBox); };
+        d.slider.onDragStart = [this, i] { dials[i].dragging = true; };
+        d.slider.onDragEnd = [this, i] { dials[i].dragging = false; };
+        d.slider.textFromValueFunction = [this, i] (double v) { return dials[i].text ((float) v); }; // what a screen reader announces
+        addAndMakeVisible (d.slider);
+    }
+}
+
+void KidPanel::syncDials()
+{
+    for (auto& d : dials)
+        if (! d.dragging && ! d.slider.isMouseButtonDown())
+        {
+            const double v = d.get();
+            if (std::abs (v - d.slider.getValue()) > 0.05)
+                d.slider.setValue (v, juce::dontSendNotification);
+        }
+}
+
 juce::String KidPanel::lastKidLineForTest() const
 {
     for (auto it = lines.rbegin(); it != lines.rend(); ++it)
         if (it->kid) return it->text;
     return {};
+}
+
+void KidPanel::pressForTest (const juce::String& text)
+{
+    for (auto* c : getChildren())
+        if (auto* b = dynamic_cast<juce::TextButton*> (c); b != nullptr && b->getButtonText() == text && b->isEnabled() && b->onClick)
+        {
+            b->onClick();
+            return;
+        }
 }
 
 juce::String KidPanel::phaseLabel() const
@@ -198,6 +377,7 @@ juce::String KidPanel::phaseLabel() const
         case Phase::downloading: return "SETTING UP SPEECH";
         case Phase::ready: break;
     }
+    if (fileJob.isRunning() || fileWaiting) return "READING YOUR FILE";
     if (! kid::Recogniser::available()) return "READY (TYPE TO KID)";
     return "READY";
 }
@@ -218,18 +398,31 @@ juce::String KidPanel::phaseHint() const
     return "Hold to talk, or tap. Your command mic is separate from the track.";
 }
 
+KidPanel::Mood KidPanel::mood() const
+{
+    const auto now = juce::Time::getMillisecondCounter();
+    if (errorAtMs != 0 && now - errorAtMs < 3000) return Mood::error;
+    if (phase == Phase::recording) return Mood::listening;
+    if (phase == Phase::analysing || fileJob.isRunning() || fileWaiting) return Mood::analysing;
+    if (phase == Phase::transcribing || phase == Phase::downloading) return Mood::building;
+    if (appliedAtMs != 0 && now - appliedAtMs < 2500 && appliedAtMs >= builtAtMs) return Mood::complete;
+    if (builtAtMs != 0 && now - builtAtMs < 900) return Mood::building;
+    if (phase == Phase::review) return Mood::previewing;
+    return Mood::idle;
+}
+
 juce::StringArray KidPanel::suggestions() const
 {
     const bool spoke = std::any_of (lines.begin(), lines.end(), [] (const Line& l) { return ! l.kid; });
     const auto& rows = director.proposal();
     const auto& d = director.direction();
     if (! spoke)
-        return { "Make my vocal wider and more atmospheric", "Clean up the muddy frequencies", "Make it darker and more aggressive",
-                 "Give me a natural melodic rap vocal", "Make my ad-libs sound distant", "I don't know what it needs. Improve it" };
+        return { "Make this vocal sound like The Kid LAROI", "Make it more emotional and less robotic", "Give me a wide melodic rap vocal",
+                 "Clean the harsh frequencies", "Make the tuning harder", "Keep it natural but make it sound expensive" };
     if (! rows.empty() && d[kid::width] > 0 && director.kept().count ("front") == 0) return { "Too much. Make it subtle", "Keep the vocal upfront", "More" };
     if (! rows.empty() && d[kid::bright] < 0 && director.kept().count ("presence") == 0) return { "A little less", "Keep the presence", "Make it warmer" };
     if (! rows.empty()) return { "A little less", "More", "Keep the vocal upfront", "Start over" };
-    return { "Make it warmer", "Make it wider but keep it upfront", "Make it experimental", "I don't know what it needs. Improve it" };
+    return { "Make it warmer", "Make the reverb more atmospheric", "Make the vocal sit better with the beat", "I don't know what it needs. Improve it" };
 }
 
 void KidPanel::refreshChips()
@@ -258,12 +451,30 @@ void KidPanel::refreshButtons()
     input.setEnabled (! busy);
     sendButton.setEnabled (! busy);
     for (auto* c : chips) c->setEnabled (! busy);
+    for (auto& b : profileButtons) b.setEnabled (! busy);
+    for (int i = 0; i < kid::numProfiles; ++i) profileButtons[i].setToggleState (chosenProfile == i + 1, juce::dontSendNotification);
+    for (int i = 0; i < 3; ++i) intensityButtons[i].setToggleState (cleanIntensity == i, juce::dontSendNotification);
+    buildButton.setEnabled (! busy);
+    cleanButton.setEnabled (! busy);
+    loadButton.setEnabled (! fileJob.isRunning() && ! fileWaiting);
+    analyseButton.setEnabled (! busy);
     applyButton.setEnabled (director.selectedCount() > 0 && ! busy);
     applyButton.setButtonText ("APPLY " + juce::String (director.selectedCount()));
     cancelButton.setEnabled (! director.proposal().empty() && ! busy);
     for (int i = 0; i < 3; ++i) tabButtons[i].setToggleState ((int) tab == i, juce::dontSendNotification);
-    analyseButton.setVisible (tab == Tab::read && ! (lastAnalysis.status == analysis::VocalAnalysis::Status::ready) && phase != Phase::analysing);
+    matchButton.setToggleState (levelMatch, juce::dontSendNotification);
+    const bool dry = value ("bypass") >= 0.5f;
+    originalButton.setToggleState (dry, juce::dontSendNotification);
+    processedButton.setToggleState (! dry, juce::dontSendNotification);
     mic.repaint();
+}
+
+void KidPanel::setCompare (bool original)
+{
+    proc.setLevelMatchedCompare (levelMatch && isVisible() && getParentComponent() != nullptr);
+    setParam ("bypass", original ? 1.0f : 0.0f);
+    refreshButtons();
+    repaint (compareBox);
 }
 
 void KidPanel::send (const juce::String& raw, bool spoken)
@@ -295,7 +506,19 @@ void KidPanel::finishRequest()
 {
     if (pendingText.isNotEmpty())
     {
-        say (director.respond (kid::parse (pendingText), haveFacts ? &facts : nullptr));
+        auto f = kid::parse (pendingText);
+        if (f.profile > 0)
+            chosenProfile = f.profile;
+        if (f.buildMix || f.profile > 0) // the profile's foundation from the existing Build My Mix engine, fitted to the vocal KID has read (the file first)
+        {
+            const int prof = f.profile > 0 ? f.profile : chosenProfile;
+            const auto& lead = fileReport.ok() && fileReport.tone.status == analysis::VocalAnalysis::Status::ready ? fileReport.tone : lastAnalysis;
+            director.setFoundation (kid::buildFoundation (prof, proc.captureSoundState(), proc.factoryDefaultState(), lead, proc.makeRangeLookup()));
+            if (f.buildMix && f.profile == 0) f.profile = prof;
+        }
+        say (director.respond (f, haveFacts ? &facts : nullptr));
+        if (! director.proposal().empty())
+            builtAtMs = juce::Time::getMillisecondCounter();
         pendingText = {};
     }
     phase = director.proposal().empty() ? Phase::ready : Phase::review;
@@ -317,8 +540,9 @@ void KidPanel::apply()
     lastSeen = proc.captureSoundState();
     director.accepted (lastSeen);
     const int n = (int) changes.values.size();
-    say ("Applied " + juce::String (n) + (n == 1 ? " change" : " changes") + ". UNDO (top right) brings your previous sound back. What next?");
+    say ("Applied " + juce::String (n) + (n == 1 ? " change" : " changes") + ". Play it, flip ORIGINAL / PROCESSED to compare at the same loudness, and UNDO (top right) if you want your sound back. What next?");
     if (hooks.status) hooks.status ("KID applied " + juce::String (n) + (n == 1 ? " change." : " changes."));
+    appliedAtMs = juce::Time::getMillisecondCounter();
     phase = Phase::ready;
     refreshChips();
     refreshButtons();
@@ -337,6 +561,79 @@ void KidPanel::cancelTake()
     repaint();
 }
 
+void KidPanel::chooseFile()
+{
+    chooser = std::make_unique<juce::FileChooser> ("Load a vocal recording to analyse", juce::File(), analysis::referenceFileWildcard());
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [safe = juce::Component::SafePointer<KidPanel> (this)] (const juce::FileChooser& fc)
+    {
+        if (safe != nullptr && fc.getResult() != juce::File())
+            safe->loadFile (fc.getResult());
+    });
+}
+
+void KidPanel::loadFile (const juce::File& f)
+{
+    if (! fileJob.start (f, [safe = juce::Component::SafePointer<KidPanel> (this)] (const analysis::VocalFileReport& r) { if (safe != nullptr) safe->fileDone (r); }))
+        return;
+    fileWaiting = true;
+    say ("Reading " + f.getFileName() + ". I analyse it here; to hear GlitchKid on it, play it from your track in the DAW.");
+    refreshButtons();
+    repaint();
+}
+
+void KidPanel::fileDone (const analysis::VocalFileReport& r)
+{
+    fileWaiting = false;
+    if (! r.ok())
+    {
+        fail (r.message);
+        refreshButtons();
+        repaint();
+        return;
+    }
+    fileReport = r;
+    facts = {};
+    const auto& t = r.tone;
+    facts.valid = t.status == analysis::VocalAnalysis::Status::ready;
+    facts.fromFile = true;
+    facts.activeSeconds = t.activeSeconds;
+    facts.sibilanceIndex = t.sibilanceIndex;
+    facts.dynamicRangeDb = t.dynamicRangeDb;
+    facts.clippedSamples = r.clippedSamples;
+    for (size_t i = 0; i < facts.bandFraction.size(); ++i)
+        facts.bandFraction[i] = t.bandFraction[i];
+    facts.keyReliable = r.keyReliable;
+    facts.keyTonic = r.keyTonic;
+    facts.keyMinor = r.keyMinor;
+    facts.noiseKnown = r.noiseFloorKnown;
+    facts.noiseFloorDb = r.noiseFloorDb;
+    facts.voicedShare = r.voicedShare;
+    facts.offNoteCents = r.offNoteCents;
+    haveFacts = facts.valid;
+
+    // what KID says about it: plain English from the measurements, each claim only when the number supports it
+    juce::StringArray s;
+    if (facts.valid)
+    {
+        if (t.sibilanceIndex > 0.25f) s.add ("The S's are sharp.");
+        if (t.bandFraction[1] > 0.35f) s.add ("There's a build-up in the low mids.");
+        if (t.bandFraction[3] + t.bandFraction[4] < 0.2f) s.add ("It's on the dull side.");
+    }
+    if (r.clippedSamples > 0) s.add ("It clips in " + juce::String (r.clippedSamples) + " samples: GlitchKid can't repair that, so re-record lower if you can.");
+    if (r.noiseFloorKnown) s.add (r.noiseFloorDb > -55.0f ? "There's audible background between phrases (about " + juce::String (juce::roundToInt (r.noiseFloorDb)) + " dBFS); GlitchKid has no noise reduction."
+                                                          : juce::String ("The background between phrases is quiet: clean enough to mix."));
+    if (r.voicedShare > 0.5f && r.medianHz > 0.0f)
+        s.add (r.offNoteCents < 10.0f ? "The pitch sits close to the notes." : r.offNoteCents < 20.0f ? "The pitch is mostly stable; a few notes could use gentle correction."
+                                                                                                  : "Notes often drift off pitch: tuning would help.");
+    s.add (r.keyReliable ? "My key estimate: " + analysis::keyName (r.keyTonic, r.keyMinor) + " (check it on TUNE)." : juce::String ("I can't tell the key reliably, so I won't guess one."));
+    say ("I read " + r.fileName + " (" + juce::String (r.analysedSeconds, 1) + " s). " + s.joinIntoString (" ") + (facts.valid ? "" : " There wasn't enough voice for a tone read."));
+    tab = Tab::read;
+    takeScroll = 0.0f;
+    refreshButtons();
+    repaint();
+}
+
 void KidPanel::startRecording()
 {
     if (! kid::Recogniser::available() || ! kid::SpeechModel::isInstalled() || recogniser.isBusy())
@@ -349,7 +646,7 @@ void KidPanel::startRecording()
     juce::String err;
     if (! commandMic.start (err))
     {
-        say (err.isNotEmpty() ? "I can't hear you: " + err + " You can still type." : "I can't hear you. You can still type.");
+        fail (err.isNotEmpty() ? "I can't hear you: " + err + " You can still type." : "I can't hear you. You can still type.");
         refreshButtons();
         repaint();
         return;
@@ -385,7 +682,7 @@ void KidPanel::stopRecording (bool cancel)
         safe->phase = safe->director.proposal().empty() ? Phase::ready : Phase::review;
         if (text.isEmpty())
         {
-            safe->say (error);
+            safe->fail (error);
             safe->refreshButtons();
             safe->repaint();
             return;
@@ -437,25 +734,28 @@ void KidPanel::timerCallback()
         if (an.completedCount() > analysisStartCount && ! an.isListening())
         {
             lastAnalysis = an.fetch();
-            facts = {};
-            facts.valid = lastAnalysis.status == analysis::VocalAnalysis::Status::ready;
-            facts.activeSeconds = lastAnalysis.activeSeconds;
-            facts.sibilanceIndex = lastAnalysis.sibilanceIndex;
-            facts.dynamicRangeDb = lastAnalysis.dynamicRangeDb;
-            facts.clippedSamples = lastAnalysis.clippedSamples;
-            for (size_t i = 0; i < facts.bandFraction.size(); ++i)
-                facts.bandFraction[i] = lastAnalysis.bandFraction[i];
-            facts.mudHz = value ("clean_on") >= 0.5f ? proc.getCleanApplied().mudHz : 0.0f;
-            haveFacts = facts.valid;
-            if (! facts.valid && pendingText.isEmpty())
-                say ("I couldn't hear enough of your vocal. Press play in your project and try again.");
+            if (! fileReport.ok()) // a loaded file stays the reference for the measurements; the live read is shown next to it
+            {
+                facts = {};
+                facts.valid = lastAnalysis.status == analysis::VocalAnalysis::Status::ready;
+                facts.activeSeconds = lastAnalysis.activeSeconds;
+                facts.sibilanceIndex = lastAnalysis.sibilanceIndex;
+                facts.dynamicRangeDb = lastAnalysis.dynamicRangeDb;
+                facts.clippedSamples = lastAnalysis.clippedSamples;
+                for (size_t i = 0; i < facts.bandFraction.size(); ++i)
+                    facts.bandFraction[i] = lastAnalysis.bandFraction[i];
+                facts.mudHz = value ("clean_on") >= 0.5f ? proc.getCleanApplied().mudHz : 0.0f;
+                haveFacts = facts.valid;
+            }
+            if (lastAnalysis.status != analysis::VocalAnalysis::Status::ready && pendingText.isEmpty())
+                fail ("I couldn't hear enough of your vocal. Press play in your project and try again.");
             finishRequest();
         }
         else if (juce::Time::getMillisecondCounter() - analysisStartedMs > 25000 && an.isListening())
             proc.stopSourceAnalysis(); // finish with whatever was heard; the result arrives on a later tick
         else if (juce::Time::getMillisecondCounter() - analysisStartedMs > 40000)
         {
-            say ("Nothing came through to analyse. Press play in your project, then ask again.");
+            fail ("Nothing came through to analyse. Press play in your project, then ask again.");
             finishRequest();
         }
     }
@@ -470,12 +770,18 @@ void KidPanel::timerCallback()
             lastSeen = now;
             director.noteManualEdit (now);
             refreshButtons();
-            repaint();
+            repaint (takeBox);
         }
+        syncDials();
+        const bool dry = value ("bypass") >= 0.5f;
+        if (originalButton.getToggleState() != dry)
+            refreshButtons();
+        repaint (compareBox);
+        repaint (dialBox);
     }
-    repaint (stageBox);
+    repaint (dispBox);
+    repaint (srcBox);
     repaint (cmdBox);
-    repaint (pathBox);
     if (phase == Phase::downloading || phase == Phase::analysing)
         repaint (takeBox);
 }
@@ -483,75 +789,86 @@ void KidPanel::timerCallback()
 // ---- layout ----
 void KidPanel::resized()
 {
-    stageBox = { 12, 8, 568, 300 };
-    voiceBox = stageBox.withWidth (200);
-    scriptBox = stageBox.withTrimmedLeft (200).reduced (16, 12);
-    takeBox = { 592, 8, 356, 300 };
+    srcBox = { 12, 8, 236, 260 };
+    loadButton.setBounds (srcBox.getX() + 12, srcBox.getY() + 30, srcBox.getWidth() - 24, 28);
+    analyseButton.setBounds (srcBox.getX() + 12, srcBox.getY() + 62, srcBox.getWidth() - 24, 24);
+    waveArea = { srcBox.getX() + 12, srcBox.getY() + 94, srcBox.getWidth() - 24, 62 };
+
+    dispBox = { 256, 8, 384, 260 };
+    mascotBox = { dispBox.getX() + 8, dispBox.getY() + 8, 136, 136 };
+    scriptBox = { dispBox.getX() + 16, dispBox.getY() + 150, dispBox.getWidth() - 32, dispBox.getHeight() - 158 };
+
+    takeBox = { 648, 8, 300, 260 };
     auto t = takeBox;
-    auto head = t.removeFromTop (38).reduced (10, 6);
-    auto foot = t.removeFromBottom (46).reduced (10, 8);
+    auto head = t.removeFromTop (36).reduced (8, 6);
+    auto foot = t.removeFromBottom (42).reduced (10, 7);
     takeBody = t.reduced (12, 6);
     for (int i = 2; i >= 0; --i)
-        tabButtons[i].setBounds (head.removeFromRight (i == 1 ? 92 : 62));
-    applyButton.setBounds (foot.removeFromRight (100));
+        tabButtons[i].setBounds (head.removeFromRight (i == 1 ? 90 : 58));
+    applyButton.setBounds (foot.removeFromRight (96));
     foot.removeFromRight (8);
-    cancelButton.setBounds (foot.removeFromRight (84));
-    analyseButton.setBounds (takeBody.getX(), takeBody.getY() + 64, 170, 28);
+    cancelButton.setBounds (foot.removeFromRight (80));
 
-    cmdBox = { 12, 318, 936, 104 };
-    mic.setBounds (cmdBox.getX() + 14, cmdBox.getCentreY() - 34, 68, 68);
-    waveBox = { cmdBox.getX() + 100, cmdBox.getY() + 40, 400, 30 };
-    auto right = juce::Rectangle<int> (cmdBox.getRight() - 420, cmdBox.getY() + 10, 408, cmdBox.getHeight() - 20);
-    auto row = right.removeFromTop (30);
+    dialBox = { 12, 276, 628, 116 };
+    const int dw = dialBox.getWidth() / numDials;
+    for (int i = 0; i < numDials; ++i)
+        dials[(size_t) i].slider.setBounds (dialBox.getX() + i * dw + dw / 2 - 36, dialBox.getY() + 21, 72, 72);
+
+    compareBox = { 648, 276, 300, 116 };
+    originalButton.setBounds (compareBox.getX() + 12, compareBox.getY() + 26, 134, 36);
+    processedButton.setBounds (compareBox.getX() + 154, compareBox.getY() + 26, 134, 36);
+    matchButton.setBounds (compareBox.getX() + 12, compareBox.getY() + 68, 96, 20);
+    static const int aw[6] = { 38, 42, 60, 38, 42, 54 };
+    for (int i = 0, ax = compareBox.getX() + 12; i < 6; ax += aw[i] + 1, ++i)
+        advancedButtons[i].setBounds (ax, compareBox.getY() + 93, aw[i], 17);
+
+    cmdBox = { 12, 400, 628, 136 };
+    mic.setBounds (cmdBox.getX() + 12, cmdBox.getY() + 36, 64, 64);
+    waveBox = { cmdBox.getX() + 88, cmdBox.getY() + 28, cmdBox.getWidth() - 100, 10 };
+    auto row = juce::Rectangle<int> (cmdBox.getX() + 88, cmdBox.getY() + 44, cmdBox.getWidth() - 100, 28);
     if (setupButton.isVisible() || (kid::Recogniser::available() && ! kid::SpeechModel::isInstalled()))
     {
-        setupButton.setBounds (row.removeFromRight (128));
+        setupButton.setBounds (row.removeFromRight (120));
         row.removeFromRight (6);
     }
-    sendButton.setBounds (row.removeFromRight (64));
+    sendButton.setBounds (row.removeFromRight (60));
     row.removeFromRight (6);
     input.setBounds (row);
-    right.removeFromTop (6);
-    // the suggestions wrap over two rows
-    int x = right.getX(), y = right.getY();
+    const auto chipArea = juce::Rectangle<int> (cmdBox.getX() + 88, cmdBox.getY() + 80, cmdBox.getWidth() - 100, 50);
+    int x = chipArea.getX(), y = chipArea.getY();
     for (auto* c : chips)
     {
-        const int w = juce::jmin (right.getWidth(), (int) juce::GlyphArrangement::getStringWidth (fontOf (12.5f), c->getButtonText()) + 22);
-        if (x + w > right.getRight()) { x = right.getX(); y += 26; }
+        const int w = juce::jmin (chipArea.getWidth(), (int) juce::GlyphArrangement::getStringWidth (fontOf (12.5f), c->getButtonText()) + 22);
+        if (x + w > chipArea.getRight()) { x = chipArea.getX(); y += 26; }
         c->setBounds (x, y, w, 22);
         c->setVisible (y + 22 <= cmdBox.getBottom() - 2);
         x += w + 5;
     }
-    pathBox = { 12, 432, 936, 104 };
-    const int n = 17, gap = 4, stx = pathBox.getX() + 14, stw = (pathBox.getWidth() - 28 - 14 - gap * (n - 1)) / n;
-    for (int i = 0; i < n; ++i)
-        stationHits[(size_t) i] = { stx + i * (stw + gap), pathBox.getY() + 40, stw, 50 };
+
+    actionBox = { 648, 400, 300, 136 };
+    for (int i = 0; i < kid::numProfiles; ++i)
+        profileButtons[i].setBounds (actionBox.getX() + 12 + (i % 2) * 142, actionBox.getY() + 24 + (i / 2) * 28, 134, 24);
+    buildButton.setBounds (actionBox.getX() + 12, actionBox.getY() + 82, actionBox.getWidth() - 24, 24);
+    cleanButton.setBounds (actionBox.getX() + 12, actionBox.getY() + 110, 106, 22);
+    const int iw[3] = { 50, 58, 64 };
+    for (int i = 0, ix = actionBox.getX() + 122; i < 3; ix += iw[i] + 2, ++i)
+        intensityButtons[i].setBounds (ix, actionBox.getY() + 110, iw[i], 22);
 }
 
 // ---- painting ----
 void KidPanel::paint (juce::Graphics& g)
 {
-    // stage
-    g.setColour (stageBg);
-    g.fillRoundedRectangle (stageBox.toFloat(), 16.0f);
-    g.setColour (juce::Colour (0xff241f2e));
-    g.drawRoundedRectangle (stageBox.toFloat().reduced (0.5f), 16.0f, 1.0f);
-    g.setColour (juce::Colour (0xff1f1b28));
-    g.fillRect (voiceBox.getRight(), stageBox.getY() + 1, 1, stageBox.getHeight() - 2);
-    paintVoice (g, voiceBox.toFloat());
-    paintScript (g, scriptBox);
+    paintSource (g);
+    paintDisplay (g);
 
     // KID's take
-    g.setGradientFill (juce::ColourGradient (plum, 0.0f, (float) takeBox.getY(), juce::Colour (0xff100c13), 0.0f, (float) takeBox.getY() + 140.0f, false));
-    g.fillRoundedRectangle (takeBox.toFloat(), 16.0f);
-    g.setColour (juce::Colour (0xff4a2140));
-    g.drawRoundedRectangle (takeBox.toFloat().reduced (0.5f), 16.0f, 1.0f);
+    bezel (g, takeBox, plum, plumDeep);
     g.setColour (kidPinkSoft);
     g.setFont (fontOf (14.0f, true));
-    g.drawText ("KID'S TAKE", takeBox.getX() + 14, takeBox.getY() + 8, 130, 22, juce::Justification::centredLeft, false);
+    g.drawText ("KID'S TAKE", takeBox.getX() + 14, takeBox.getY() + 8, 110, 22, juce::Justification::centredLeft, false);
     g.setColour (juce::Colour (0xff2e1a2c));
-    g.fillRect (takeBox.getX() + 1, takeBox.getY() + 38, takeBox.getWidth() - 2, 1);
-    g.fillRect (takeBox.getX() + 1, takeBox.getBottom() - 46, takeBox.getWidth() - 2, 1);
+    g.fillRect (takeBox.getX() + 1, takeBox.getY() + 36, takeBox.getWidth() - 2, 1);
+    g.fillRect (takeBox.getX() + 1, takeBox.getBottom() - 42, takeBox.getWidth() - 2, 1);
     {
         juce::Graphics::ScopedSaveState s (g);
         g.reduceClipRegion (takeBody);
@@ -560,139 +877,293 @@ void KidPanel::paint (juce::Graphics& g)
         else if (tab == Tab::read) paintRead (g, takeBody);
         else paintLimits (g, takeBody);
     }
+    paintDials (g);
+    paintCompare (g);
     paintCommand (g);
-    paintPath (g);
+    paintActions (g);
 }
 
-void KidPanel::paintVoice (juce::Graphics& g, juce::Rectangle<float> box)
+void KidPanel::paintSource (juce::Graphics& g)
 {
-    g.setColour (textBright);
-    g.setFont (fontOf (11.5f, true));
-    g.drawText ("YOUR VOICE", box.getX() + 12, box.getY() + 10, 160, 14, juce::Justification::centredLeft, false);
-    const float cx = box.getCentreX(), cy = box.getCentreY() - 6.0f, R0 = box.getWidth() * 0.2f, A = box.getWidth() * 0.18f;
-    const bool dry = value ("bypass") >= 0.5f;
-    if (! signalPresent)
+    bezel (g, srcBox, juce::Colour (0xff17121d), ink);
+    caption (g, "YOUR VOCAL", srcBox.getX() + 14, srcBox.getY() + 10, 200, textBright);
+    const auto w = waveArea.toFloat();
+    g.setColour (juce::Colour (0xff09070c));
+    g.fillRoundedRectangle (w, 6.0f);
+    const float mid = w.getCentreY();
+    if (fileReport.ok() && ! fileReport.overview.empty())
     {
-        g.setColour (juce::Colour (0xff4a4458));
-        g.drawEllipse (cx - R0, cy - R0, 2 * R0, 2 * R0, 1.5f);
-        g.setColour (textDim);
-        g.setFont (fontOf (13.0f, true));
-        g.drawText ("No signal", juce::Rectangle<float> (cx - 60, cy - 10, 120, 20), juce::Justification::centred, false);
-        g.setFont (fontOf (11.5f));
-        g.drawFittedText ("Press play in your project", juce::Rectangle<int> ((int) box.getX() + 10, (int) box.getBottom() - 34, (int) box.getWidth() - 20, 16), juce::Justification::centred, 1);
-        return;
+        const int n = (int) fileReport.overview.size();
+        juce::ColourGradient grad (ultra, w.getX(), 0.0f, kidPink, w.getRight(), 0.0f, false);
+        g.setGradientFill (grad);
+        for (int px = 0; px < (int) w.getWidth(); ++px)
+        {
+            const float a = fileReport.overview[(size_t) juce::jlimit (0, n - 1, px * n / juce::jmax (1, (int) w.getWidth()))];
+            const float hgt = juce::jmax (0.6f, a * (w.getHeight() * 0.5f - 3.0f));
+            g.fillRect (w.getX() + (float) px, mid - hgt, 1.0f, 2.0f * hgt);
+        }
+        if (fileReport.clippedSamples > 0)
+        {
+            g.setColour (errorRed);
+            g.fillRect (w.getX(), w.getY(), w.getWidth(), 2.0f);
+        }
     }
-    constexpr int N = 90;
-    const float ratio = dry ? 1.0f : value ("comp_ratio"), sat = dry ? 0.0f : value ("sat_drive") / 18.0f;
-    const float fsc = dry ? 1.0f : 1.0f - value ("formant_shift") / 12.0f * 0.2f;
-    auto amp = [&] (int i) { float s = 0; int c = 0; for (int j = i - 2; j <= i + 2; ++j) if (j >= 0 && j < (int) env.size()) { s += env[(size_t) j]; ++c; } return c ? s / (float) c : 0.0f; };
-    auto contour = [&] (float scale, float extra, float stretch, float dx)
+    else
     {
-        juce::Path p;
-        for (int k = -N; k <= N; ++k)
+        // live: the level of what leaves the plug-in, newest on the right
+        const int n = (int) env.size();
+        for (int i = 0; i < n; ++i)
         {
-            const int i = std::abs (k);
-            const float th = -juce::MathConstants<float>::halfPi + (float) k / (float) N * juce::MathConstants<float>::pi;
-            float a = std::pow (amp (i), 1.0f / (1.0f + (ratio - 1.0f) * 0.16f));
-            a += sat * 0.12f * std::sin ((float) i * 2.6f) * a;
-            const float r = (R0 * fsc + A * a + extra) * scale;
-            const juce::Point<float> pt (cx + dx + std::cos (th) * r * stretch, cy + std::sin (th) * r);
-            if (k == -N) p.startNewSubPath (pt); else p.lineTo (pt);
+            const float a = env[(size_t) (n - 1 - i)];
+            const float hgt = juce::jmax (0.6f, a * (w.getHeight() * 0.5f - 3.0f));
+            g.setColour ((signalPresent ? lilac : juce::Colour (0xff3a3546)).withAlpha (0.35f + 0.65f * (float) i / (float) n));
+            g.fillRect (w.getX() + 2.0f + (float) i * (w.getWidth() - 4.0f) / (float) n, mid - hgt, 1.6f, 2.0f * hgt);
         }
-        p.closeSubPath();
-        return p;
-    };
-    if (! dry)
+    }
+    juce::StringArray info;
+    if (fileWaiting || fileJob.isRunning())
+        info.add ("Reading the file: " + juce::String (juce::roundToInt (fileJob.progress() * 100.0f)) + " %");
+    else if (fileReport.ok())
     {
-        if (value ("dim_on") >= 0.5f)
+        info.add (fileReport.fileName);
+        info.add (juce::String (fileReport.analysedSeconds, 1) + " s, " + (fileReport.channels > 1 ? (fileReport.stereoIdentical ? "stereo file, mono content" : "stereo") : "mono")
+                  + ", peak " + juce::String (fileReport.peakDb, 1) + " dBFS");
+        info.add (fileReport.keyReliable ? "Key estimate: " + analysis::keyName (fileReport.keyTonic, fileReport.keyMinor) : juce::String ("Key: not reliable, not guessed"));
+        info.add ("Analysed only. Play your track in the DAW to hear GlitchKid.");
+    }
+    else
+    {
+        info.add (signalPresent ? "Live input: GlitchKid hears this track" : "No signal: press play in your project");
+        info.add ("Load a file for pitch, key, noise and stereo reads.");
+        info.add ("It hears only this track, not your project.");
+    }
+    g.setFont (fontOf (12.0f));
+    int y = waveArea.getBottom() + 8;
+    for (int i = 0; i < info.size(); ++i)
+    {
+        g.setColour (i == 0 && fileReport.ok() ? textBright : textDim);
+        g.drawFittedText (info[i], srcBox.getX() + 14, y, srcBox.getWidth() - 28, 16, juce::Justification::centredLeft, 1, 0.9f);
+        y += i == info.size() - 1 ? 0 : 18;
+    }
+    if (lastAnalysis.status == analysis::VocalAnalysis::Status::ready)
+    {
+        g.setColour (mint);
+        g.drawFittedText ("Live read: " + juce::String (lastAnalysis.activeSeconds, 1) + " s, " + juce::String (lastAnalysis.rmsDb, 1) + " dBFS RMS",
+                          srcBox.getX() + 14, srcBox.getBottom() - 22, srcBox.getWidth() - 28, 14, juce::Justification::centredLeft, 1, 0.9f);
+    }
+}
+
+void KidPanel::paintDisplay (juce::Graphics& g)
+{
+    bezel (g, dispBox, juce::Colour (0xff1a1022), ink, 18.0f);
+    // the screen glass behind the mascot
+    const auto m = mascotBox.toFloat();
+    const auto md = mood();
+    const juce::Colour glow = md == Mood::error ? errorRed : md == Mood::listening ? kidPink : md == Mood::analysing ? ultra : md == Mood::building ? kidPink
+                            : md == Mood::complete ? mint : md == Mood::previewing ? lilac : violet;
+    g.setGradientFill (juce::ColourGradient (glow.withAlpha (0.28f), m.getCentreX(), m.getCentreY(), glow.withAlpha (0.0f), m.getRight() + 10.0f, m.getCentreY(), true));
+    g.fillEllipse (m.expanded (8.0f));
+    paintMascot (g, m, md);
+
+    // the task, the direction, the progress
+    const int tx = mascotBox.getRight() + 10, tw = dispBox.getRight() - 16 - tx;
+    int y = dispBox.getY() + 16;
+    g.setFont (fontOf (17.0f, true));
+    g.setColour (md == Mood::error ? errorRed : textBright);
+    g.drawFittedText (md == Mood::error ? juce::String ("THAT DIDN'T WORK") : phaseLabel(), tx, y, tw, 22, juce::Justification::centredLeft, 1, 0.8f);
+    y += 26;
+    juce::String task;
+    if (phase == Phase::analysing) task = "Listening to your vocal on this track";
+    else if (fileWaiting || fileJob.isRunning()) task = "Measuring levels, noise, pitch and key";
+    else if (director.profile() > 0 || chosenProfile > 0) task = "Direction: " + juce::String (kid::producerProfile (director.profile() > 0 ? director.profile() : chosenProfile).name);
+    else if (! director.proposal().empty()) task = "A take is waiting for you";
+    else task = "Tell KID the sound you want";
+    g.setFont (fontOf (13.0f, true));
+    g.setColour (kidPinkSoft);
+    g.drawFittedText (task, tx, y, tw, 18, juce::Justification::centredLeft, 1, 0.85f);
+    y += 22;
+    if (phase == Phase::analysing || fileWaiting || fileJob.isRunning())
+    {
+        const float prog = phase == Phase::analysing ? juce::jlimit (0.0f, 1.0f, proc.getAnalyzer().liveActiveSeconds() / 8.0f) : fileJob.progress();
+        g.setColour (juce::Colour (0xff2a2336));
+        g.fillRoundedRectangle ((float) tx, (float) y + 4.0f, (float) tw, 5.0f, 2.5f);
+        g.setGradientFill (juce::ColourGradient (ultra, (float) tx, 0.0f, kidPink, (float) (tx + tw), 0.0f, false));
+        g.fillRoundedRectangle ((float) tx, (float) y + 4.0f, juce::jmax (5.0f, (float) tw * prog), 5.0f, 2.5f);
+        y += 16;
+    }
+    // the direction KID is following, as small pills
+    juce::StringArray pills;
+    for (int d = 0; d < kid::numDims; ++d)
+        if (std::abs (director.direction()[(size_t) d]) > 1e-6f)
+            pills.add (dimName[d][director.direction()[(size_t) d] > 0 ? 0 : 1]);
+    if (director.tuneStyle() != 0) pills.add (director.tuneStyle() < 0 ? "TUNE OFF" : director.tuneStyle() == 1 ? "NATURAL TUNE" : director.tuneStyle() == 2 ? "LIGHT TUNE" : "HARD TUNE");
+    if (director.cleanLevel() > 0) pills.add (juce::String ("CLEAN ") + intensityName[director.cleanLevel() - 1]);
+    if (director.kept().count ("front")) pills.add ("YOU IN FRONT");
+    if (director.natural()) pills.add ("NATURAL");
+    int px = tx, py = y;
+    g.setFont (fontOf (11.0f, true));
+    for (auto& p : pills)
+    {
+        const int pw = (int) juce::GlyphArrangement::getStringWidth (fontOf (11.0f, true), displayCase (p)) + 14;
+        if (px + pw > tx + tw) { px = tx; py += 20; }
+        if (py + 16 > mascotBox.getBottom()) break;
+        g.setColour (kidPink.withAlpha (0.18f));
+        g.fillRoundedRectangle ((float) px, (float) py, (float) pw, 16.0f, 8.0f);
+        g.setColour (kidPinkSoft);
+        g.drawText (displayCase (p), px, py, pw, 16, juce::Justification::centred, false);
+        px += pw + 4;
+    }
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.fillRect (scriptBox.getX(), scriptBox.getY() - 6, scriptBox.getWidth(), 1);
+    paintScript (g, scriptBox);
+}
+
+// GlitchKid's mascot: an original little speaker-headed kid with a visor screen, headphone cups and an antenna. Drawn with paths only, on the message thread.
+void KidPanel::paintMascot (juce::Graphics& g, juce::Rectangle<float> r, Mood md)
+{
+    const float s = r.getWidth() / 136.0f, t = (float) tick;
+    const float bob = md == Mood::idle ? std::sin (t * 0.08f) * 1.5f * s : md == Mood::complete ? -std::abs (std::sin (t * 0.3f)) * 4.0f * s : 0.0f;
+    const auto c = r.getCentre().translated (0.0f, bob + 6.0f * s);
+    const juce::Colour shell (0xff2a1d33), shellHi (0xff4a3358), visorCol (0xff07050a);
+    const juce::Colour eye = md == Mood::error ? errorRed : md == Mood::complete ? mint : md == Mood::listening ? kidPink : md == Mood::analysing ? lilac : kidPinkSoft;
+
+    // antenna
+    const juce::Point<float> base (c.x + 8.0f * s, c.y - 40.0f * s), tip (c.x + 16.0f * s + (md == Mood::building ? std::sin (t * 0.4f) * 3.0f * s : 0.0f), c.y - 58.0f * s);
+    g.setColour (shellHi);
+    g.drawLine ({ base, tip }, 2.2f * s);
+    const float pulse = 0.5f + 0.5f * std::sin (t * (md == Mood::idle ? 0.07f : 0.25f));
+    g.setColour (eye.withAlpha (0.25f + 0.35f * pulse));
+    g.fillEllipse (juce::Rectangle<float> (12.0f * s, 12.0f * s).withCentre (tip));
+    g.setColour (eye);
+    g.fillEllipse (juce::Rectangle<float> (5.5f * s, 5.5f * s).withCentre (tip));
+
+    // body stub with a speaker grille
+    const auto body = juce::Rectangle<float> (46.0f * s, 22.0f * s).withCentre (c.translated (0.0f, 44.0f * s));
+    g.setGradientFill (juce::ColourGradient (shellHi, body.getX(), body.getY(), shell, body.getX(), body.getBottom(), false));
+    g.fillRoundedRectangle (body, 9.0f * s);
+    g.setColour (visorCol.withAlpha (0.7f));
+    for (int i = -1; i <= 1; ++i)
+        g.fillRoundedRectangle (juce::Rectangle<float> (26.0f * s, 2.0f * s).withCentre (body.getCentre().translated (0.0f, (float) i * 5.0f * s)), 1.0f * s);
+
+    // headphone cups
+    for (float side : { -1.0f, 1.0f })
+    {
+        const auto cup = juce::Rectangle<float> (16.0f * s, 30.0f * s).withCentre (c.translated (side * 47.0f * s, 2.0f * s));
+        g.setColour (shell.brighter (0.15f));
+        g.fillRoundedRectangle (cup, 7.0f * s);
+        g.setColour (ultra.withAlpha (0.8f));
+        g.fillRoundedRectangle (cup.reduced (4.0f * s, 8.0f * s), 3.0f * s);
+    }
+    juce::Path band;
+    band.addCentredArc (c.x, c.y - 4.0f * s, 49.0f * s, 44.0f * s, 0.0f, -1.25f, 1.25f, true);
+    g.setColour (shellHi);
+    g.strokePath (band, juce::PathStrokeType (3.0f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    // head
+    const auto head = juce::Rectangle<float> (84.0f * s, 70.0f * s).withCentre (c);
+    g.setGradientFill (juce::ColourGradient (shellHi, head.getX(), head.getY(), shell, head.getX(), head.getBottom(), false));
+    g.fillRoundedRectangle (head, 24.0f * s);
+    g.setColour (juce::Colours::white.withAlpha (0.10f));
+    g.drawRoundedRectangle (head.reduced (1.0f), 24.0f * s, 1.2f * s);
+
+    // the visor, with GlitchKid's signature: a brief colour-split glitch now and then (and constantly on an error)
+    auto visor = head.reduced (10.0f * s, 14.0f * s).translated (0.0f, -1.0f * s);
+    const bool glitch = md == Mood::error || (tick % 150) < 4;
+    if (glitch)
+    {
+        g.setColour (kidPink.withAlpha (0.5f));
+        g.fillRoundedRectangle (visor.translated (-2.0f * s, 0.0f), 13.0f * s);
+        g.setColour (ultra.withAlpha (0.5f));
+        g.fillRoundedRectangle (visor.translated (2.0f * s, 0.0f), 13.0f * s);
+    }
+    g.setColour (visorCol);
+    g.fillRoundedRectangle (visor, 13.0f * s);
+    g.setColour (eye.withAlpha (0.18f));
+    g.drawRoundedRectangle (visor, 13.0f * s, 1.0f * s);
+
+    // eyes and mouth, by mood
+    const float ex = 13.0f * s, ey = visor.getCentreY() - 3.0f * s;
+    juce::Graphics::ScopedSaveState clip (g);
+    g.reduceClipRegion (visor.toNearestInt());
+    g.setColour (eye);
+    auto pill = [&] (float x, float w, float h) { g.fillRoundedRectangle (juce::Rectangle<float> (w, h).withCentre ({ x, ey }), juce::jmin (w, h) * 0.5f); };
+    switch (md)
+    {
+        case Mood::idle:
         {
-            const float rr = R0 + A + value ("dim_width") * 0.25f;
-            juce::ColourGradient haze (spaceCol.withAlpha (0.22f * value ("dim_mix") / 100.0f), cx, cy, spaceCol.withAlpha (0.0f), cx + rr + 20, cy, true);
-            g.setGradientFill (haze);
-            g.fillEllipse (cx - rr - 20, cy - rr - 14, 2 * (rr + 20), 2 * (rr + 14));
+            const bool blink = (tick % 120) < 4;
+            for (float side : { -1.0f, 1.0f }) pill (visor.getCentreX() + side * ex, 7.0f * s, blink ? 1.6f * s : 13.0f * s);
+            break;
         }
-        if (value ("echo_on") >= 0.5f)
+        case Mood::listening:
+            for (float side : { -1.0f, 1.0f })
+                g.fillEllipse (juce::Rectangle<float> (13.0f * s, 13.0f * s).withCentre ({ visor.getCentreX() + side * ex, ey }));
+            break;
+        case Mood::analysing:
         {
-            const int n = juce::jmax (1, juce::roundToInt (1.0f + value ("echo_fb") / 15.0f));
-            for (int k2 = 1; k2 <= n; ++k2)
+            for (float side : { -1.0f, 1.0f }) pill (visor.getCentreX() + side * ex, 9.0f * s, 6.0f * s);
+            const float sx = visor.getX() + (0.5f + 0.5f * std::sin (t * 0.12f)) * visor.getWidth();
+            g.setColour (lilac.withAlpha (0.55f));
+            g.fillRect (sx - 1.5f * s, visor.getY(), 3.0f * s, visor.getHeight());
+            break;
+        }
+        case Mood::building:
+            for (float side : { -1.0f, 1.0f })
             {
-                const float a = std::pow (value ("echo_fb") / 100.0f, (float) (k2 - 1)) * value ("echo_mix") / 100.0f * 0.9f + 0.05f;
-                g.setColour (spaceCol.withAlpha (juce::jmin (0.8f, a)));
-                g.strokePath (contour (1.0f, 9.0f * (float) k2, 1.0f + value ("echo_width") / 100.0f * 0.2f * (float) k2 / (float) n, 0.0f), juce::PathStrokeType (1.1f));
+                const juce::Point<float> e (visor.getCentreX() + side * ex, ey);
+                g.drawEllipse (juce::Rectangle<float> (12.0f * s, 12.0f * s).withCentre (e), 1.6f * s);
+                const float a = t * 0.3f * side;
+                g.fillEllipse (juce::Rectangle<float> (4.0f * s, 4.0f * s).withCentre (e.translated (std::cos (a) * 6.0f * s, std::sin (a) * 6.0f * s)));
             }
-        }
-        if (value ("dbl_on") >= 0.5f)
-            for (float sd : { -1.0f, 1.0f })
+            break;
+        case Mood::previewing:
+            for (float side : { -1.0f, 1.0f })
             {
-                g.setColour (juce::Colour (0xffb5aeff).withAlpha (0.12f + value ("dbl_amount") / 100.0f * 0.35f));
-                g.strokePath (contour (1.0f, 0.0f, 1.0f, sd * (3.0f + value ("dbl_width") / 100.0f * 18.0f)), juce::PathStrokeType (1.3f));
+                pill (visor.getCentreX() + side * ex, 11.0f * s, 11.0f * s);
+                g.setColour (visorCol);
+                g.fillEllipse (juce::Rectangle<float> (5.0f * s, 5.0f * s).withCentre ({ visor.getCentreX() + side * ex + 3.0f * s, ey })); // looking at KID's take
+                g.setColour (eye);
             }
-    }
-    const auto body = contour (1.0f, 0.0f, 1.0f, 0.0f);
-    const float bright = dry ? 0.0f : juce::jlimit (-1.0f, 1.0f, (value ("eq_hi_gain") + value ("eq_b2_gain") * 0.5f) / 8.0f);
-    g.setGradientFill (juce::ColourGradient (dry ? juce::Colour (0x29c8c4ce) : juce::Colour::fromFloatRGBA ((203 + 30 * bright) / 255.0f, (188 + 40 * bright) / 255.0f, 1.0f, 0.2f + 0.12f * bright),
-                                             cx, cy - R0 - A, dry ? juce::Colour (0x0f787480) : juce::Colour (0x1a5a28aa), cx, cy + R0 + A, false));
-    g.fillPath (body);
-    g.setColour (dry ? juce::Colour (0xffa19bab) : juce::Colour (0xffece4d6));
-    g.strokePath (body, juce::PathStrokeType (dry ? 1.5f : 2.0f));
-    for (int i = 0; i < 3; ++i)
-    {
-        g.setColour ((dry ? juce::Colour (0xffc8c4ce) : juce::Colour (0xffece4d6)).withAlpha (0.12f + 0.04f * (float) i));
-        g.strokePath (contour (0.78f - 0.19f * (float) i, 0.0f, 1.0f, 0.0f), juce::PathStrokeType (1.0f));
-    }
-    if (! dry)
-    {
-        if (value ("harm_on") >= 0.5f)
-        {
-            static const int semi[9] = { -12, -7, -4, -3, 3, 4, 5, 7, 12 };
-            juce::Path dashed;
-            const float dl[2] = { 5.0f, 4.0f };
-            juce::PathStrokeType (1.5f).createDashedStroke (dashed, contour (1.0f + (float) semi[juce::jlimit (0, 8, (int) value ("harm_interval"))] / 12.0f * 0.3f, 0, 1, 0), dl, 2);
-            g.setColour (kidPink.withAlpha (0.4f + (value ("harm_level") + 24.0f) / 24.0f * 0.5f));
-            g.fillPath (dashed);
-        }
-        if (value ("mut_on") >= 0.5f)
-        {
-            g.setColour (kidPink.withAlpha (0.4f + 0.5f * value ("mut_blend") / 100.0f));
-            for (int k = -N; k <= N; k += 6)
-                if ((k * 7 + tick / 4) % 3 != 0)
-                {
-                    const float th = -juce::MathConstants<float>::halfPi + (float) k / (float) N * juce::MathConstants<float>::pi;
-                    const float r = R0 * fsc + A * amp (std::abs (k)) + (6.0f + 16.0f * value ("mut_amount") / 100.0f) * (((k * 13 + tick / 3) % 7) / 7.0f - 0.3f);
-                    juce::Path seg;
-                    seg.addCentredArc (cx, cy, r, r, 0.0f, th + juce::MathConstants<float>::halfPi - 0.05f, th + juce::MathConstants<float>::halfPi + 0.05f, true);
-                    g.strokePath (seg, juce::PathStrokeType (2.2f));
-                }
-        }
-        if (value ("stutter_on") >= 0.5f)
-        {
-            const int slices = 4 << juce::jlimit (0, 3, (int) value ("stutter_rate"));
-            g.setColour (kidPinkSoft.withAlpha (0.3f + 0.6f * value ("stutter_mix") / 100.0f));
-            for (int q = 0; q < slices; q += 2)
+            break;
+        case Mood::complete:
+            for (float side : { -1.0f, 1.0f })
             {
-                juce::Path a;
-                const float a0 = (float) q / (float) slices * juce::MathConstants<float>::twoPi;
-                a.addCentredArc (cx, cy, R0 * fsc - 7, R0 * fsc - 7, 0.0f, a0, a0 + juce::MathConstants<float>::pi / (float) slices * 0.9f, true);
-                g.strokePath (a, juce::PathStrokeType (2.6f));
+                juce::Path arc;
+                arc.addCentredArc (visor.getCentreX() + side * ex, ey + 3.0f * s, 6.0f * s, 6.0f * s, 0.0f, -1.3f, 1.3f, true);
+                g.strokePath (arc, juce::PathStrokeType (2.4f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
             }
-        }
-        if (value ("lim_on") >= 0.5f)
-        {
-            const float rc = R0 + A * juce::Decibels::decibelsToGain (value ("lim_ceiling")) + 4.0f;
-            juce::Path c, dashed;
-            c.addEllipse (cx - rc, cy - rc, 2 * rc, 2 * rc);
-            const float dl[2] = { 2.0f, 5.0f };
-            juce::PathStrokeType (1.0f).createDashedStroke (dashed, c, dl, 2);
-            g.setColour (finishCol.withAlpha (0.45f));
-            g.fillPath (dashed);
-        }
+            break;
+        case Mood::error:
+            for (float side : { -1.0f, 1.0f })
+            {
+                const juce::Point<float> e (visor.getCentreX() + side * ex, ey);
+                g.drawLine ({ e.translated (-4.5f * s, -4.5f * s), e.translated (4.5f * s, 4.5f * s) }, 2.2f * s);
+                g.drawLine ({ e.translated (-4.5f * s, 4.5f * s), e.translated (4.5f * s, -4.5f * s) }, 2.2f * s);
+            }
+            break;
     }
-    g.setFont (fontOf (11.5f));
-    g.setColour (textDim);
-    int active = 0;
-    for (int s = 1; s <= 17; ++s) active += stageOn (s) ? 1 : 0;
-    g.drawFittedText (dry ? juce::String ("DRY: the untouched voice") : "PROCESSED: " + juce::String (active) + " of 17 stages active",
-                      juce::Rectangle<int> ((int) box.getX() + 10, (int) box.getBottom() - 24, (int) box.getWidth() - 20, 16), juce::Justification::centredLeft, 1);
+    // the mouth: a little waveform that follows the mood (the live command level while you talk)
+    juce::Path mouth;
+    const float my = visor.getBottom() - 7.0f * s, mw = 22.0f * s;
+    for (int i = 0; i <= 20; ++i)
+    {
+        const float u = (float) i / 20.0f, x = visor.getCentreX() - mw * 0.5f + u * mw;
+        float a = 0.6f * s;
+        if (md == Mood::listening) a = juce::jmin (1.0f, micLevels[0] * 4.0f) * 4.0f * s + 0.6f * s;
+        else if (md == Mood::building || md == Mood::analysing) a = 1.8f * s;
+        const float yv = md == Mood::complete ? my - std::sin (u * juce::MathConstants<float>::pi) * 3.0f * s
+                       : md == Mood::error ? my + std::sin (u * 12.0f) * 1.2f * s : my + std::sin (u * 14.0f + t * 0.3f) * a;
+        if (i == 0) mouth.startNewSubPath (x, yv); else mouth.lineTo (x, yv);
+    }
+    g.setColour (eye.withAlpha (0.8f));
+    g.strokePath (mouth, juce::PathStrokeType (1.6f * s, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (md == Mood::listening) // sound arriving
+        for (int k = 0; k < 2; ++k)
+        {
+            const float ph = std::fmod (t * 0.05f + (float) k * 0.5f, 1.0f);
+            g.setColour (kidPink.withAlpha (0.5f * (1.0f - ph)));
+            g.drawEllipse (juce::Rectangle<float> ((30.0f + 30.0f * ph) * s, (30.0f + 30.0f * ph) * s).withCentre ({ visor.getCentreX(), ey }), 1.2f * s);
+        }
 }
 
 void KidPanel::paintScript (juce::Graphics& g, juce::Rectangle<int> area)
@@ -710,7 +1181,7 @@ void KidPanel::paintScript (juce::Graphics& g, juce::Rectangle<int> area)
         juce::AttributedString as;
         as.setWordWrap (juce::AttributedString::byWord);
         const bool thinking = l.kid && i == shown.size() - 1 && (phase == Phase::analysing || phase == Phase::transcribing);
-        as.append (l.text, l.kid ? fontOf (15.0f, ! thinking) : fontOf (19.0f), l.kid ? (thinking ? juce::Colour (0xffb9a8c8) : kidPinkSoft) : textBright);
+        as.append (l.text, l.kid ? fontOf (13.5f, ! thinking) : fontOf (15.5f), l.kid ? (thinking ? juce::Colour (0xffb9a8c8) : kidPinkSoft) : textBright);
         juce::TextLayout tl;
         tl.createLayout (as, (float) area.getWidth() - (l.kid ? 14.0f : 0.0f));
         total += 18.0f + tl.getHeight() + 14.0f;
@@ -778,15 +1249,16 @@ void KidPanel::paintTake (juce::Graphics& g, juce::Rectangle<int> area)
         y += 18;
         static const char* const map[][2] = { { "\"airy\"", "EQ air shelf #6, AIR LAB #11" }, { "\"clean it up\"", "CLEAN #7 + #9, EQ body band" }, { "\"wider\"", "Doubler #5, Dimension #14" },
                                              { "\"darker\"", "EQ air shelf and presence #6" }, { "\"aggressive\"", "Compressor #8, Saturation #10" }, { "\"distant\"", "Echo #13, Dimension, EQ" },
-                                             { "\"experimental\"", "LAB: Mutation #4 or Stutter #12" }, { "never", "Pitch Tune, Gain, Mix, Limiter, Bypass" } };
+                                             { "\"experimental\"", "LAB: Mutation #4 or Stutter #12" }, { "\"harder tuning\"", "Pitch Tune #1 (key only from your file)" },
+                                             { "never", "Gain, Mix, Limiter, Bypass" } };
         for (auto& m : map)
         {
             g.setFont (fontOf (12.5f, true));
             g.setColour (kidPinkSoft);
-            g.drawText (m[0], area.getX(), (int) y, 104, 16, juce::Justification::centredLeft, false);
+            g.drawText (m[0], area.getX(), (int) y, 96, 16, juce::Justification::centredLeft, false);
             g.setFont (fontOf (12.5f));
             g.setColour (textDim);
-            g.drawText (m[1], area.getX() + 106, (int) y, area.getWidth() - 106, 16, juce::Justification::centredLeft, true);
+            g.drawText (m[1], area.getX() + 98, (int) y, area.getWidth() - 98, 16, juce::Justification::centredLeft, true);
             y += 19;
         }
         takeMax = juce::jmax (0.0f, y + takeScroll - (float) area.getBottom());
@@ -827,13 +1299,13 @@ void KidPanel::paintTake (juce::Graphics& g, juce::Rectangle<int> area)
         }
         g.setFont (fontOf (13.0f, true));
         g.setColour (r.selected ? textBright : textDim);
-        g.drawText (name, area.getX() + 22, (int) y, area.getWidth() - 22 - 150, 18, juce::Justification::centredLeft, true);
+        g.drawText (name, area.getX() + 22, (int) y, area.getWidth() - 22 - 128, 18, juce::Justification::centredLeft, true);
         g.setFont (fontOf (12.5f));
         g.setColour (textDim);
-        g.drawText (show (r.from) + "  >", area.getRight() - 150, (int) y, 76, 18, juce::Justification::centredRight, true);
+        g.drawText (show (r.from) + "  >", area.getRight() - 128, (int) y, 66, 18, juce::Justification::centredRight, true);
         g.setFont (fontOf (12.5f, true));
         g.setColour (r.selected ? textBright : textDim);
-        g.drawText (show (r.to), area.getRight() - 72, (int) y, 72, 18, juce::Justification::centredRight, true);
+        g.drawText (show (r.to), area.getRight() - 60, (int) y, 60, 18, juce::Justification::centredRight, true);
         y += 19;
         juce::String tag;
         switch (r.tag)
@@ -860,50 +1332,6 @@ void KidPanel::paintTake (juce::Graphics& g, juce::Rectangle<int> area)
     takeMax = juce::jmax (0.0f, y + takeScroll - (float) area.getBottom());
 }
 
-void KidPanel::paintRead (juce::Graphics& g, juce::Rectangle<int> area)
-{
-    float y = (float) area.getY() - takeScroll;
-    auto row = [&] (const juce::String& label, const juce::String& v, const juce::String& source, bool measured)
-    {
-        g.setFont (fontOf (12.5f));
-        g.setColour (juce::Colour (0xffcdbfd2));
-        g.drawText (label, area.getX(), (int) y, area.getWidth() - 150, 17, juce::Justification::centredLeft, true);
-        g.setColour (measured ? textBright : textDim);
-        g.drawText (v, area.getRight() - 150, (int) y, 150, 17, juce::Justification::centredRight, true);
-        y += 17;
-        g.setColour (measured ? juce::Colour (0xff62e0a6) : textDim);
-        g.drawText (source, area.getX(), (int) y, area.getWidth(), 15, juce::Justification::centredLeft, true);
-        y += 21;
-    };
-    const auto& a = lastAnalysis;
-    if (a.status != analysis::VocalAnalysis::Status::ready)
-    {
-        g.setFont (fontOf (13.0f));
-        g.setColour (textDim);
-        g.drawFittedText (phase == Phase::analysing ? phaseHint()
-                                                    : "KID listens to your vocal while your project plays (2-8 s of singing or rapping), then shows what it measured.",
-                          juce::Rectangle<int> (area.getX(), (int) y, area.getWidth(), 56), juce::Justification::topLeft, 3);
-        return;
-    }
-    row ("Listened to", juce::String (a.activeSeconds, 1) + " s of " + juce::String (a.totalSeconds, 1) + " s", "measured", true);
-    row ("Input peak", juce::String (a.peakDb, 1) + " dBFS", "measured", true);
-    row ("Clipped / near-clipped samples", juce::String (a.clippedSamples) + " / " + juce::String (a.nearClippedSamples), "measured", true);
-    row ("Level (RMS of the sung parts)", juce::String (a.rmsDb, 1) + " dBFS", "measured", true);
-    row ("Crest factor", juce::String (a.crestDb, 1) + " dB", "measured", true);
-    row ("Dynamic range (P90 - P10)", juce::String (a.dynamicRangeDb, 1) + " dB", "measured", true);
-    static const char* const bandNames[5] = { "< 120 Hz", "120-500 Hz", "500 Hz-2 kHz", "2-5 kHz", "> 5 kHz" };
-    for (int i = 0; i < 5; ++i)
-        row (juce::String ("Energy ") + bandNames[i], juce::String (juce::roundToInt (a.bandFraction[(size_t) i] * 100.0f)) + " %", "measured", true);
-    row ("Sibilance index (rough)", juce::String (a.sibilanceIndex, 2), "measured", true);
-    if (value ("tune_on") >= 0.5f && proc.getTuneDetectedMidi() > 0.0f)
-        row ("Pitch (now)", juce::MidiMessage::getMidiNoteName (juce::roundToInt (proc.getTuneDetectedMidi()), true, true, 3), "Pitch Tune's live read-out", true);
-    else
-        row ("Pitch", "-", "only while Pitch Tune is on and you sing", false);
-    row ("Pitch range and stability", "-", "not measured by this version", false);
-    row ("Stereo width / correlation", "-", "not measured: the analyser is mono", false);
-    takeMax = juce::jmax (0.0f, y + takeScroll - (float) area.getBottom());
-}
-
 void KidPanel::paintLimits (juce::Graphics& g, juce::Rectangle<int> area)
 {
     float y = (float) area.getY() - takeScroll;
@@ -926,7 +1354,8 @@ void KidPanel::paintLimits (juce::Graphics& g, juce::Rectangle<int> area)
         if (auto* r = dynamic_cast<juce::RangedAudioParameter*> (q))
             allowed += kid::Director::isAllowed (r->paramID) ? 1 : 0;
     row ("Parameters KID may propose", juce::String (allowed) + " of " + juce::String (proc.getParameters().size()));
-    row ("Never touched", "Pitch Tune (5), Gain, Mix, Output Limiter (4), Bypass");
+    row ("Never touched", "Gain, Mix, Output Limiter (4), Bypass. Pitch Tune key and scale only from a reliable estimate of your loaded file");
+    row ("Not in GlitchKid", "noise reduction, reverb, clipping repair, timing correction: KID says so instead of pretending");
     row ("Every value", "clamped to the parameter's own range and step");
     row ("Nothing changes", "until you press Apply. UNDO goes back one step.");
     row ("Your manual moves", "win: KID unticks that change and starts from your sound");
@@ -938,152 +1367,136 @@ void KidPanel::paintLimits (juce::Graphics& g, juce::Rectangle<int> area)
     takeMax = juce::jmax (0.0f, y + takeScroll - (float) area.getBottom());
 }
 
+void KidPanel::paintRead (juce::Graphics& g, juce::Rectangle<int> area)
+{
+    float y = (float) area.getY() - takeScroll;
+    auto para = [&] (const juce::String& t, juce::Colour c, float size = 12.5f, bool bold = false)
+    {
+        juce::AttributedString as;
+        as.setWordWrap (juce::AttributedString::byWord);
+        as.append (t, fontOf (size, bold), c);
+        juce::TextLayout tl;
+        tl.createLayout (as, (float) area.getWidth());
+        tl.draw (g, { (float) area.getX(), y, (float) area.getWidth(), tl.getHeight() });
+        y += tl.getHeight() + 5.0f;
+    };
+    if (fileReport.ok())
+    {
+        para ("FROM YOUR FILE", textBright, 11.5f, true);
+        for (auto& l : analysis::describeVocalFile (fileReport))
+        {
+            const bool measured = l.startsWith ("MEASURED");
+            para ((measured ? "Measured: " : "Estimate: ") + l.fromFirstOccurrenceOf ("  ", false, false).trim(), measured ? mint : textDim);
+        }
+        y += 6.0f;
+    }
+    const auto& a = lastAnalysis;
+    if (a.status == analysis::VocalAnalysis::Status::ready)
+    {
+        para ("FROM THE LIVE INPUT (measured)", textBright, 11.5f, true);
+        para ("Listened to " + juce::String (a.activeSeconds, 1) + " s of " + juce::String (a.totalSeconds, 1) + " s. Peak " + juce::String (a.peakDb, 1) + " dBFS, RMS "
+              + juce::String (a.rmsDb, 1) + " dBFS, crest " + juce::String (a.crestDb, 1) + " dB, level movement " + juce::String (a.dynamicRangeDb, 1) + " dB.", mint);
+        static const char* const bandNames[5] = { "< 120 Hz", "120-500 Hz", "500 Hz-2 kHz", "2-5 kHz", "> 5 kHz" };
+        juce::StringArray bands;
+        for (int i = 0; i < 5; ++i)
+            bands.add (juce::String (bandNames[i]) + " " + juce::String (juce::roundToInt (a.bandFraction[(size_t) i] * 100.0f)) + " %");
+        para ("Energy: " + bands.joinIntoString (", ") + ". Clipped samples: " + juce::String (a.clippedSamples) + ". Sibilance index (rough): " + juce::String (a.sibilanceIndex, 2) + ".", mint);
+        para ("The live analyser is mono and does not read pitch, key or background noise: load a file for those.", textDim);
+    }
+    if (! fileReport.ok() && a.status != analysis::VocalAnalysis::Status::ready)
+    {
+        para (phase == Phase::analysing ? phaseHint()
+                                        : "Load a vocal file (levels, clipping, noise between phrases, pitch, a key estimate when it is clear, stereo) or press LISTEN LIVE while your project plays. "
+                                          "Measurements and estimates are labelled.", textDim, 13.0f);
+    }
+    takeMax = juce::jmax (0.0f, y + takeScroll - (float) area.getBottom());
+}
+
+void KidPanel::paintDials (juce::Graphics& g)
+{
+    bezel (g, dialBox, juce::Colour (0xff1b1424), ink);
+    const int dw = dialBox.getWidth() / numDials;
+    for (int i = 0; i < numDials; ++i)
+    {
+        const auto& d = dials[(size_t) i];
+        const int x = dialBox.getX() + i * dw;
+        g.setFont (fontOf (12.5f, true));
+        g.setColour (textBright);
+        g.drawText (d.name, x, dialBox.getY() + 7, dw, 14, juce::Justification::centred, false);
+        g.setFont (fontOf (12.0f));
+        g.setColour (d.accent);
+        g.drawFittedText (d.text ((float) d.slider.getValue()), x + 4, dialBox.getY() + 94, dw - 8, 16, juce::Justification::centred, 1, 0.85f);
+        if (i > 0)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.04f));
+            g.fillRect (x, dialBox.getY() + 12, 1, dialBox.getHeight() - 24);
+        }
+    }
+}
+
+void KidPanel::paintCompare (juce::Graphics& g)
+{
+    bezel (g, compareBox, juce::Colour (0xff1b1424), ink);
+    caption (g, "BEFORE / AFTER", compareBox.getX() + 14, compareBox.getY() + 8, 200, textBright);
+    const float db = proc.getCompareGainDb();
+    juce::String t;
+    if (! levelMatch) t = "Off: ORIGINAL is the exact input";
+    else if (std::abs (db) < 0.05f) t = "On: no level difference measured yet";
+    else t = "On: ORIGINAL plays " + juce::String (std::abs (db), 1) + " dB " + (db > 0.0f ? "louder" : "quieter") + " to match";
+    g.setFont (fontOf (11.5f));
+    g.setColour (levelMatch ? lilac : textDim);
+    g.drawFittedText (t, compareBox.getX() + 114, compareBox.getY() + 68, compareBox.getWidth() - 126, 20, juce::Justification::centredLeft, 1, 0.8f);
+}
+
 void KidPanel::paintCommand (juce::Graphics& g)
 {
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff150f1d), (float) cmdBox.getX(), 0.0f, juce::Colour (0xff100d15), (float) cmdBox.getRight(), 0.0f, false));
-    g.fillRoundedRectangle (cmdBox.toFloat(), 16.0f);
-    g.setColour (juce::Colour (0xff3b2a4a));
-    g.drawRoundedRectangle (cmdBox.toFloat().reduced (0.5f), 16.0f, 1.0f);
-    g.setFont (fontOf (14.0f, true));
+    bezel (g, cmdBox, juce::Colour (0xff160f1d), ink);
+    g.setFont (fontOf (13.5f, true));
     g.setColour (phase == Phase::recording ? kidPinkSoft : textBright);
-    g.drawText (phaseLabel(), waveBox.getX(), cmdBox.getY() + 12, 400, 20, juce::Justification::centredLeft, false);
-    g.setFont (fontOf (12.5f));
+    const auto label = displayCase (phaseLabel());
+    const int lw = (int) juce::GlyphArrangement::getStringWidth (fontOf (13.5f, true), label) + 12;
+    g.drawText (label, waveBox.getX(), cmdBox.getY() + 8, lw, 18, juce::Justification::centredLeft, false);
+    g.setFont (fontOf (12.0f));
     g.setColour (textDim);
-    g.drawFittedText (phaseHint(), juce::Rectangle<int> (waveBox.getX(), waveBox.getBottom() + 4, waveBox.getWidth(), 28), juce::Justification::topLeft, 2);
-    // the waveform: its form follows the state
+    g.drawFittedText (phaseHint(), waveBox.getX() + lw, cmdBox.getY() + 8, waveBox.getWidth() - lw, 18, juce::Justification::centredLeft, 1, 0.8f);
+    // a thin strip under the label: the command mic while you talk, a moving line while KID works, flat at rest
     const auto w = waveBox.toFloat();
     const float mid = w.getCentreY();
     if (phase == Phase::recording)
     {
-        juce::ColourGradient grad (juce::Colour (0xff8d84ff), w.getX(), 0, juce::Colour (0xfff6eefa), w.getRight(), 0, false);
+        juce::ColourGradient grad (lilac, w.getX(), 0, juce::Colour (0xfff6eefa), w.getRight(), 0, false);
         grad.addColour (0.55, kidPink);
         g.setGradientFill (grad);
         const int n = (int) micLevels.size();
         for (int i = 0; i < n; ++i)
         {
-            const float lv = juce::jmin (1.0f, micLevels[(size_t) (n - 1 - i)] * 3.0f);
-            const float a = juce::jmax (1.5f, lv * w.getHeight() * 0.48f);
+            const float a = juce::jmax (1.0f, juce::jmin (1.0f, micLevels[(size_t) (n - 1 - i)] * 3.0f) * w.getHeight() * 0.5f);
             g.fillRect (w.getX() + (float) i / (float) (n - 1) * (w.getWidth() - 3.0f), mid - a, 2.6f, 2 * a);
-        }
-    }
-    else if (phase == Phase::transcribing || phase == Phase::downloading)
-    {
-        for (int i = 0; i < 28; ++i)
-        {
-            const float x = w.getX() + (float) i / 27.0f * w.getWidth();
-            const float y = mid + std::sin ((float) i * 0.55f - (float) tick * 0.2f) * w.getHeight() * 0.18f;
-            g.setColour (kidPink.withAlpha (0.3f + 0.7f * (std::sin ((float) i * 0.5f - (float) tick * 0.17f) + 1.0f) / 2.0f));
-            g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
-        }
-        if (phase == Phase::downloading)
-        {
-            g.setColour (juce::Colour (0xff2a2336));
-            g.fillRect (w.getX(), w.getBottom() + 2, w.getWidth(), 3.0f);
-            g.setColour (kidPink);
-            g.fillRect (w.getX(), w.getBottom() + 2, w.getWidth() * downloader.progress(), 3.0f);
-        }
-    }
-    else if (phase == Phase::analysing)
-    {
-        const float prog = juce::jlimit (0.0f, 1.0f, proc.getAnalyzer().liveActiveSeconds() / 8.0f);
-        for (float x = w.getX(); x < w.getRight(); x += 2.0f)
-        {
-            const float a = (0.25f + 0.75f * std::abs (std::sin (x * 0.045f) * std::sin (x * 0.013f + 1.0f))) * w.getHeight() * 0.4f;
-            g.setColour (x - w.getX() < prog * w.getWidth() ? juce::Colour (0xffb5aeff) : juce::Colour (0xff3a3359));
-            g.fillRect (x, mid - a, 1.2f, 2 * a);
         }
     }
     else
     {
+        const bool busy = phase == Phase::transcribing || phase == Phase::downloading || phase == Phase::analysing;
         juce::Path p;
-        for (float x = 0; x <= w.getWidth(); x += 2.0f)
+        for (float x = 0; x <= w.getWidth(); x += 3.0f)
         {
-            const float y = mid + (phase == Phase::review ? std::sin (x * 0.05f + (float) tick * 0.07f) * std::sin (x * 0.011f) * w.getHeight() * 0.32f
-                                                         : std::sin (x * 0.06f + (float) tick * 0.05f) * std::sin (x * 0.009f) * 2.5f);
+            const float y = mid + (busy ? std::sin (x * 0.05f - (float) tick * 0.2f) * w.getHeight() * 0.4f : 0.0f);
             if (x < 1.0f) p.startNewSubPath (w.getX(), y); else p.lineTo (w.getX() + x, y);
         }
-        g.setColour (phase == Phase::review ? kidPinkSoft.withAlpha (0.8f) : juce::Colour (0xff4a4458));
-        g.strokePath (p, juce::PathStrokeType (1.6f));
-    }
-}
-
-bool KidPanel::stageOn (int s) const
-{
-    switch (s)
-    {
-        case 1: return value ("tune_on") >= 0.5f;
-        case 2: return std::abs (value ("formant_shift")) > 1e-4f;
-        case 3: return value ("harm_on") >= 0.5f;
-        case 4: return value ("mut_on") >= 0.5f;
-        case 5: return value ("dbl_on") >= 0.5f;
-        case 6: return std::abs (value ("eq_lo_gain")) + std::abs (value ("eq_b1_gain")) + std::abs (value ("eq_b2_gain")) + std::abs (value ("eq_hi_gain")) > 1e-4f;
-        case 7: return value ("clean_on") >= 0.5f;
-        case 8: return value ("comp_ratio") > 1.001f;
-        case 9: return value ("clean_on") >= 0.5f && value ("clean_ess") > 0.0f;
-        case 10: return value ("sat_drive") > 0.0f;
-        case 11: return value ("air_on") >= 0.5f;
-        case 12: return value ("stutter_on") >= 0.5f;
-        case 13: return value ("echo_on") >= 0.5f;
-        case 14: return value ("dim_on") >= 0.5f;
-        case 15: return std::abs (value ("gain")) > 1e-4f;
-        case 16: return value ("mix") < 99.99f;
-        case 17: return value ("lim_on") >= 0.5f;
-        default: return false;
-    }
-}
-
-std::set<int> KidPanel::kidStages() const
-{
-    std::set<int> s;
-    for (auto& r : director.proposal()) s.insert (kid::Director::stageOf (r.id));
-    return s;
-}
-
-void KidPanel::paintPath (juce::Graphics& g)
-{
-    g.setColour (juce::Colour (0xff0e0c12));
-    g.fillRoundedRectangle (pathBox.toFloat(), 16.0f);
-    g.setColour (juce::Colour (0xff241f2e));
-    g.drawRoundedRectangle (pathBox.toFloat().reduced (0.5f), 16.0f, 1.0f);
-    g.setFont (fontOf (12.5f, true));
-    g.setColour (textBright);
-    g.drawText ("THE PATH", pathBox.getX() + 14, pathBox.getY() + 10, 90, 16, juce::Justification::centredLeft, false);
-    g.setFont (fontOf (12.5f));
-    g.setColour (textDim);
-    g.drawText ("Fixed order, left to right. A pink glow: KID wants to change that stage. Click a stage for its controls.", pathBox.getX() + 104, pathBox.getY() + 10, 640, 16,
-                juce::Justification::centredLeft, true);
-    const auto ks = kidStages();
-    const auto& first = stationHits[0];
-    g.setColour (juce::Colour (0xff3a3546));
-    g.fillRect ((float) first.getX(), (float) first.getY() + 13.0f, (float) (stationHits[16].getRight() - first.getX()) + 6.0f, 2.0f);
-    juce::Path arrow;
-    arrow.addTriangle ((float) stationHits[16].getRight() + 6.0f, (float) first.getY() + 8.0f, (float) stationHits[16].getRight() + 14.0f, (float) first.getY() + 14.0f,
-                       (float) stationHits[16].getRight() + 6.0f, (float) first.getY() + 20.0f);
-    g.fillPath (arrow);
-    for (int i = 0; i < 17; ++i)
-    {
-        const auto r = stationHits[(size_t) i];
-        const auto box = r.withHeight (28).toFloat();
-        const bool on = stageOn (i + 1), k = ks.count (i + 1) > 0;
-        const auto col = worldOf (i + 1);
-        if (k)
+        g.setColour (busy ? kidPink.withAlpha (0.8f) : juce::Colour (0xff2e2838));
+        g.strokePath (p, juce::PathStrokeType (1.4f));
+        if (phase == Phase::downloading)
         {
-            g.setColour (kidPink.withAlpha (0.35f));
-            g.fillRoundedRectangle (box.expanded (3.0f), 10.0f);
+            g.setColour (kidPink);
+            g.fillRect (w.getX(), w.getBottom(), w.getWidth() * downloader.progress(), 2.0f);
         }
-        g.setColour (on ? juce::Colour (0xff1d1a26) : juce::Colour (0xff14121a));
-        g.fillRoundedRectangle (box, 8.0f);
-        g.setColour (k ? kidPink : on ? col : juce::Colour (0xff2f2b3a));
-        g.drawRoundedRectangle (box.reduced (0.5f), 8.0f, k ? 2.0f : 1.0f);
-        g.setColour (col.withAlpha (on ? 1.0f : 0.45f));
-        g.fillRect (box.getX() + 7.0f, box.getBottom() - 3.0f, box.getWidth() - 14.0f, 3.0f);
-        g.setFont (fontOf (13.0f, true));
-        g.setColour (on || k ? textBright : juce::Colour (0xff7a7487));
-        g.drawText (juce::String (i + 1), box.toNearestInt(), juce::Justification::centred, false);
-        g.setFont (fontOf (11.5f));
-        g.setColour (k ? kidPinkSoft : on ? textBright : juce::Colour (0xff7a7487));
-        g.drawFittedText (stationName[i], juce::Rectangle<int> (r.getX() - 4, r.getY() + 32, r.getWidth() + 8, 14), juce::Justification::centred, 1, 0.85f);
     }
+}
+
+void KidPanel::paintActions (juce::Graphics& g)
+{
+    bezel (g, actionBox, plum, plumDeep);
+    caption (g, "SOUND PROFILES  (original directions, not anyone's chain)", actionBox.getX() + 14, actionBox.getY() + 6, actionBox.getWidth() - 28, kidPinkSoft);
 }
 
 // ---- input ----
@@ -1104,12 +1517,6 @@ void KidPanel::mouseDown (const juce::MouseEvent& e)
                 repaint (takeBox);
                 return;
             }
-    for (int i = 0; i < 17; ++i)
-        if (stationHits[(size_t) i].contains (p) && hooks.openStage)
-        {
-            hooks.openStage (i + 1);
-            return;
-        }
 }
 
 void KidPanel::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)

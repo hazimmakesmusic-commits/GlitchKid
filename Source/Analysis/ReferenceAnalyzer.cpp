@@ -232,6 +232,8 @@ bool readMono (juce::AudioFormatReader& reader, juce::int64 from, int count, juc
 }
 }
 
+std::unique_ptr<juce::AudioFormatReader> openAudioFile (const juce::File& file) { return openReader (file); }
+
 double referenceFileSeconds (const juce::File& file)
 {
     if (! file.existsAsFile())

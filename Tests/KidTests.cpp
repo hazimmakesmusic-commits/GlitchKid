@@ -3,8 +3,8 @@
 #include "../Source/Kid/KidSpeech.h"
 #include "../Source/PluginEditor.h"
 
-// KID, the vocal director: the words-to-proposal engine. Nothing reaches a parameter without the artist's Apply; KID never proposes tuning, Gain, Mix,
-// the limiter or Bypass; follow-ups reshape the same proposal; every value is inside its parameter's own range.
+// KID, the vocal director: the words-to-proposal engine. Nothing reaches a parameter without the artist's Apply; KID never proposes Gain, Mix,
+// the limiter or Bypass, and Pitch Tune's key and scale only from a reliable estimate; follow-ups reshape the same proposal; every value is inside its parameter's own range.
 namespace
 {
 using glitchkid::kid::Director;
@@ -29,7 +29,7 @@ struct KidTests : public juce::UnitTest
         auto make = [&] { Director d (p.makeRangeLookup()); d.begin (start); return d; };
         auto say = [] (Director& d, const char* text) { return d.respond (parse (text)); };
 
-        beginTest ("the allowlist is every parameter except Pitch Tune, Gain, Mix, the limiter and Bypass");
+        beginTest ("the allowlist is every parameter except Gain, Mix, the limiter and Bypass");
         {
             int allowed = 0, total = 0;
             for (auto* q : p.getParameters())
@@ -39,8 +39,8 @@ struct KidTests : public juce::UnitTest
                     allowed += Director::isAllowed (r->paramID) ? 1 : 0;
                 }
             expectEquals (total, 69);
-            expectEquals (allowed, 57);
-            for (auto* id : { "tune_on", "tune_key", "gain", "mix", "bypass", "lim_on", "lim_ceiling" })
+            expectEquals (allowed, 62);
+            for (auto* id : { "gain", "mix", "bypass", "lim_on", "lim_ceiling", "lim_drive", "lim_release" })
                 expect (! Director::isAllowed (id), id);
         }
 
@@ -214,6 +214,126 @@ struct KidTests : public juce::UnitTest
             say (d, "start over");
             expect (d.kept().empty() && d.proposal().empty(), "start over forgets everything");
         }
+
+        auto never = [this] (const Director& d, const juce::String& what)
+        {
+            for (auto& r : d.proposal())
+                expect (r.id != "gain" && r.id != "mix" && r.id != "bypass" && ! r.id.startsWith ("lim_"), what + ": " + r.id);
+        };
+
+        beginTest ("producer profiles: by name and by artist reference (a direction, never a copy); each sets its tuning style and its character");
+        {
+            using glitchkid::kid::producerProfile;
+            for (int i = 1; i <= glitchkid::kid::numProfiles; ++i)
+            {
+                const auto f = parse (juce::String ("give me the ") + producerProfile (i).name + " sound");
+                expectEquals (f.profile, i, producerProfile (i).name);
+                auto d = make();
+                d.respond (f);
+                auto r = rowsOf (d);
+                static const float strength[] = { 50.0f, 75.0f, 100.0f };
+                expect (r.count ("tune_on") > 0, producerProfile (i).name + juce::String (": tuning on"));
+                const float got = r.count ("tune_strength") ? r["tune_strength"].to : start.get ("tune_strength", -1.0f); // no row when the value is already right
+                expectWithinAbsoluteError (got, strength[producerProfile (i).tune - 1], 1e-3f, producerProfile (i).name + juce::String (": tuning style"));
+                expect (! r.count ("tune_key"), "no key without a reliable estimate");
+                never (d, producerProfile (i).name);
+                expect (d.refused().isEmpty());
+                if (i == 2) expect (r.count ("clean_on") && r.count ("echo_on") && r.count ("dbl_on"), "Atmospheric: ambience, echo and mud control");
+                if (i == 3) expect (! r.count ("echo_on") && ! r.count ("mut_on"), "Intimate: no ambience, no Lab effects");
+                if (i == 4) expect (r.count ("mut_on") && r["mut_on"].to > 0.5f, "Experimental: Mutation");
+            }
+            auto d = make();
+            const auto line = say (d, "Make this vocal sound like The Kid LAROI.");
+            expectEquals (d.profile(), 1);
+            expect (line.contains ("can't copy") && line.contains ("Melodic Pop-Rap"), line);
+            const auto unknown = parse ("make it sound like Bob Nobody");
+            expect (unknown.profile == 0 && unknown.notes.joinIntoString (" ").contains ("don't have a direction"));
+            const auto wide = parse ("Give me a wide melodic rap vocal");
+            expect (wide.profile == 1 && wide.ops[glitchkid::kid::width] > 0.0f, "profile and words together");
+        }
+
+        beginTest ("tuning words: harder, less robotic, off; the key only from a reliable file estimate");
+        {
+            auto d = make();
+            auto line = say (d, "Make the tuning harder");
+            auto r = rowsOf (d);
+            expect (r.count ("tune_on") && r.count ("tune_speed") && std::abs (r["tune_speed"].to) < 1e-3f, "hard: instant snap");
+            expect (line.contains ("haven't detected your key") && ! r.count ("tune_key"), line);
+
+            const auto f = parse ("Make it more emotional and less robotic");
+            expect (f.tune == 1 && f.ops[glitchkid::kid::warm] > 0.0f && f.ops[glitchkid::kid::exp] <= 0.0f, "less robotic is natural tuning, not more Mutation");
+
+            glitchkid::kid::AnalysisFacts facts;
+            facts.valid = facts.fromFile = facts.keyReliable = true;
+            facts.keyTonic = 9;
+            facts.keyMinor = true;
+            auto k = make();
+            line = k.respond (parse ("autotune it"), &facts);
+            r = rowsOf (k);
+            expect (r.count ("tune_key") && std::abs (r["tune_key"].to - 9.0f) < 1e-3f && std::abs (r["tune_scale"].to - 2.0f) < 1e-3f, "A natural minor from the estimate");
+            expect (line.contains ("A minor") && line.contains ("estimated"), line);
+
+            GlitchKidProcessor q;
+            setParam (q, "tune_on", 1.0f);
+            Director off (q.makeRangeLookup());
+            off.begin (q.captureSoundState());
+            off.respond (parse ("no autotune please"));
+            r = rowsOf (off);
+            expect (r.count ("tune_on") && r["tune_on"].to < 0.5f, "off");
+        }
+
+        beginTest ("Clean My Vocal: Gentle / Balanced / Aggressive move CLEAN only, and say what it cannot do");
+        {
+            const float amounts[] = { 35.0f, 60.0f, 90.0f };
+            const char* words[] = { "clean my vocal gently", "clean my vocal", "clean my vocal aggressively" };
+            for (int i = 0; i < 3; ++i)
+            {
+                auto d = make();
+                const auto f = parse (words[i]);
+                expectEquals (f.cleanLevel, i + 1);
+                expect (! Director::needsAnalysis (f), "fixed, conservative levels: no waiting for audio");
+                const auto line = d.respond (f);
+                auto r = rowsOf (d);
+                expect (r.count ("clean_amount") && std::abs (r["clean_amount"].to - amounts[i]) < 1e-3f, words[i]);
+                for (auto& row : d.proposal())
+                    expect (row.id.startsWith ("clean_"), juce::String (words[i]) + " touches only CLEAN: " + row.id);
+                expect (line.contains ("no noise reduction"), line);
+                expect (line.contains ("thin") == (i == 2), "only Aggressive warns about the tone");
+            }
+        }
+
+        beginTest ("Build My Mix: the existing engine's foundation plus KID's tuning and cleanup, explainable, applied only through Apply");
+        {
+            glitchkid::analysis::VocalAnalysis none;
+            const auto fp = glitchkid::kid::buildFoundation (1, start, p.factoryDefaultState(), none, p.makeRangeLookup());
+            expect (fp.usable && fp.message.contains ("not fitted"), fp.message);
+            const auto again = glitchkid::kid::buildFoundation (1, start, p.factoryDefaultState(), none, p.makeRangeLookup());
+            expectEquals ((int) again.changes.size(), (int) fp.changes.size(), "deterministic");
+
+            auto d = make();
+            d.setFoundation (fp);
+            expect (d.hasFoundation());
+            auto f = parse ("build my mix, melodic pop rap");
+            expect (f.buildMix && f.profile == 1 && Director::needsAnalysis (f));
+            glitchkid::kid::AnalysisFacts facts;
+            facts.valid = true;
+            facts.sibilanceIndex = 0.4f;
+            facts.bandFraction = { 0.05f, 0.3f, 0.35f, 0.2f, 0.1f };
+            const auto line = d.respond (f, &facts);
+            auto r = rowsOf (d);
+            for (auto& c : fp.changes)
+                expect (r.count (c.id) > 0, "foundation row " + c.id);
+            expect (r.count ("tune_on") && r.count ("clean_on"), "tuning from the profile, gentle cleanup from the sibilance");
+            expect (d.summary().startsWith ("Added smooth pitch correction") && line.contains (d.summary()), d.summary());
+            never (d, "build my mix");
+
+            GlitchKidProcessor q;
+            q.applyParameterChanges (d.selectedChanges());
+            expectWithinAbsoluteError (getParam (q, "gain"), getParam (p, "gain"), 1e-6f);
+            expectWithinAbsoluteError (getParam (q, "mix"), getParam (p, "mix"), 1e-6f);
+            d.accepted (q.captureSoundState());
+            expect (! d.hasFoundation() && d.proposal().empty() && d.profile() == 0, "Apply ends the build");
+        }
     }
 };
 KidTests kidTests;
@@ -374,6 +494,115 @@ struct KidEditorTests : public juce::UnitTest
             expect (kid.lastKidLineForTest().contains ("I listened to"), kid.lastKidLineForTest());
             shot ("kid_improve");
             expect (same (before, p.captureSoundState()), "still nothing changed before Apply");
+        }
+
+        beginTest ("the Vocal Producer screen: six real dials, level-matched before/after, a vocal file, profiles, Build My Mix, Clean My Vocal, honest errors");
+        {
+            GlitchKidProcessor p;
+            p.prepareToPlay (48000.0, 480);
+            std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
+            auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+            auto& kid = ed->uiKidPanelForTest();
+            using Mood = glitchkid::ui::KidPanel::Mood;
+            expect (kid.moodForTest() == Mood::idle);
+            auto shot = [&] (const juce::String& name)
+            {
+                const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
+                if (dir.isEmpty()) return;
+                auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+                juce::File f = juce::File (dir).getChildFile (name + ".png");
+                f.deleteFile();
+                juce::FileOutputStream os (f);
+                if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
+            };
+
+            // the dials move real parameters, and 0 switches CLEAN / Pitch Tune off
+            kid.dialForTest (0).setValue (40.0, juce::sendNotificationSync);
+            expect (getParam (p, "clean_on") > 0.5f && std::abs (getParam (p, "clean_amount") - 40.0f) < 0.2f, "CLEAN dial");
+            kid.dialForTest (0).setValue (0.0, juce::sendNotificationSync);
+            expect (getParam (p, "clean_on") < 0.5f, "CLEAN dial at 0 is off");
+            kid.dialForTest (1).setValue (60.0, juce::sendNotificationSync);
+            expect (getParam (p, "tune_on") > 0.5f && std::abs (getParam (p, "tune_strength") - 60.0f) < 0.2f, "TUNE dial");
+            kid.dialForTest (1).setValue (0.0, juce::sendNotificationSync);
+            kid.dialForTest (3).setValue (50.0, juce::sendNotificationSync);
+            expect (getParam (p, "echo_on") > 0.5f, "SPACE dial drives the SPACE macro");
+            kid.dialForTest (4).setValue (3.0, juce::sendNotificationSync);
+            expectWithinAbsoluteError (getParam (p, "eq_b2_gain"), 3.0f, 0.06f, "PRESENCE dial");
+            kid.dialForTest (5).setValue (80.0, juce::sendNotificationSync);
+            expectWithinAbsoluteError (getParam (p, "mix"), 80.0f, 0.1f, "MIX dial");
+            setParam (p, "mix", 100.0f);
+            for (int i = 0; i < 6; ++i) kid.tickForTest();
+            expectWithinAbsoluteError ((float) kid.dialForTest (5).getValue(), 100.0f, 0.1f, "a dial follows the parameter when it moves elsewhere");
+            expect (kid.dialTextForTest (0) == "Off" && kid.dialTextForTest (4).endsWith ("dB"));
+
+            // before / after: the real bypass, level-matched on this screen
+            kid.compareForTest (true);
+            expect (getParam (p, "bypass") > 0.5f && p.isLevelMatchedCompare(), "ORIGINAL = bypass with level matching");
+            kid.compareForTest (false);
+            expect (getParam (p, "bypass") < 0.5f);
+
+            // a vocal file: analysed on a worker thread, then KID reports what it found
+            juce::TemporaryFile tmp (".wav");
+            {
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::OutputStream> os (tmp.getFile().createOutputStream());
+                auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
+                juce::AudioBuffer<float> b (1, 48000 * 14);
+                const int notes[] = { 57, 60, 64, 62, 60, 59, 57, 55, 53, 52, 57, 64, 60, 57 };
+                double ph = 0.0;
+                for (int i = 0; i < b.getNumSamples(); ++i)
+                {
+                    const double hz = 440.0 * std::pow (2.0, (notes[i / 48000] - 69) / 12.0);
+                    ph += juce::MathConstants<double>::twoPi * hz / 48000.0;
+                    b.setSample (0, i, 0.25f * (float) (std::sin (ph) + 0.5 * std::sin (2.0 * ph) + 0.33 * std::sin (3.0 * ph)));
+                }
+                if (w != nullptr) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+            }
+            kid.loadFileForTest (tmp.getFile());
+            expect (kid.moodForTest() == Mood::analysing, "the mascot shows the analysis");
+            for (int i = 0; i < 500 && kid.fileBusyForTest(); ++i)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            expect (kid.fileReportForTest().ok(), kid.fileReportForTest().message);
+            expect (kid.lastKidLineForTest().startsWith ("I read"), kid.lastKidLineForTest());
+            shot ("kid_file");
+
+            // profile, then Build My Mix: the existing engine's foundation + KID's tuning, nothing applied before Apply
+            const auto before = p.captureSoundState();
+            kid.pressForTest ("MELODIC POP-RAP");
+            kid.pressForTest ("BUILD MY MIX");
+            const auto& rows = kid.directorForTest().proposal();
+            expect (! rows.empty() && kid.directorForTest().hasFoundation(), "a whole mix is proposed");
+            bool tune = false;
+            for (auto& r : rows)
+            {
+                tune = tune || r.id == "tune_on";
+                expect (r.id != "gain" && r.id != "mix" && r.id != "bypass" && ! r.id.startsWith ("lim_"), r.id);
+            }
+            expect (tune, "Melodic Pop-Rap brings Light tuning");
+            expect (kid.lastKidLineForTest().contains ("Foundation: MODERN MELODIC RAP"), kid.lastKidLineForTest());
+            shot ("kid_build");
+            kid.applyForTest();
+            expect (kid.moodForTest() == Mood::complete, "the mascot celebrates an Apply");
+            expectWithinAbsoluteError (getParam (p, "gain"), before.get ("gain", 0.0f), 1e-6f);
+            ed->uiUndoForTest();
+            for (int i = 0; i < 7; ++i) kid.tickForTest();
+
+            // Clean My Vocal, aggressive: CLEAN only, with the warning
+            kid.pressForTest ("AGGRESSIVE");
+            kid.pressForTest ("CLEAN MY VOCAL");
+            for (auto& r : kid.directorForTest().proposal())
+                expect (r.id.startsWith ("clean_"), "Clean My Vocal touches CLEAN only: " + r.id);
+            expect (kid.lastKidLineForTest().contains ("no noise reduction") && kid.lastKidLineForTest().contains ("thin"), kid.lastKidLineForTest());
+            kid.cancelForTest();
+
+            // an unreadable file is an honest error
+            kid.loadFileForTest (tmp.getFile().getSiblingFile ("does-not-exist.wav"));
+            for (int i = 0; i < 200 && kid.fileBusyForTest(); ++i)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            expect (kid.moodForTest() == Mood::error && kid.lastKidLineForTest().contains ("could not be found"), kid.lastKidLineForTest());
+            shot ("kid_error");
+            e.reset();
+            expect (! p.isLevelMatchedCompare(), "closing the editor leaves bypass exact");
         }
     }
 };

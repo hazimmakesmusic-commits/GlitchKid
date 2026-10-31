@@ -65,6 +65,9 @@ private:
 juce::String referenceFileWildcard();  // e.g. "*.wav;*.bwf;*.aiff;*.aif;*.flac;*.ogg;*.mp3" (plus the system formats on macOS)
 juce::String referenceFormatNames();   // e.g. "WAV, AIFF, FLAC, Ogg Vorbis, MP3"
 
+// Opens a local audio file with the formats above (by extension, then by content); nullptr if it cannot be read. Worker or message thread only.
+std::unique_ptr<juce::AudioFormatReader> openAudioFile (const juce::File&);
+
 // Length of an audio file in seconds without analysing it (0 if it cannot be opened). Reads only the header.
 double referenceFileSeconds (const juce::File&);
 

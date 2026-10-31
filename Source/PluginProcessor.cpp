@@ -724,6 +724,9 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     smoothedGain.setCurrentAndTargetValue (targetGain (gainDb->load()));
     wetMix.reset (sampleRate, 0.02);
     wetMix.setCurrentAndTargetValue (wetAmount (bypass->load() >= 0.5f, mixPercent->load()));
+    dryMatchGain.reset (sampleRate, 0.02);
+    dryMatchGain.setCurrentAndTargetValue (1.0f);
+    compareDryEnergy = compareWetEnergy = 0.0;
 
     for (int b = 0; b < ParametricEq::numBands; ++b) // prepare() starts the smoothers at these values
         eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
@@ -979,6 +982,24 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     const float wetTarget = wetAmount (bypassed, mixPercent->load());
     wetMix.setTargetValue (wetTarget);
 
+    // Level-matched compare: the dry loudness of this block (measured before any matching gain), then the matching gain while bypassed with matching on.
+    double drySq = 0.0;
+    for (int ch = 0; ch < dryChannels; ++ch)
+    {
+        const float* d = dry.getReadPointer (ch);
+        for (int i = 0; i < numSamples; ++i)
+            drySq += (double) d[i] * d[i];
+    }
+    drySq /= (double) juce::jmax (1, dryChannels * numSamples);
+    dryMatchGain.setTargetValue (bypassed && levelMatch.load() ? juce::Decibels::decibelsToGain (compareGainDb.load()) : 1.0f);
+    if (dryMatchGain.isSmoothing() || std::abs (dryMatchGain.getTargetValue() - 1.0f) > 1.0e-6f)
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float g = dryMatchGain.getNextValue();
+            for (int ch = 0; ch < dryChannels; ++ch)
+                dry.getWritePointer (ch)[i] *= g;
+        }
+
     if (wetTarget <= 0.0f && ! wetMix.isSmoothing())
     {
         eq.reset();                 // settled bypass or 0 % mix: exact (delayed) dry signal, no processing cost
@@ -1159,6 +1180,25 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     runOutputLimiter (buffer, numChannels, numSamples);
     raisePeak (outputPeak, maxMagnitude (buffer, numChannels, numSamples)); // after the limiter: what actually leaves the plug-in
     outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
+
+    // Level-matched compare: while the processed sound is on (at any Mix) and the voice is there (above -50 dBFS RMS), follow the loudness of what leaves the
+    // plug-in against the dry input with ~3 s running averages. Bypassed blocks never update it.
+    if (! bypassed && ! wetMix.isSmoothing() && drySq > 1.0e-5)
+    {
+        double wetSq = 0.0;
+        for (int ch = 0; ch < dryChannels; ++ch)
+        {
+            const float* o = buffer.getReadPointer (ch);
+            for (int i = 0; i < numSamples; ++i)
+                wetSq += (double) o[i] * o[i];
+        }
+        wetSq /= (double) juce::jmax (1, dryChannels * numSamples);
+        const double a = 1.0 - std::exp (-(double) numSamples / (sourceRate * 3.0));
+        compareDryEnergy += a * (drySq - compareDryEnergy);
+        compareWetEnergy += a * (wetSq - compareWetEnergy);
+        if (compareDryEnergy > 1.0e-9 && compareWetEnergy > 1.0e-12)
+            compareGainDb.store ((float) juce::jlimit (-24.0, 24.0, 10.0 * std::log10 (compareWetEnergy / compareDryEnergy)));
+    }
 }
 
 juce::AudioProcessorEditor* GlitchKidProcessor::createEditor()
