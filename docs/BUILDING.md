@@ -33,7 +33,17 @@ cp -R build/GlitchKid_artefacts/Release/VST3/GlitchKid.vst3 ~/Library/Audio/Plug
 Then in FL Studio: Options > Manage plugins > scan `~/Library/Audio/Plug-Ins/VST3`. macOS may block an unsigned
 plug-in the first time (System Settings > Privacy & Security).
 
-## Linux (development / test only)
+## KID's speech (whisper.cpp)
+KID's push-to-talk speech is built in by default: the first CMake configure also downloads whisper.cpp 1.9.5 (pinned by commit; about 15 MB of source) and builds it
+as a static library inside the plug-in (it adds roughly 2-3 minutes to a clean build). `-DGLITCHKID_SPEECH=OFF` builds GlitchKid without speech (KID still works by typing).
+- The speech **model is not part of the build**: in the plug-in, KID > SET UP SPEECH downloads `ggml-base.en.bin` (about 142 MB) once, checks its SHA-1 and keeps it in
+  `~/Library/Application Support/GlitchKid/KID/` (macOS) or `%APPDATA%\GlitchKid\KID\` (Windows). After that, speech works offline.
+- The command microphone is the system's default input, opened only while the mic button is held. On macOS the host app (FL Studio) must be allowed to use the microphone
+  (System Settings > Privacy & Security > Microphone).
+- ggml is built for portability (`GGML_NATIVE=OFF`, no OpenMP, no Metal, no BLAS backend): Apple Silicon uses its NEON code paths and Accelerate's vDSP; x86-64 builds
+  (Windows, Intel Macs) need a CPU with AVX2 (2013 or newer).
+
+
 The Linux build is for tests and `pluginval`; it is not a deliverable. Use a scratch directory outside the repo:
 ```sh
 cmake -S . -B /path/to/scratch/rel -G Ninja -DCMAKE_BUILD_TYPE=Release -DGLITCHKID_BUILD_TESTS=ON

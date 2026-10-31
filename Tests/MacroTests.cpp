@@ -311,7 +311,7 @@ struct MacroTests : public juce::UnitTest
                 }
             };
 
-            for (int pg = 0; pg < 5; ++pg)
+            for (int pg : { 0, 1, 2, 3, 4, 6, 7 }) // 6 KID, 7 LAB render too
                 for (int cat = 0; cat < (pg == 4 ? 4 : 1); ++cat)
                 {
                     GlitchKidProcessor p;
@@ -339,6 +339,7 @@ struct MacroTests : public juce::UnitTest
             {
                 GlitchKidProcessor p;
                 p.prepareToPlay (48000.0, 480);
+                p.setUiInt ("uiLevel", 0); // START (a first launch opens KID)
                 std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
                 auto* content = ed->getChildComponent (0);
                 expect (content != nullptr);
@@ -421,7 +422,7 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("RESET"));
-                expect (visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (visible ("KID") && visible ("LAB") && visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");

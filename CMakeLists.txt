@@ -19,6 +19,25 @@ FetchContent_Declare(JUCE
     GIT_SHALLOW    TRUE)
 FetchContent_MakeAvailable(JUCE)
 
+# KID's on-device speech recognition (push-to-talk commands only): whisper.cpp, MIT licence, pinned to release v1.9.5. The model file is NOT bundled or
+# downloaded at build time: KID downloads it when the artist asks, and checks its SHA-1 before loading it. -DGLITCHKID_SPEECH=OFF builds KID without speech.
+option(GLITCHKID_SPEECH "Build KID's on-device speech recognition (whisper.cpp)" ON)
+if(GLITCHKID_SPEECH)
+    set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+    set(GGML_NATIVE OFF CACHE BOOL "" FORCE)   # a portable binary, not tuned to the build machine (x86-64 builds need AVX2, 2013+ CPUs)
+    set(GGML_OPENMP OFF CACHE BOOL "" FORCE)   # no OpenMP runtime inside a host
+    set(GGML_METAL OFF CACHE BOOL "" FORCE)    # CPU (+ Accelerate on macOS): no GPU resources to manage inside a host
+    set(GGML_BLAS OFF CACHE BOOL "" FORCE)     # no BLAS backend: its Accelerate calls need macOS 13.3, the plug-in supports 12.0 (the CPU backend keeps vDSP)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)    # linked into the plug-in bundle
+    FetchContent_Declare(whisper
+        GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git
+        GIT_TAG        d1be6fde11ac6e0407606b4e42fe72d34add8037) # = tag v1.9.5
+    FetchContent_MakeAvailable(whisper)
+endif()
+
 juce_add_plugin(GlitchKid
     COMPANY_NAME "GlitchKid"
     PRODUCT_NAME "GlitchKid"
@@ -61,10 +80,14 @@ target_sources(GlitchKid PRIVATE
     Source/AutoMode/BeatLock.cpp
     Source/AutoMode/ReferenceMatch.cpp
     Source/Macros/MacroEngine.cpp
+    Source/Kid/KidDirector.cpp
+    Source/Kid/KidSpeech.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/LabKit.cpp
     Source/UI/GlitchRelic.cpp
     Source/UI/ReferencePanel.cpp
+    Source/UI/KidPanel.cpp
+    Source/UI/LabPage.cpp
     Source/Analysis/DisplaySpectrum.cpp
     Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
@@ -83,6 +106,10 @@ target_compile_definitions(GlitchKid PUBLIC
     JUCE_VST3_CAN_REPLACE_VST2=0
     GLITCHKID_VERSION="${PROJECT_VERSION}")
 
+if(GLITCHKID_SPEECH)
+    target_link_libraries(GlitchKid PRIVATE whisper)
+    target_compile_definitions(GlitchKid PRIVATE GLITCHKID_SPEECH=1)
+endif()
 target_link_libraries(GlitchKid
     PRIVATE juce::juce_audio_utils
             juce::juce_dsp
@@ -146,6 +173,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/AutoModeTests.cpp
         Tests/MacroTests.cpp
         Tests/DoublingHarmonyTests.cpp
+        Tests/KidTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -175,10 +203,14 @@ if(GLITCHKID_BUILD_TESTS)
     Source/AutoMode/MixEngine.cpp
     Source/AutoMode/BeatLock.cpp
         Source/Macros/MacroEngine.cpp
+        Source/Kid/KidDirector.cpp
+        Source/Kid/KidSpeech.cpp
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/LabKit.cpp
         Source/UI/GlitchRelic.cpp
         Source/UI/ReferencePanel.cpp
+        Source/UI/KidPanel.cpp
+        Source/UI/LabPage.cpp
         Source/Analysis/DisplaySpectrum.cpp
         Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp
@@ -191,6 +223,10 @@ if(GLITCHKID_BUILD_TESTS)
         JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1 JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_OPUS=0
         GLITCHKID_VERSION="${PROJECT_VERSION}"
         JUCE_MODAL_LOOPS_PERMITTED=1) # tests only: lets the editor smoke test run its timer
+    if(GLITCHKID_SPEECH)
+        target_link_libraries(GlitchKidTests PRIVATE whisper)
+        target_compile_definitions(GlitchKidTests PRIVATE GLITCHKID_SPEECH=1)
+    endif()
     target_link_libraries(GlitchKidTests
         PRIVATE juce::juce_audio_utils
                 juce::juce_dsp

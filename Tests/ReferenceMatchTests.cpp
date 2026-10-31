@@ -525,16 +525,16 @@ struct ReferenceUiTests : public juce::UnitTest
         refBright.fullMix = true;
         auto voc = profileOf (plain, sr);
 
-        beginTest ("saved tab numbers keep their meaning: 0-4 as before, 5 is REFERENCE, junk behaves as before; choosing the tab remembers it");
+        beginTest ("saved tab numbers keep their meaning: 0-4 as before, 5 is REFERENCE, 6 KID, 7 LAB, junk behaves as before; choosing the tab remembers it");
         {
-            for (int saved : { 0, 1, 2, 3, 4, 5 })
+            for (int saved : { 0, 1, 2, 3, 4, 5, 6, 7 })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
                 std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
                 expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), saved);
             }
-            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 0 }, { 6, 4 } })
+            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 0 }, { 8, 4 } })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
@@ -552,22 +552,23 @@ struct ReferenceUiTests : public juce::UnitTest
             expectEquals (p.getParameters().size(), 69);
         }
 
-        beginTest ("the nine rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
+        beginTest ("the eleven rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
         {
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
             for (int size : { 70, 100, 150 })
             {
-                ed->setSize (1128 * size / 100, 600 * size / 100);
-                for (int i = 0; i < 8; ++i)
+                ed->setSize (1120 * size / 100, 680 * size / 100);
+                for (int i = 0; i < 10; ++i)
                 {
                     const auto a = ed->uiBarButtonBoundsForTest (i), next = ed->uiBarButtonBoundsForTest (i + 1);
                     expect (a.getBottom() <= next.getY(), "rail row " + juce::String (i) + " ends before the next row");
                     expect (a.getWidth() >= 140 && a.getHeight() >= 28, "rail row wide and tall enough");
                 }
-                expect (! ed->uiBarButtonBoundsForTest (8).intersects (ed->uiBarButtonBoundsForTest (9)), "the rail never reaches the header controls");
-                expect (ed->uiBarButtonBoundsForTest (9).getRight() < ed->uiBarButtonBoundsForTest (10).getX(), "DRY ends before MOTION");
+                expect (! ed->uiBarButtonBoundsForTest (10).intersects (ed->uiBarButtonBoundsForTest (11)), "the rail never reaches the header controls");
+                expect (ed->uiBarButtonBoundsForTest (11).getRight() < ed->uiBarButtonBoundsForTest (12).getX(), "DRY ends before MOTION");
+                expect (ed->uiBarButtonBoundsForTest (10).getBottom() <= 510, "the rail ends above its note and the level read-out");
             }
         }
 

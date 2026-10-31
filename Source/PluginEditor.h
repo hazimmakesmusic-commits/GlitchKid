@@ -8,6 +8,8 @@
 #include "UI/LabKit.h"
 #include "UI/GlitchRelic.h"
 #include "UI/ReferencePanel.h"
+#include "UI/KidPanel.h"
+#include "UI/LabPage.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
 class LevelMeter : public juce::Component
@@ -68,7 +70,8 @@ public:
     glitchkid::ui::ReferencePanel& uiReferencePanelForTest() { return *referencePanel; }
     bool uiCanUndoForTest() const { return undo.valid; }
     int uiPageForTest() const { return (int) page; }
-    juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < numRail ? navButtons[index].getBounds() : index == numRail ? dryButton.getBounds() : motionButton.getBounds(); } // 0-8 the rail, 9 DRY, 10 MOTION
+    juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < numRail ? navButtons[index].getBounds() : index == numRail ? dryButton.getBounds() : motionButton.getBounds(); } // 0-10 the rail, 11 DRY, 12 MOTION
+    glitchkid::ui::KidPanel& uiKidPanelForTest() { return *kidPanel; }
     juce::String uiHelpTextForTest() const { return infoLabel.getText(); }
     void uiHoverForTest (juce::Component* c) { updateHelp (c); }
     int uiRailIndexForTest() const { return railIndex(); }
@@ -83,10 +86,11 @@ public:
 private:
     // Layout size; the window scales it to fit. The signal rail takes the left railW pixels; a workspace is laid out in the 960-wide area beside it, from y = pageTop.
     // Every control that is not part of the current workspace is hidden.
-    static constexpr int railW = 168, pageW = 960, designW = railW + pageW, designH = 600;
+    static constexpr int railW = 160, pageW = 960, designW = railW + pageW, designH = 680; // 1120 x 680
+    static constexpr int barDy = 80; // the info line and the preset bar sit 80 px lower than in the 600-high layout the workspaces were written for
     static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
-    static constexpr int numRail = 9; // the rail: START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, BEAT, REFERENCE
-    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5 }; // new pages are only ever appended: the numbers are saved in sessions
+    static constexpr int numRail = 11; // the rail: KID, START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, LAB, BEAT, REFERENCE
+    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5, kid = 6, lab = 7 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;
     int category = 0;
@@ -237,6 +241,8 @@ private:
     int shownNextTile = -2; // the START tile that is emphasised as the next step (-1 = none)
     glitchkid::ui::SpectrumView homeView, beatView;
     std::unique_ptr<glitchkid::ui::ReferencePanel> referencePanel; // the REFERENCE workspace; created after the processor-bound members, destroyed first
+    std::unique_ptr<glitchkid::ui::KidPanel> kidPanel;             // KID, the vocal director (the Booth)
+    std::unique_ptr<glitchkid::ui::LabPage> labPage;               // LAB: Formant, Harmony, Mutation, Stutter
     glitchkid::ui::GlitchRelicLoader relicLoader; // declared after the views it feeds; stopped first in the destructor
     glitchkid::analysis::DisplaySpectrum specIn, specOut, specBeat;
     glitchkid::analysis::WaveColumns waveIn, waveOut;

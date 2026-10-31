@@ -46,7 +46,7 @@ struct ShellTests : public juce::UnitTest
         {
             // old session -> row: (uiLevel, uiCategory) -> rail index
             struct Case { int level, category, row; };
-            for (const auto& c : { Case { 0, 0, 0 }, { 3, 0, 1 }, { 1, 0, 2 }, { 4, 0, 3 }, { 4, 1, 4 }, { 4, 2, 5 }, { 4, 3, 6 }, { 2, 0, 7 }, { 5, 0, 8 } })
+            for (const auto& c : { Case { 6, 0, 0 }, { 0, 0, 1 }, { 3, 0, 2 }, { 1, 0, 3 }, { 4, 0, 4 }, { 4, 1, 5 }, { 4, 2, 6 }, { 4, 3, 7 }, { 7, 0, 8 }, { 2, 0, 9 }, { 5, 0, 10 } })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", c.level);
@@ -58,12 +58,13 @@ struct ShellTests : public juce::UnitTest
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
-            for (int row = 0; row < 9; ++row)
+            expectEquals (ed->uiRailIndexForTest(), 0, "a first launch opens KID");
+            for (int row = 0; row < 11; ++row)
             {
                 ed->uiSelectRailForTest (row);
                 expectEquals (ed->uiRailIndexForTest(), row);
             }
-            ed->uiSelectRailForTest (5);
+            ed->uiSelectRailForTest (6);
             expectEquals (p.getUiInt ("uiLevel", -1), 4);
             expectEquals (p.getUiInt ("uiCategory", -1), 2);
             expectEquals (p.getParameters().size(), 69);
@@ -76,16 +77,19 @@ struct ShellTests : public juce::UnitTest
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
             ed->uiTickForTest();
-            for (int row : { 2, 3, 4, 5, 6 })
+            for (int row : { 3, 4, 5, 6, 7, 8 })
                 expect (! ed->uiRailDotForTest (row), "row " + juce::String (row) + " is idle by default");
             th::setParam (p, "tune_on", 1.0f);
             th::setParam (p, "echo_on", 1.0f);
             ed->uiTickForTest();
-            expect (ed->uiRailDotForTest (3) && ed->uiRailDotForTest (6), "TUNE and SPACE are lit");
-            expect (! ed->uiRailDotForTest (4) && ! ed->uiRailDotForTest (5), "TONE and DYNAMICS stay unlit");
+            expect (ed->uiRailDotForTest (4) && ed->uiRailDotForTest (7), "TUNE and SPACE are lit");
+            expect (! ed->uiRailDotForTest (5) && ! ed->uiRailDotForTest (6) && ! ed->uiRailDotForTest (8), "TONE, DYNAMICS and LAB stay unlit");
+            th::setParam (p, "mut_on", 1.0f);
+            ed->uiTickForTest();
+            expect (ed->uiRailDotForTest (8), "LAB is lit while a Lab effect is on");
             th::setParam (p, "bypass", 1.0f);
             ed->uiTickForTest();
-            for (int row : { 2, 3, 4, 5, 6 })
+            for (int row : { 3, 4, 5, 6, 7, 8 })
                 expect (! ed->uiRailDotForTest (row), "nothing is processed while DRY: row " + juce::String (row));
         }
 

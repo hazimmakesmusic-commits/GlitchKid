@@ -116,7 +116,9 @@ namespace
 // The signal rail, in the order a vocal is worked. page / category are the saved workspace numbers (Page and the FINAL TOUCH category), so a session saved before the
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
-const RailItem railItems[9] = {
+const RailItem railItems[11] = {
+    { "KID", 6, 0, "KID", "Your vocal director: say what you hear in your head, review every change, Apply.",
+      "KID, your vocal director: talk or type, review exactly what it would change, then Apply. Nothing changes until you do." },
     { "START", 0, 0, "Start", "Your session: the real signal in and out, and the next step.", "Your session: the real-time signal and shortcuts." },
     { "BUILD", 3, 0, "Build", "Pick a starting sound, then build a first mix from your vocal.", "Pick a starting sound and build a starting mix from your vocal." },
     { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
@@ -124,12 +126,13 @@ const RailItem railItems[9] = {
     { "TONE", 4, 1, "Tone", "Darker to brighter: EQ, air and warmth.", "A darker-to-brighter control, four EQ gains, air and warmth (saturation)." },
     { "DYNAMICS", 4, 2, "Dynamics", "Level and punch, and a limiter that protects the output.", "A softer-to-more-upfront control, the compressor, the output level and the limiter." },
     { "SPACE", 4, 3, "Space", "Echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
+    { "LAB", 7, 0, "Lab", "Creative effects: Formant, Harmony, Mutation and Stutter.", "The Experimental Lab: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
     { "BEAT", 2, 0, "Beat", "How the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat on the Instrumental input)." },
     { "REFERENCE", 5, 0, "Reference", "Compare your tone with a song you have the right to use; review small EQ suggestions.",
       "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." } };
-constexpr int railRowY[9] = { 80, 112, 168, 200, 232, 264, 296, 352, 384 };
-constexpr int railGroupY[3] = { 62, 150, 334 };
-const char* const railGroupName[3] = { "SESSION", "SHAPE THE VOICE", "CONTEXT" };
+constexpr int railRowY[11] = { 80, 112, 144, 200, 232, 264, 296, 328, 384, 440, 472 };
+constexpr int railGroupY[4] = { 62, 182, 366, 422 };
+const char* const railGroupName[4] = { "SESSION", "SHAPE THE VOICE", "CHARACTER", "CONTEXT" };
 }
 
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
@@ -150,8 +153,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
     {
-        const int saved = p.getUiInt ("uiLevel", 0); // first launch: HOME. 0-4 keep their old meaning, 5 is REFERENCE, anything else behaves as before (clamped to FINAL TOUCH)
-        page = (Page) (saved >= 0 && saved <= 5 ? saved : juce::jlimit (0, 4, saved));
+        const int saved = p.getUiInt ("uiLevel", (int) Page::kid); // first launch: KID. 0-4 keep their old meaning, 5 is REFERENCE, 6 KID, 7 LAB; anything else behaves as before (clamped to FINAL TOUCH)
+        page = (Page) (saved >= 0 && saved <= 7 ? saved : juce::jlimit (0, 4, saved));
     }
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
@@ -663,6 +666,19 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         hooks.status = [this] (const juce::String& t) { showStatus (t); };
         referencePanel = std::make_unique<ui::ReferencePanel> (p, std::move (hooks)); // it is a child of `content` only while its tab is open
     }
+    {
+        ui::KidPanel::Hooks hooks;
+        hooks.beforeApply = [this] (const glitchkid::SoundState& before) { undo = { before, glitchProcessor.getPresetName(), true }; beatApplied = false; undoButton.setEnabled (true); };
+        hooks.status = [this] (const juce::String& t) { showStatus (t); };
+        hooks.openStage = [this] (int stage)
+        {
+            // THE PATH: the rail row that holds each stage's controls (TUNE 4, TONE 5, DYNAMICS 6, SPACE 7, CLEAN 3, LAB 8)
+            static const int row[18] = { 0, 4, 8, 8, 8, 7, 5, 3, 6, 3, 5, 5, 8, 7, 7, 6, 6, 6 };
+            selectRail (row[juce::jlimit (1, 17, stage)]);
+        };
+        kidPanel = std::make_unique<ui::KidPanel> (p, std::move (hooks)); // like REFERENCE: a child of `content` only while its page is open
+        labPage = std::make_unique<ui::LabPage> (p.apvts);
+    }
 
     refreshProfiles();
     setSize (designW, designH);
@@ -778,12 +794,14 @@ int GlitchKidEditor::railIndex() const
 {
     switch (page)
     {
-        case Page::home: return 0;
-        case Page::build: return 1;
-        case Page::clean: return 2;
-        case Page::finalTouch: return 3 + category;
-        case Page::beat: return 7;
-        case Page::reference: return 8;
+        case Page::kid: return 0;
+        case Page::home: return 1;
+        case Page::build: return 2;
+        case Page::clean: return 3;
+        case Page::finalTouch: return 4 + category;
+        case Page::lab: return 8;
+        case Page::beat: return 9;
+        case Page::reference: return 10;
     }
     return 0;
 }
@@ -822,7 +840,7 @@ void GlitchKidEditor::refreshInfoLine()
 {
     const bool legacy = hoverHelp.isEmpty() && legacyEffects.isNotEmpty();
     const auto text = hoverHelp.isNotEmpty() ? hoverHelp
-                      : legacy               ? "Effects from an older session are still switched on: " + legacyEffects + ". BUILD switches them off."
+                      : legacy               ? "Lab effects on: " + legacyEffects + ". Adjust them on LAB; BUILD switches them off."
                                              : juce::String ("Point at any control to read what it does.");
     if (text != infoLabel.getText())
         infoLabel.setText (text, juce::dontSendNotification);
@@ -963,8 +981,8 @@ void GlitchKidEditor::refreshState (float peak)
         legacyEffects = legacy.joinIntoString (", ");
         refreshInfoLine();
         // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, TONE, DYNAMICS and SPACE as in the stages above (nothing is processed while DRY)
-        const std::array<bool, numRail> dots = { false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], false, false };
-        for (int i : { 2, 3, 4, 5, 6 })
+        const std::array<bool, numRail> dots = { false, false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], ! dry && ! legacy.isEmpty(), false, false };
+        for (int i : { 3, 4, 5, 6, 7, 8 })
             if ((int) navButtons[i].getProperties().getWithDefault ("led", 0) != (dots[(size_t) i] ? 2 : 1))
             {
                 navButtons[i].getProperties().set ("led", dots[(size_t) i] ? 2 : 1);
@@ -1843,7 +1861,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     }
     g.setFont (ui::fontOf (10.5f, true));
     g.setColour (ui::textDim);
-    for (int i = 0; i < 3; ++i)
+    for (int i = 0; i < 4; ++i)
         g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], 140.0f, 14.0f), juce::Justification::centredLeft, false);
 
     // the header: the workspace you are in and what it is for
@@ -1869,11 +1887,11 @@ void GlitchKidEditor::paint (juce::Graphics& g)
 
     // the info line (hover help) and the preset and A/B bar, the same on every workspace
     g.setColour (ui::border);
-    g.fillRect (R, 522.0f, W - R, 1.0f);
+    g.fillRect (R, 522.0f + barDy, W - R, 1.0f);
     g.setColour (ui::panelBottom);
-    g.fillRect (R, 562.0f, W - R, 38.0f);
+    g.fillRect (R, 562.0f + barDy, W - R, 38.0f);
     g.setColour (ui::border);
-    g.fillRect (R, 562.0f, W - R, 1.0f);
+    g.fillRect (R, 562.0f + barDy, W - R, 1.0f);
 
     for (const auto& r : panelRects)
         ui::drawPanel (g, r.toFloat());
@@ -1903,6 +1921,9 @@ void GlitchKidEditor::layoutContent()
             child->setVisible (false);
     if (referencePanel != nullptr && page != Page::reference && referencePanel->getParentComponent() == &content)
         content.removeChildComponent (referencePanel.get());
+    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { labPage.get(), Page::lab } })
+        if (c != nullptr && page != p && c->getParentComponent() == &content)
+            content.removeChildComponent (c);
     panelRects.clear();
     const int ox = railW, oy = page == Page::finalTouch ? -56 : pageDy;
     auto show = [ox, oy] (juce::Component& c, Rect r) { c.setBounds (r.translated (ox, oy)); c.setVisible (true); };
@@ -1913,16 +1934,16 @@ void GlitchKidEditor::layoutContent()
     // ---- the rail, the header controls, the info line ----
     for (int i = 0; i < numRail; ++i)
         place (navButtons[i], { 8, railRowY[i], railW - 16, 30 });
-    place (railNote, { 18, 428, railW - 32, 40 });
-    place (ioLabel, { 18, 508, railW - 28, 44 });
+    place (railNote, { 18, 510, railW - 32, 40 });
+    place (ioLabel, { 18, 508 + barDy, railW - 28, 44 });
     place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 46, 12, 46, 28 });
     place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });
     place (undoButton, { designW - 16 - 70 - 4 - 46, 12, 46, 28 });
     place (motionButton, { designW - 16 - 70, 12, 70, 28 });
-    place (infoLabel, { railW + 20, 526, pageW - 40, 32 });
+    place (infoLabel, { railW + 20, 526 + barDy, pageW - 40, 32 });
 
     // ---- bottom bar: presets and A/B (always available) ----
-    Rect bar (railW + 16, 568, pageW - 32, 26);
+    Rect bar (railW + 16, 568 + barDy, pageW - 32, 26);
     place (presetPrevButton, bar.removeFromLeft (28));
     bar.removeFromLeft (4);
     place (presetMenuButton, bar.removeFromLeft (270));
@@ -1943,6 +1964,14 @@ void GlitchKidEditor::layoutContent()
     bar.removeFromRight (6);
     place (abLabel, bar.removeFromRight (34));
     place (presetStatus, bar);
+
+    // ---- KID (the Booth) and LAB: self-contained pages ----
+    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { labPage.get(), Page::lab } })
+        if (page == p)
+        {
+            content.addChildComponent (*c);
+            place (*c, { railW, 58, pageW, 522 + barDy - 58 });
+        }
 
     // ---- HOME / SESSION ----
     if (page == Page::home)
@@ -2074,7 +2103,7 @@ void GlitchKidEditor::layoutContent()
     }
 
     // ---- FINAL TOUCH (one category at a time) ----
-    else
+    else if (page == Page::finalTouch) // (KID and LAB are self-contained pages, placed above)
     {
         panel ({ 24, 144, 912, 352 });
         show (resetButton, { 836, 506, 100, 32 });

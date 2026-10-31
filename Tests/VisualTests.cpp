@@ -125,6 +125,7 @@ struct VisualTests : public juce::UnitTest
         {
             GlitchKidProcessor p;
             p.prepareToPlay (48000.0, 480);
+            p.setUiInt ("uiLevel", 0); // START (a first launch opens KID)
             std::unique_ptr<juce::AudioProcessorEditor> a (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (a.get());
             ed->uiWaitForRelicForTest();
