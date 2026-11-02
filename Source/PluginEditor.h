@@ -76,6 +76,7 @@ public:
     glitchkid::ui::KidPanel& uiKidPanelForTest() { return *kidPanel; }
     glitchkid::ui::MainScreen& uiMainScreenForTest() { return *mainScreen; }
     glitchkid::ui::MasteringScreen& uiMasteringScreenForTest() { return *masteringScreen; }
+    glitchkid::ui::LabPage& uiLabPageForTest() { return *labPage; }
     void uiShowKidForTest (bool kid) { showMainView (kid); }
     bool uiKidViewForTest() const { return kidView; }
     juce::String uiHelpTextForTest() const { return infoLabel.getText(); }
@@ -95,7 +96,7 @@ private:
     static constexpr int railW = 160, pageW = 960, designW = railW + pageW, designH = 680; // 1120 x 680
     static constexpr int barDy = 80; // the info line and the preset bar sit 80 px lower than in the 600-high layout the workspaces were written for
     static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
-    static constexpr int numRail = 11; // the rail: KID, START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, LAB, BEAT, REFERENCE
+    static constexpr int numRail = 11; // the rail: START, SOUNDS, CLEAN, TUNE, TONE, DYNAMICS, SPACE, CREATIVE, BEAT, REFERENCE, MASTER
     enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5, kid = 6, lab = 7, master = 8 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;
@@ -142,7 +143,7 @@ private:
     juce::TextButton finalButton { "FINAL TOUCH  >" };
     juce::TextButton motionButton, resetButton { "RESET" };
     glitchkid::ui::ScopeStrip scope;
-    juce::TextButton dryButton { "DRY" }, processedButton { "PROCESSED" };
+    juce::TextButton dryButton { "ORIGINAL" }, processedButton { "PROCESSED" };
     juce::String shownCompareText;
     float inPeakShown = 0.0f, outPeakShown = 0.0f;
     juce::Label ioLabel, scopeCaption { {}, "INPUT SIGNAL" }, keyLabel { {}, "KEY" }, scaleCaption { {}, "SCALE" };
@@ -163,7 +164,7 @@ private:
     juce::OwnedArray<glitchkid::ui::ProfileCard> profileCards;
     glitchkid::ui::LabHeading profileHeading { "1 STARTING PROFILE" }, buildHeading { "2 BUILD" }, resultHeading { "3 RESULT" };
     juce::Label detailDesc, detailSettings, detailStart, sourceLine, autoStatus, resultTitle, resultBody, autoStyleLabel { {}, "MIX INTENSITY" };
-    glitchkid::ui::BuildButton autoAnalyzeButton;   // BUILD MY VOCAL MIX (listens, then builds)
+    glitchkid::ui::BuildButton autoAnalyzeButton;   // BUILD MY MIX (listens, then builds)
     juce::TextButton autoApplyButton { "WHAT CHANGED" }, loadButton { "LOAD PROFILE" }, backToMineButton { "BACK TO MY SOUND" };
     juce::Slider autoIntensitySlider;
     int browsedProfile = -1;
@@ -172,7 +173,7 @@ private:
     int signalTicks = 0; // frames since the input last carried a signal (for the "signal detected" status)
     struct Undo { glitchkid::SoundState state; juce::String name; bool valid = false; } undo; // your sound from before the last build or profile load
 
-    // BUILD MY VOCAL MIX: the big button listens to the vocal (the host must be playing), then the mix engine builds a proposal from the selected profile and the
+    // BUILD MY MIX: the big button listens to the vocal (the host must be playing), then the mix engine builds a proposal from the selected profile and the
     // measurements and it is applied to the real parameters. BACK TO MY SOUND restores the sound from before the build.
     enum class BuildState { idle, listening, built, failed };
     BuildState buildState = BuildState::idle;
@@ -267,7 +268,8 @@ private:
     juce::Label beatStatus, beatLevels, beatRouting, beatProgress, beatChanges, vocalBarLabel { {}, "VOCAL" }, beatBarLabel { {}, "BEAT" };
     glitchkid::ui::LevelBar vocalBar, beatBar;
     glitchkid::ui::BandCompare bandCompare;
-    juce::TextButton analyzeBeatButton { "ANALYZE BEAT" }, applyBeatButton { "APPLY SELECTED" }, undoBeatButton { "UNDO BEAT LOCK" }, vocalOnlyButton { "VOCAL-ONLY: BUILD MY MIX  >" };
+    juce::TextButton analyzeBeatButton { "ANALYZE BEAT" }, applyBeatButton { "APPLY SELECTED" }, undoBeatButton { "UNDO BEAT LOCK" }, vocalOnlyButton { "NO BEAT? BUILD MY MIX  >" };
+    juce::Label beatEmpty; // what appears on the right, and when
     static constexpr int beatRows = 7;
     juce::ToggleButton beatTicks[beatRows];
     juce::Label beatTitles[beatRows], beatReasons[beatRows];

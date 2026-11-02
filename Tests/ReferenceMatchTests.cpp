@@ -532,9 +532,9 @@ struct ReferenceUiTests : public juce::UnitTest
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
                 std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
-                expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), saved);
+                expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), saved == 0 ? 6 : saved, "0, the old dashboard, opens START (6)");
             }
-            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 0 }, { 12, 4 } })
+            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 6 }, { 12, 4 } })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
@@ -568,7 +568,7 @@ struct ReferenceUiTests : public juce::UnitTest
                 }
                 expect (! ed->uiBarButtonBoundsForTest (10).intersects (ed->uiBarButtonBoundsForTest (11)), "the rail never reaches the header controls");
                 expect (ed->uiBarButtonBoundsForTest (11).getRight() < ed->uiBarButtonBoundsForTest (12).getX(), "DRY ends before MOTION");
-                expect (ed->uiBarButtonBoundsForTest (10).getBottom() <= 510, "the rail ends above its note and the level read-out");
+                expect (ed->uiBarButtonBoundsForTest (10).getBottom() <= 544, "the rail ends above its note (544) and the level read-out");
             }
         }
 

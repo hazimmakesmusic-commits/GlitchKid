@@ -220,7 +220,7 @@ struct LevelUiTests : public juce::UnitTest
             const auto presetName = p.getPresetName();
             if (auto* ged = dynamic_cast<GlitchKidEditor*> (ed.get()))
                 ged->uiSelectRailForTest (1); // KID, the first screen, fills the window without the rail: start from a detailed page, where the rail is
-            for (const char* name : { "CLEAN", "BEAT", "BUILD", "TUNE", "START", "TONE", "START" })
+            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "START", "TONE", "START" })
             {
                 auto* b = findButton (*content, name);
                 expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the rail");
@@ -350,7 +350,7 @@ struct LevelUiTests : public juce::UnitTest
             auto* content = ed->getChildComponent (0);
             pump (200);
             auto vis = [&] (const juce::String& t) { auto* b = findButton (*content, t); return b != nullptr && b->isVisible(); };
-            expect (vis ("ANALYZE BEAT") && vis ("VOCAL-ONLY: BUILD MY MIX  >"));
+            expect (vis ("ANALYZE BEAT") && vis ("NO BEAT? BUILD MY MIX  >"));
             expect (! vis ("APPLY SELECTED") && ! vis ("UNDO BEAT LOCK"), "nothing to apply without an analysis");
             expect (anyLabelContains (*content, "BEAT REQUIRED"), "the missing beat is stated");
             const auto count = p.getAnalyzer().completedCount();
@@ -364,7 +364,7 @@ struct LevelUiTests : public juce::UnitTest
             expect (ticks.empty(), "no suggestions are listed");
             for (const auto& e : before.values)
                 expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
-            findButton (*content, "VOCAL-ONLY: BUILD MY MIX  >")->triggerClick();
+            findButton (*content, "NO BEAT? BUILD MY MIX  >")->triggerClick();
             pump (60);
             expectEquals (p.getUiInt ("uiLevel", -1), 3);
         }

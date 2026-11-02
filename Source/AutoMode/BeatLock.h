@@ -9,7 +9,7 @@ namespace glitchkid::automode
 // What it is NOT: it does not hear a beat that was not routed to the instrumental input (a stereo input that already contains vocal and beat mixed together is
 // measured as "the vocal"), it does not process the instrumental, it does not move your mixer faders (BALANCE is advice only), and it has no reverb to recommend
 // (SPACE moves only the existing echo and width amounts). The numbers are digital levels from five coarse bands, not LUFS and not calibrated spectra.
-// It shares its rules (automode::beatMoves) with BUILD MY VOCAL MIX, so the two never disagree.
+// It shares its rules (automode::beatMoves) with BUILD MY MIX, so the two never disagree.
 struct BeatLockItem
 {
     BeatMove move;           // the plain move (id empty for advice that changes nothing)

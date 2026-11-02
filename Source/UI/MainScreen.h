@@ -7,8 +7,8 @@
 
 namespace glitchkid::ui
 {
-// The GlitchKid instrument: the main screen (the whole window). Three zones only:
-//   header   - the wordmark, the preset selector (the editor's own preset logic), ORIGINAL / PROCESSED (the real bypass), Kid and the detailed pages;
+// START: the GlitchKid instrument, inside the editor's frame (the rail, ORIGINAL / PROCESSED, UNDO and the preset bar are the editor's). Three zones:
+//   guide    - the next step (Choose a sound, which opens SOUNDS) and Kid;
 //   ribbon   - one central visual: the level of what comes in (a faint line) and what GlitchKid sends out (the neon ribbon), read from the plug-in's own
 //              display taps; nothing is drawn that is not measured;
 //   controls - seven large dials in three sections, each bound to existing parameters or the existing macros (TUNE, CLEAN; TONE, PUNCH, SPACE; MIX, OUTPUT).
@@ -18,9 +18,7 @@ class MainScreen : public juce::Component, private juce::Timer
 public:
     struct Hooks
     {
-        std::function<void (juce::Component& anchor)> presetMenu;  // the editor's preset menu, opened under `anchor`
-        std::function<void (int direction)> presetStep;            // previous (-1) / next (+1) preset
-        std::function<void()> openKid, openAdvanced, openMastering;
+        std::function<void()> openSounds, openKid;
     };
     static constexpr int numDials = 7;
 
@@ -38,7 +36,6 @@ public:
     void tickForTest() { timerCallback(); }
     bool signalForTest() const { return signalOut; }
     void pressForTest (const juce::String& buttonText);
-    juce::String presetTextForTest() const { return presetButton.getButtonText(); }
 
 private:
     struct Dial
@@ -60,8 +57,7 @@ private:
     std::array<Dial, numDials> dials;
     juce::ComboBox keyBox, scaleBox;
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
-    Pill prevButton { "<" }, presetButton { "Preset" }, nextButton { ">" }, originalButton { "Original" }, processedButton { "Processed" },
-         kidButton { "Kid" }, advancedButton { "Advanced" }, masteringButton { "Mastering" };
+    Pill soundsButton { "Choose a sound" }, kidButton { "Ask Kid" };
 
     std::array<float, 240> envIn {}, envOut {}; // level history, newest first (0..1 on a 60 dB scale)
     std::vector<float> scratch;
@@ -69,7 +65,7 @@ private:
     bool signalOut = false;
     float inDb = -100.0f, outDb = -100.0f;
     int tick = 0;
-    juce::Rectangle<int> header, ribbon, controls;
+    juce::Rectangle<int> guide, ribbon, controls;
     std::array<juce::Rectangle<int>, 3> sections;
 
     void setupDials();

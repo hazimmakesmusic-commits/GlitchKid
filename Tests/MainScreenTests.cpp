@@ -56,16 +56,16 @@ struct MainScreenTests : public juce::UnitTest
             }
         };
 
-        beginTest ("the first screen: the instrument fills the window; three zones; seven dials; Kid and the detailed pages one click away");
+        beginTest ("START: the first page, in the same frame as every page (rail, ORIGINAL / PROCESSED, UNDO, presets); seven dials; one next step");
         {
             expectEquals (ed->uiRailIndexForTest(), 0);
-            expect (main.isVisible() && main.getParentComponent() != nullptr && main.getBounds() == main.getParentComponent()->getLocalBounds(), "the instrument fills the window");
-            expect (kid.getParentComponent() == nullptr, "Kid is not attached while the instrument shows");
+            expect (main.isVisible() && main.getParentComponent() != nullptr && main.getX() > 100, "inside the frame, beside the rail");
+            expect (kid.getParentComponent() == nullptr, "Kid is not attached while START shows");
             const char* names[] = { "TUNE", "CLEAN", "TONE", "PUNCH", "SPACE", "MIX", "OUTPUT" };
             for (int i = 0; i < glitchkid::ui::MainScreen::numDials; ++i)
                 expectEquals (main.dialNameForTest (i), juce::String (names[i]));
-            expect (visibleButton (*ed, "Kid") && visibleButton (*ed, "Advanced") && visibleButton (*ed, "Original") && visibleButton (*ed, "Processed"));
-            expect (! visibleButton (*ed, "TUNE") && ! visibleButton (*ed, "SAVE"), "no rail and no preset bar here: the header has its own preset selector");
+            for (auto* b : { "START", "SOUNDS", "CLEAN", "TUNE", "TONE", "DYNAMICS", "SPACE", "CREATIVE", "BEAT", "REFERENCE", "MASTER", "ORIGINAL", "PROCESSED", "UNDO", "SAVE", "Choose a sound", "Ask Kid" })
+                expect (visibleButton (*ed, b), b);
             shot ("main_idle");
         }
 
@@ -100,28 +100,21 @@ struct MainScreenTests : public juce::UnitTest
             expectWithinAbsoluteError ((float) main.dialForTest (2).getValue(), 50.0f, 0.6f, "TONE follows (flat)");
         }
 
-        beginTest ("presets from the header, the real bypass, and the views never change the sound");
+        beginTest ("the next step and Kid from START; moving around never changes the sound");
         {
-            const auto presetBefore = main.presetTextForTest();
-            main.pressForTest (">");
-            for (int i = 0; i < 6; ++i) main.tickForTest();
-            expect (main.presetTextForTest() != presetBefore && main.presetTextForTest() == p.getPresetName(), "next preset: " + main.presetTextForTest());
-            main.pressForTest ("Original");
-            expect (getParam (p, "bypass") > 0.5f && ! p.isLevelMatchedCompare(), "ORIGINAL is the exact bypass here");
-            main.pressForTest ("Processed");
-            expect (getParam (p, "bypass") < 0.5f);
-
             const auto before = p.captureSoundState();
-            main.pressForTest ("Kid");
+            main.pressForTest ("Choose a sound");
+            expectEquals (ed->uiRailIndexForTest(), 1, "Choose a sound opens SOUNDS");
+            ed->uiSelectRailForTest (0);
+            main.pressForTest ("Ask Kid");
             expect (ed->uiKidViewForTest() && kid.getParentComponent() != nullptr && main.getParentComponent() == nullptr, "Kid takes the window");
             expectEquals (p.getUiInt ("uiMainView", -1), 1, "remembered with the session");
             kid.pressForTest ("Instrument");
-            expect (! ed->uiKidViewForTest() && main.getParentComponent() != nullptr, "back to the instrument");
-            main.pressForTest ("Advanced");
-            expectEquals (ed->uiRailIndexForTest(), 4, "the detailed pages, starting with TUNE");
-            expect (visibleButton (*ed, "MAIN") && visibleButton (*ed, "SAVE"));
+            expect (! ed->uiKidViewForTest() && main.getParentComponent() != nullptr, "back to START");
+            for (int row = 0; row < 11; ++row)
+                ed->uiSelectRailForTest (row);
             ed->uiSelectRailForTest (0);
-            expect (main.isVisible() && main.getParentComponent() != nullptr, "MAIN comes back to the instrument");
+            expect (main.isVisible() && main.getParentComponent() != nullptr, "START in the rail comes back to the instrument");
             expect (same (before, p.captureSoundState()), "navigation never changes the sound");
         }
 
@@ -190,11 +183,11 @@ struct MasteringScreenTests : public juce::UnitTest
             if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
         };
 
-        beginTest ("reached from the instrument; the whole window; every control is a mastering parameter; Vocal goes back");
+        beginTest ("MASTER in the rail; in the frame; every control is a mastering parameter");
         {
-            ed->uiMainScreenForTest().pressForTest ("Mastering");
+            ed->uiSelectRailForTest (10);
             expectEquals (ed->uiPageForTest(), 8);
-            expect (lab.getParentComponent() != nullptr && lab.getBounds() == lab.getParentComponent()->getLocalBounds() && lab.isVisible());
+            expect (lab.getParentComponent() != nullptr && lab.getX() > 100 && lab.isVisible());
             expectEquals (p.getUiInt ("uiLevel", -1), 8, "remembered with the session");
             lab.pressForTest ("Warm & Smooth");
             expectWithinAbsoluteError (getParam (p, "master_style"), 1.0f, 0.01f, "a style tile sets the style");
@@ -225,10 +218,11 @@ struct MasteringScreenTests : public juce::UnitTest
             for (int s = 0; s < mix.getNumSamples(); s += 480) { juce::AudioBuffer<float> v (mix.getArrayOfWritePointers(), 2, s, 480); p.processBlock (v, midi); }
             lab.tickForTest();
             expect (lab.verdictForTest().startsWith ("Ready to master"), lab.verdictForTest());
-            lab.pressForTest ("Original");
-            expect (getParam (p, "bypass") > 0.5f);
-            lab.pressForTest ("Master");
-            expect (getParam (p, "bypass") < 0.5f);
+            th::setParam (p, "bypass", 1.0f); // the header's ORIGINAL
+            juce::AudioBuffer<float> more = mixOf (1.0, -6.0f);
+            for (int s = 0; s < more.getNumSamples(); s += 480) { juce::AudioBuffer<float> v (more.getArrayOfWritePointers(), 2, s, 480); p.processBlock (v, midi); }
+            expect (p.getMastering().compareGainDb() > 0.5f, "ORIGINAL is raised to the master's loudness");
+            th::setParam (p, "bypass", 0.0f);
             shot ("mastering_live");
         }
 
@@ -255,8 +249,8 @@ struct MasteringScreenTests : public juce::UnitTest
             expect (lab.statusForTest().startsWith ("Saved") && out.existsAsFile(), lab.statusForTest());
             shot ("mastering_file");
             dir.deleteRecursively();
-            lab.pressForTest ("Vocal");
-            expect (ed->uiPageForTest() == 6 && ed->uiMainScreenForTest().isVisible(), "back to the instrument");
+            ed->uiSelectRailForTest (0);
+            expect (ed->uiPageForTest() == 6 && ed->uiMainScreenForTest().isVisible(), "START again");
             th::setParam (p, "master_on", 0.0f);
         }
     }

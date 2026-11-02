@@ -126,6 +126,7 @@ struct UiBehaviourTests : public juce::UnitTest
             p.setUiInt ("uiLevel", 0);
             std::unique_ptr<juce::AudioProcessorEditor> base (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (base.get());
+            ed->uiShowWorkspaceForTest (0); // the old dashboard: no longer on the rail, still tested directly
             auto* content = ed->getChildComponent (0);
             auto* view = findOf<glitchkid::ui::SpectrumView> (*content);
             expect (ed != nullptr && view != nullptr);

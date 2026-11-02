@@ -5,7 +5,7 @@
 
 namespace glitchkid::automode
 {
-// BUILD MY VOCAL MIX: a PURE function (no hidden state, no randomness, no I/O) that turns the selected artist-inspired profile, the lead vocal's analysis and,
+// BUILD MY MIX: a PURE function (no hidden state, no randomness, no I/O) that turns the selected artist-inspired profile, the lead vocal's analysis and,
 // when it was really measured, the instrumental's analysis into a complete sound built only from existing controls.
 //
 // Foundation: the profile's own saved values (or the clean Factory Default when no profile is selected). The measurements then make small, documented,

@@ -82,15 +82,8 @@ MasteringScreen::MasteringScreen (GlitchKidProcessor& p, Hooks h) : proc (p), ho
         t.onClick = [this, s] { setParam (GlitchKidProcessor::masterStyleId, (float) s); sync(); };
         addAndMakeVisible (t);
     }
-    backButton.setTooltip ("Back to the vocal instrument.");
-    backButton.onClick = [this] { if (hooks.back) hooks.back(); };
     modeButton.setTooltip ("Mastering mode: this GlitchKid masters the finished mix instead of processing a vocal. Use it on your master bus (a separate instance from your vocal one).");
     modeButton.onClick = [this] { setParam (GlitchKidProcessor::masterOnId, proc.isMasteringMode() ? 0.0f : 1.0f); proc.requestMasterMeterReset(); sync(); };
-    originalButton.getProperties().set ("secondary", true);
-    originalButton.setTooltip ("The untouched mix, time-aligned and played at the master's loudness (kept below clipping), so louder never wins.");
-    masterButton.setTooltip ("The master.");
-    originalButton.onClick = [this] { setParam (GlitchKidProcessor::bypassId, 1.0f); sync(); };
-    masterButton.onClick = [this] { setParam (GlitchKidProcessor::bypassId, 0.0f); sync(); };
     loadButton.setTooltip ("Measure a finished mix file (" + analysis::referenceFormatNames() + ") and get it ready to export. The file is only read.");
     loadButton.onClick = [this]
     {
@@ -110,7 +103,7 @@ MasteringScreen::MasteringScreen (GlitchKidProcessor& p, Hooks h) : proc (p), ho
     };
     resetButton.setTooltip ("Start the loudness measurement again (for example at the top of the song).");
     resetButton.onClick = [this] { proc.requestMasterMeterReset(); };
-    for (auto* b : { &backButton, &modeButton, &originalButton, &masterButton, &loadButton, &liveButton, &exportButton, &resetButton })
+    for (auto* b : { &modeButton, &loadButton, &liveButton, &exportButton, &resetButton })
         addAndMakeVisible (b);
     sync();
 }
@@ -186,9 +179,6 @@ void MasteringScreen::sync()
     const bool on = proc.isMasteringMode(), busy = job.isRunning() || waiting;
     modeButton.setButtonText (on ? "Mastering mode: on" : "Mastering mode: off");
     modeButton.setToggleState (on, juce::dontSendNotification);
-    const bool dry = value (GlitchKidProcessor::bypassId) >= 0.5f;
-    originalButton.setToggleState (dry, juce::dontSendNotification);
-    masterButton.setToggleState (! dry, juce::dontSendNotification);
     const int style = juce::roundToInt (value (GlitchKidProcessor::masterStyleId));
     for (int s = 0; s < master::numStyles; ++s)
         tiles[(size_t) s].setToggleState (s == style, juce::dontSendNotification);
@@ -228,25 +218,21 @@ void MasteringScreen::timerCallback()
 void MasteringScreen::resized()
 {
     const int W = getWidth();
-    const int cy = 21;
-    backButton.setBounds (W - 48 - 104 - 104 - 4 - 200 - 12 - 84, cy, 84, 30);
-    modeButton.setBounds (W - 48 - 104 - 104 - 4 - 200, cy, 196, 30);
-    originalButton.setBounds (W - 48 - 104 - 104, cy, 100, 30);
-    masterButton.setBounds (W - 48 - 104, cy, 104, 30);
-
-    inputBox = { 48, 96, 296, 248 };
-    styleBox = { 368, 96, 384, 248 };
-    outputBox = { 776, 96, W - 48 - 776, 248 };
+    modeLine = { 16, 8, W - 32, 32 };
+    modeButton.setBounds (modeLine.getX(), modeLine.getY() + 1, 196, 30);
+    inputBox = { 16, 52, 280, 236 };
+    styleBox = { 312, 52, 372, 236 };
+    outputBox = { 700, 52, W - 16 - 700, 236 };
     for (int s = 0; s < master::numStyles; ++s)
-        tiles[(size_t) s].setBounds (styleBox.getX() + (s % 2) * 196, styleBox.getY() + 24 + (s / 2) * 112, 188, 104);
+        tiles[(size_t) s].setBounds (styleBox.getX() + (s % 2) * 188, styleBox.getY() + 22 + (s / 2) * 106, 182, 100);
 
-    dialRow = { 48, 372, W - 96, 200 };
-    const int slot = (styleBox.getRight() - 48) / 4;
+    dialRow = { 16, 300, W - 32, 184 };
+    const int slot = (styleBox.getRight() - 16) / 4;
     for (int i = 0; i < 4; ++i)
-        dials[(size_t) i].slider.setBounds (48 + i * slot + slot / 2 - 66, dialRow.getY() + 34, 132, 132);
-    dials[4].slider.setBounds (outputBox.getCentreX() - 48, dialRow.getY() + 52, 96, 96);
+        dials[(size_t) i].slider.setBounds (16 + i * slot + slot / 2 - 58, dialRow.getY() + 30, 116, 116);
+    dials[4].slider.setBounds (outputBox.getCentreX() - 44, dialRow.getY() + 44, 88, 88);
 
-    footer = { 48, 608, W - 96, 40 };
+    footer = { 16, 496, W - 32, 40 };
     loadButton.setBounds (footer.getX(), footer.getY() + 5, 116, 30);
     liveButton.setBounds (footer.getX() + 124, footer.getY() + 5, 128, 30);
     exportButton.setBounds (footer.getX() + (liveButton.isVisible() ? 260 : 124), footer.getY() + 5, 136, 30);
@@ -265,18 +251,12 @@ void MasteringScreen::paint (juce::Graphics& g)
         g.setGradientFill (juce::ColourGradient (uv.withAlpha (0.09f), c.x, c.y, uv.withAlpha (0.0f), c.x + 520.0f, c.y, true));
         g.fillEllipse (c.x - 520.0f, c.y - 520.0f, 1040.0f, 1040.0f);
     }
-    // header
-    g.setFont (fontOf (24.0f, true));
-    g.setColour (white);
-    const float mw = juce::GlyphArrangement::getStringWidth (fontOf (24.0f, true), "GLITCHKID");
-    g.drawText ("GLITCHKID", 48, 20, (int) mw + 4, 30, juce::Justification::centredLeft, false);
-    g.setGradientFill (juce::ColourGradient (uv, 48.0f, 0.0f, pinkNeon, 48.0f + mw, 0.0f, false));
-    g.fillRoundedRectangle (48.0f, 52.0f, mw, 2.0f, 1.0f);
-    g.setFont (fontOf (11.0f, true));
-    g.setColour (uvSoft);
-    g.drawText ("MASTERING LAB", 48 + (int) mw + 14, 30, 160, 14, juce::Justification::centredLeft, false);
-    g.setColour (hairline);
-    g.fillRect (0, 72, getWidth(), 1);
+    // what Mastering mode means, next to its switch
+    g.setFont (fontOf (12.5f));
+    g.setColour (proc.isMasteringMode() ? uvSoft : dim);
+    g.drawFittedText (proc.isMasteringMode() ? "On: this GlitchKid masters the finished mix playing through it. ORIGINAL / PROCESSED (top right) compare it at matched loudness."
+                                             : "Off: this GlitchKid processes a vocal. For mastering, use a separate GlitchKid on your master bus, or load a mix file below.",
+                      modeButton.getRight() + 14, modeLine.getY(), modeLine.getRight() - modeButton.getRight() - 14, modeLine.getHeight(), juce::Justification::centredLeft, 2, 0.85f);
 
     auto heading = [&g] (const juce::String& t, juce::Rectangle<int> r) { g.setFont (fontOf (11.5f, true)); g.setColour (dim); g.drawText (t, r.getX(), r.getY(), 300, 16, juce::Justification::centredLeft, false); };
     heading ("INPUT", inputBox);

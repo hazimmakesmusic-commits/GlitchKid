@@ -24,7 +24,7 @@ struct Relationship
     std::string unavailable;        // when !valid: why, in plain words
 };
 
-// What the relationship suggests changing, as plain moves (shared by BUILD MY VOCAL MIX and BEAT LOCK, so the two never disagree): an EQ gain delta, or a
+// What the relationship suggests changing, as plain moves (shared by BUILD MY MIX and BEAT LOCK, so the two never disagree): an EQ gain delta, or a
 // factor for an ambience amount. category: PRESENCE, CLARITY or SPACE. Pure and deterministic; the caller clamps to real ranges.
 struct BeatMove
 {

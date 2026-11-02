@@ -7,10 +7,10 @@ namespace
 {
 const char* const cardTitle[4] = { "FORMANT  #2", "HARMONY  #3", "MUTATION  #4", "STUTTER  #12" };
 const char* const cardNote[4] = {
-    "Changes the size of the voice without changing its pitch. Down: bigger, darker. Up: smaller, brighter. 0 = off. Adds about 21 ms of latency while it is not 0.",
+    "The size of the voice, not its pitch. Down: bigger. Up: smaller. 0 is off. Adds about 21 ms latency while not 0.",
     "A second voice at a fixed interval from yours. Adds Pitch Tune's latency while on.",
-    "Bends the voice into something new: Amount sets how far, Character the kind (down, robot, up), Blend how much of it you hear.",
-    "Chops the voice into tempo-locked slices. Late in the chain (#12), so it slices the finished, toned voice." };
+    "Bends the voice into something new. MORE: the kind (down, robot, up) and how much you hear.",
+    "Tempo-locked slices of the finished voice." };
 }
 
 LabPage::LabPage (juce::AudioProcessorValueTreeState& s) : state (s)
@@ -35,6 +35,32 @@ LabPage::LabPage (juce::AudioProcessorValueTreeState& s) : state (s)
         notes[i].getProperties().set ("rawText", true);
         addAndMakeVisible (notes[i]);
     }
+    more.setClickingTogglesState (true);
+    more.setTooltip ("Mutation's finer controls: Character (down, robot, up) and Blend (how much of it you hear).");
+    more.onClick = [this] { showMore = more.getToggleState(); resized(); };
+    addAndMakeVisible (more);
+}
+
+bool LabPage::isOn (int card) const
+{
+    auto v = [this] (const char* id) { auto* p = state.getRawParameterValue (id); return p != nullptr ? p->load() : 0.0f; };
+    switch (card)
+    {
+        case 0: return std::abs (v ("formant_shift")) > 0.05f;
+        case 1: return v ("harm_on") >= 0.5f;
+        case 2: return v ("mut_on") >= 0.5f;
+        default: return v ("stutter_on") >= 0.5f;
+    }
+}
+
+void LabPage::timerCallback()
+{
+    for (int i = 0; i < 4; ++i)
+        if (isOn (i) != shownOn[(size_t) i])
+        {
+            shownOn[(size_t) i] = isOn (i);
+            repaint (cards[(size_t) i].expanded (2));
+        }
 }
 
 void LabPage::bind (Knob& k, const char* id, const juce::String& name, const juce::String& tip)
@@ -76,13 +102,17 @@ void LabPage::paint (juce::Graphics& g)
     for (int i = 0; i < 4; ++i)
     {
         const auto r = cards[(size_t) i].toFloat();
-        g.setColour (juce::Colour (0xff1a1019));
+        const bool on = isOn (i);
+        g.setColour (on ? juce::Colour (0xff1a1019) : panelBottom); // quiet until the effect is really on
         g.fillRoundedRectangle (r, 12.0f);
-        g.setColour (pink.withAlpha (0.35f));
+        g.setColour (on ? pink.withAlpha (0.55f) : border);
         g.drawRoundedRectangle (r.reduced (0.5f), 12.0f, 1.0f);
         g.setColour (textBright);
         g.setFont (fontOf (15.0f, true));
         g.drawText (cardTitle[i], r.reduced (14.0f, 10.0f).removeFromTop (20.0f), juce::Justification::centredLeft, false);
+        g.setFont (fontOf (11.5f, true));
+        g.setColour (on ? pink : textDim);
+        g.drawText (on ? "ON" : "OFF", r.reduced (14.0f, 10.0f).removeFromTop (20.0f), juce::Justification::centredRight, false);
     }
 }
 
@@ -108,11 +138,22 @@ void LabPage::resized()
     knob (harmLevel, hcard.withTrimmedTop (4).withSizeKeepingCentre (100, juce::jmax (60, hcard.getHeight() - 4)));
 
     auto m = inner (cards[2]).withTrimmedBottom (52);
-    mutOn.button.setBounds (m.removeFromTop (26).removeFromLeft (80));
-    const int kw = m.getWidth() / 3;
-    knob (mutAmount, m.removeFromLeft (kw));
-    knob (mutCharacter, m.removeFromLeft (kw));
-    knob (mutBlend, m);
+    auto mtop = m.removeFromTop (26);
+    mutOn.button.setBounds (mtop.removeFromLeft (80));
+    more.setBounds (mtop.removeFromRight (72));
+    mutCharacter.slider.setVisible (showMore);
+    mutCharacter.label.setVisible (showMore);
+    mutBlend.slider.setVisible (showMore);
+    mutBlend.label.setVisible (showMore);
+    if (showMore)
+    {
+        const int kw = m.getWidth() / 3;
+        knob (mutAmount, m.removeFromLeft (kw));
+        knob (mutCharacter, m.removeFromLeft (kw));
+        knob (mutBlend, m);
+    }
+    else
+        knob (mutAmount, m.withSizeKeepingCentre (110, m.getHeight()));
 
     auto s = inner (cards[3]).withTrimmedBottom (52);
     stutterOn.button.setBounds (s.removeFromTop (26).removeFromLeft (80));

@@ -339,8 +339,9 @@ struct MacroTests : public juce::UnitTest
             {
                 GlitchKidProcessor p;
                 p.prepareToPlay (48000.0, 480);
-                p.setUiInt ("uiLevel", 0); // START (a first launch opens KID)
+                p.setUiInt ("uiLevel", 0);
                 std::unique_ptr<juce::AudioProcessorEditor> ed (p.createEditor());
+                dynamic_cast<GlitchKidEditor*> (ed.get())->uiShowWorkspaceForTest (0); // the old dashboard is no longer on the rail (START is the instrument); its page is still tested directly
                 auto* content = ed->getChildComponent (0);
                 expect (content != nullptr);
 
@@ -397,7 +398,7 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                     return out;
                 };
-                static const char* navNames[5] = { "START", "CLEAN", "BEAT", "BUILD", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
+                static const char* navNames[5] = { "START", "CLEAN", "BEAT", "SOUNDS", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
                 auto openLevel = [&] (int level) // 1..4: the real rail row, from anywhere
                 {
                     click (navNames[level]);
@@ -421,8 +422,8 @@ struct MacroTests : public juce::UnitTest
                             expect (c->isEnabled(), "no workspace is locked");
                     }
                 }
-                expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("RESET"));
-                expect (visible ("MAIN") && visible ("LAB") && visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (! visible ("HARD") && ! visible ("BUILD MY MIX") && ! visible ("RESET"));
+                expect (visible ("START") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
@@ -469,9 +470,9 @@ struct MacroTests : public juce::UnitTest
 
                 openLevel (3);
                 expectEquals (p.getUiInt ("uiLevel", -1), 3);
-                expect (visible ("BUILD MY VOCAL MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("DRY") && ! visible ("HARD"));
+                expect (visible ("BUILD MY MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("ORIGINAL") && ! visible ("HARD"));
                 {
-                    click ("START");
+                    dynamic_cast<GlitchKidEditor*> (ed.get())->uiShowWorkspaceForTest (0); // the old dashboard, tested directly
                     const auto c4 = levelCards();
                     expect (c4.size() == 4 && c4[2]->getStatusText().contains ("NOT BUILT"), "opening a workspace never marks it complete");
                     openLevel (3);
@@ -502,14 +503,14 @@ struct MacroTests : public juce::UnitTest
                     th::setParam (p, "echo_mix", 0.0f);
                 }
 
-                // BUILD MY VOCAL MIX through the real button: listens, builds, applies, can be undone; silence fails honestly
+                // BUILD MY MIX through the real button: listens, builds, applies, can be undone; silence fails honestly
                 {
                     const auto sBefore = p.captureSoundState();
                     expect (! findButton (*content, "WHAT CHANGED")->isEnabled(), "nothing to explain before a build");
                     collectCards();
                     cards[1]->triggerClick();
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
-                    click ("BUILD MY VOCAL MIX");
+                    click ("BUILD MY MIX");
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
                     feedBlocks (p, 12.0, false);
                     juce::MessageManager::getInstance()->runDispatchLoopUntil (300);
@@ -537,14 +538,14 @@ struct MacroTests : public juce::UnitTest
                         expect (std::abs (th::getParam (p, e.id.toRawUTF8()) - e.value) < 0.06f, "a failed build changed nothing: " + e.id);
                 }
 
-                click ("DRY");
+                click ("ORIGINAL");
                 expectEquals (th::getParam (p, "bypass"), 1.0f);
                 click ("PROCESSED");
                 expectEquals (th::getParam (p, "bypass"), 0.0f);
 
                 click ("FINAL TOUCH  >");
                 expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                expect (visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("RESET") && ! visible ("BUILD MY VOCAL MIX"));
+                expect (visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("RESET") && ! visible ("BUILD MY MIX"));
 
                 click ("TUNE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 0);
@@ -772,10 +773,10 @@ struct MacroTests : public juce::UnitTest
                     expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 }
 
-                click ("BUILD");
-                expect (visible ("TRY AGAIN"), "BUILD shows the build button (TRY AGAIN after the silent attempt)");
+                click ("SOUNDS");
+                expect (visible ("TRY AGAIN"), "SOUNDS shows the build button (TRY AGAIN after the silent attempt)");
                 click ("START");
-                expectEquals ((int) levelCards().size(), 4);
+                expectEquals ((int) levelCards().size(), 0, "START is the instrument; the old dashboard's tiles are gone");
             }
 
             {

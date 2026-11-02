@@ -3,6 +3,17 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- V1 finish sprint (UI only; see `docs/V1_SPRINT.md`).
+  - **One navigation:** START, SOUNDS | CLEAN, TUNE, TONE, DYNAMICS, SPACE | CREATIVE | BEAT, REFERENCE | MASTER.
+    - START (the instrument) and MASTER now sit in the same frame as every page.
+    - The old START dashboard is folded into START (saved page 0 opens START).
+  - **Consistent names:** ORIGINAL (was DRY) and BUILD MY MIX (was BUILD MY VOCAL MIX).
+  - **BEAT:** a plain explanation of the input it needs (no developer path), and an honest empty state instead of a blank suggestions panel.
+  - **CREATIVE:**
+    - quiet cards that light only when the effect is on;
+    - ON/OFF labels;
+    - Mutation's finer controls behind MORE.
+  - **Tests:** a new "Every page" test group (each page opens and paints, no developer paths, no results before analysis). Tests that named the old rail were updated.
 - **Mastering Lab.** A separate mastering workspace and chain for a finished stereo mix. See `docs/MASTERING.md`.
   - **Parameters:** 7 new ones (`master_*`), appended after the limiter.
     - `master_on` (Mastering mode) is not automatable and is off by default, so every existing session, preset and the vocal chain are unchanged.

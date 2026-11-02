@@ -117,22 +117,23 @@ namespace
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
 const RailItem railItems[11] = {
-    { "MAIN", 6, 0, "Main", "The instrument: your sound at a glance, the main controls, and Kid.",
-      "The GlitchKid instrument: the main controls, the live in/out ribbon, presets, and Kid, your vocal producer." },
-    { "START", 0, 0, "Start", "Your session: the real signal in and out, and the next step.", "Your session: the real-time signal and shortcuts." },
-    { "BUILD", 3, 0, "Build", "Pick a starting sound, then build a first mix from your vocal.", "Pick a starting sound and build a starting mix from your vocal." },
-    { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
-    { "TUNE", 4, 0, "Tune", "Pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
-    { "TONE", 4, 1, "Tone", "Darker to brighter: EQ, air and warmth.", "A darker-to-brighter control, four EQ gains, air and warmth (saturation)." },
-    { "DYNAMICS", 4, 2, "Dynamics", "Level and punch, and a limiter that protects the output.", "A softer-to-more-upfront control, the compressor, the output level and the limiter." },
-    { "SPACE", 4, 3, "Space", "Echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
-    { "LAB", 7, 0, "Lab", "Creative effects: Formant, Harmony, Mutation and Stutter.", "The Experimental Lab: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
-    { "BEAT", 2, 0, "Beat", "How the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat on the Instrumental input)." },
-    { "REFERENCE", 5, 0, "Reference", "Compare your tone with a song you have the right to use; review small EQ suggestions.",
-      "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." } };
-constexpr int railRowY[11] = { 80, 112, 144, 200, 232, 264, 296, 328, 384, 440, 472 };
-constexpr int railGroupY[4] = { 62, 182, 366, 422 };
-const char* const railGroupName[4] = { "SESSION", "SHAPE THE VOICE", "CHARACTER", "CONTEXT" };
+    { "START", 6, 0, "Start", "Choose a sound, play your vocal, shape it with the main dials, compare.",
+      "Start: the main dials, the live in/out view and Kid. Choose a sound on SOUNDS or in the bar below." },
+    { "SOUNDS", 3, 0, "Sounds", "Choose a starting sound, or build a first mix fitted to your vocal.", "Starting sounds, and Build My Mix (fits a starting sound to your vocal)." },
+    { "CLEAN", 1, 0, "Clean", "Step 1: rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
+    { "TUNE", 4, 0, "Tune", "Step 2: pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
+    { "TONE", 4, 1, "Tone", "Step 3: darker to brighter, EQ, air and warmth.", "A darker-to-brighter control, four EQ gains, air and warmth (saturation)." },
+    { "DYNAMICS", 4, 2, "Dynamics", "Step 3: level and punch, and a limiter that protects the output.", "A softer-to-more-upfront control, the compressor, the output level and the limiter." },
+    { "SPACE", 4, 3, "Space", "Step 4: echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
+    { "CREATIVE", 7, 0, "Creative", "Step 5 (optional): Formant, Harmony, Mutation and Stutter.", "Creative effects: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
+    { "BEAT", 2, 0, "Beat", "Step 6 (optional): how the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat routed to the Instrumental input)." },
+    { "REFERENCE", 5, 0, "Reference", "Step 6 (optional): compare your tone with a song you have the right to use.",
+      "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." },
+    { "MASTER", 8, 0, "Master", "For a finished mix on your master bus (a separate GlitchKid), or a mix file.",
+      "The Mastering Lab: a separate chain for a finished stereo mix. Never applied to your vocal." } };
+constexpr int railRowY[11] = { 80, 112, 168, 200, 232, 264, 296, 356, 416, 448, 508 };
+constexpr int railGroupY[5] = { 62, 150, 338, 398, 490 };
+const char* const railGroupName[5] = { "START", "SHAPE THE VOCAL", "CREATIVE", "FIT TO TRACK", "FINISH" };
 }
 
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
@@ -155,6 +156,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     {
         const int saved = p.getUiInt ("uiLevel", (int) Page::kid); // first launch: MAIN. 0-4 keep their old meaning, 5 is REFERENCE, 6 MAIN, 7 LAB, 8 MASTERING; anything else behaves as before (clamped to FINAL TOUCH)
         page = (Page) (saved >= 0 && saved <= 8 ? saved : juce::jlimit (0, 4, saved));
+        if (page == Page::home)
+            page = Page::kid; // the old START dashboard is folded into START
     }
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
@@ -216,7 +219,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         glitchProcessor.setUiFlag ("uiMotion", motionOn);
         shownCompareText = {};
     };
-    style (dryButton, "Hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob.");
+    style (dryButton, "ORIGINAL: hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob. On MASTER it is the untouched mix at the master's loudness.");
     style (processedButton, "Hear the processed sound.");
     dryButton.setColour (juce::TextButton::buttonOnColourId, ui::pink.darker (0.5f));
     processedButton.setColour (juce::TextButton::buttonOnColourId, ui::violet);
@@ -332,7 +335,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* k : tuneKnobs)
         k->addTo (content);
 
-    // ---- AUTO: the eight profiles, BUILD MY VOCAL MIX, the result ----
+    // ---- AUTO: the eight profiles, BUILD MY MIX, the result ----
     for (int i = 0; i < FactoryPresets::count; ++i)
     {
         auto* card = profileCards.add (new ui::ProfileCard());
@@ -349,7 +352,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     detailDesc.setFont (ui::fontOf (14.0f, true));
     detailDesc.setColour (juce::Label::textColourId, ui::textBright);
     label (sourceLine, 11.5f, false, ui::textDim, juce::Justification::topLeft);
-    sourceLine.setTooltip ("What GlitchKid can actually hear. The vocal is this track's input. The instrumental is optional and needs a sidechain/aux send from the beat's track (see docs/SOURCES.md).");
+    sourceLine.setTooltip ("What GlitchKid can actually hear. The vocal is this track's input. The instrumental is optional and needs a sidechain/aux send from the beat's track.");
     label (autoStatus, 12.5f, false, ui::textBright, juce::Justification::topLeft);
     label (resultTitle, 13.0f, true, ui::textDim);
     resultTitle.setMinimumHorizontalScale (0.8f);
@@ -365,7 +368,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     autoIntensitySlider.setTooltip ("MIX INTENSITY: how much of the profile's effect amounts a build uses (100 % = as saved).");
     autoIntensitySlider.onValueChange = [this] { glitchProcessor.setAutoIntensity ((float) autoIntensitySlider.getValue() / 100.0f); };
     content.addAndMakeVisible (autoIntensitySlider);
-    autoAnalyzeButton.setTooltip ("BUILD MY VOCAL MIX: listens to your vocal for a few seconds (press play in your host and let it rap or sing), then builds a starting mix from the selected profile and what it heard, and applies it. Press BACK TO MY SOUND to undo.");
+    autoAnalyzeButton.setTooltip ("BUILD MY MIX: listens to your vocal for a few seconds (press play in your host and let it rap or sing), then builds a starting mix from the selected profile and what it heard, and applies it. Press BACK TO MY SOUND to undo.");
     content.addAndMakeVisible (autoAnalyzeButton);
     style (autoApplyButton, "Shows exactly which settings the last build changed, why, and what was not available.");
     autoAnalyzeButton.onClick = [this]
@@ -617,15 +620,19 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         label (beatChanges, 11.5f, false, ui::textBright, juce::Justification::topLeft);
         label (vocalBarLabel, 11.0f, true, ui::textDim);
         label (beatBarLabel, 11.0f, true, ui::textDim);
-        beatRouting.setText ("The beat is heard only on the optional Instrumental input (docs/SOURCES.md); a track that already mixes vocal and beat counts as the vocal. "
-                             "BEAT LOCK changes only this vocal's own controls: no beat processing, no mixer faders, no reverb.", juce::dontSendNotification);
+        beatRouting.setText ("What BEAT needs: in your DAW, send the beat to GlitchKid's Instrumental (sidechain) input. A track that already mixes vocal and beat counts as the vocal. "
+                             "BEAT only suggests changes to this vocal's own controls: it never processes the beat, moves faders or adds reverb.", juce::dontSendNotification);
+        label (beatEmpty, 12.5f, false, ui::textDim, juce::Justification::topLeft);
+        beatEmpty.setText ("Suggestions appear here after ANALYZE BEAT, and only from what was measured on both the vocal and the beat. "
+                           "Nothing changes until you press APPLY SELECTED; UNDO puts everything back.\n\nNo beat routed in? BUILD MY MIX works from the vocal alone.",
+                           juce::dontSendNotification);
         bandCompare.setTooltip ("How much of each frequency range holds the vocal's energy and the beat's energy (five coarse bands, not a spectrum analyser). A marker means the beat is likely to cover the voice there.");
         vocalBar.setTooltip ("The real peak level of this track's input.");
         beatBar.setTooltip ("The real peak level of the Instrumental input. Empty and dimmed while nothing is connected.");
         style (analyzeBeatButton, "Listens to the vocal and the beat for a few seconds (press play in your host and let both play), then compares them. Press again to stop early.");
         style (applyBeatButton, "Apply the ticked suggestions to the vocal's own controls. UNDO puts everything back.");
         style (undoBeatButton, "Put back the sound you had before BEAT LOCK changed it.");
-        style (vocalOnlyButton, "No beat to compare with: BUILD MY VOCAL MIX works from the vocal alone.");
+        style (vocalOnlyButton, "No beat to compare with: BUILD MY MIX (on SOUNDS) works from the vocal alone.");
         analyzeBeatButton.onClick = [this]
         {
             if (beatListening)
@@ -673,20 +680,16 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         hooks.openStage = [this] (int stage)
         {
             // THE PATH: the rail row that holds each stage's controls (TUNE 4, TONE 5, DYNAMICS 6, SPACE 7, CLEAN 3, LAB 8)
-            static const int row[18] = { 0, 4, 8, 8, 8, 7, 5, 3, 6, 3, 5, 5, 8, 7, 7, 6, 6, 6 };
+            static const int row[18] = { 0, 3, 7, 7, 7, 6, 4, 2, 5, 2, 4, 4, 7, 6, 6, 5, 5, 5 };
             selectRail (row[juce::jlimit (1, 17, stage)]);
         };
         hooks.back = [this] { showMainView (false); };
         kidPanel = std::make_unique<ui::KidPanel> (p, std::move (hooks)); // like REFERENCE: a child of `content` only while its page is open
         ui::MainScreen::Hooks mh;
-        mh.presetMenu = [this] (juce::Component& anchor) { openPresetMenu (&anchor); };
-        mh.presetStep = [this] (int direction) { showStatus (presets.step (direction).message); shownPresetText = {}; refreshPresetBar(); };
+        mh.openSounds = [this] { selectRail (1); };
         mh.openKid = [this] { showMainView (true); };
-        mh.openAdvanced = [this] { selectRail (4); }; // the detailed pages, starting with TUNE; MAIN in the rail comes back
-        mh.openMastering = [this] { showPage (Page::master, true); };
         mainScreen = std::make_unique<ui::MainScreen> (p, std::move (mh));
         ui::MasteringScreen::Hooks msh;
-        msh.back = [this] { showMainView (false); };
         masteringScreen = std::make_unique<ui::MasteringScreen> (p, std::move (msh));
         kidView = p.getUiInt ("uiMainView", 0) == 1;
         labPage = std::make_unique<ui::LabPage> (p.apvts);
@@ -758,7 +761,7 @@ void GlitchKidEditor::visualTick()
 
 void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
 {
-    if (transition >= 1.0f || page == Page::kid || page == Page::master)
+    if (transition >= 1.0f || (page == Page::kid && kidView))
         return;
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
     const float y = (float) pageTop + transition * 458.0f;
@@ -807,14 +810,14 @@ int GlitchKidEditor::railIndex() const
     switch (page)
     {
         case Page::kid: return 0;
-        case Page::home: return 1;
-        case Page::build: return 2;
-        case Page::clean: return 3;
-        case Page::finalTouch: return 4 + category;
-        case Page::lab: return 8;
-        case Page::master: return 0; // full window, no rail
-        case Page::beat: return 9;
-        case Page::reference: return 10;
+        case Page::home: return 0; // the old START dashboard is folded into START (the instrument)
+        case Page::build: return 1;
+        case Page::clean: return 2;
+        case Page::finalTouch: return 3 + category;
+        case Page::lab: return 7;
+        case Page::beat: return 8;
+        case Page::reference: return 9;
+        case Page::master: return 10;
     }
     return 0;
 }
@@ -994,8 +997,8 @@ void GlitchKidEditor::refreshState (float peak)
         legacyEffects = legacy.joinIntoString (", ");
         refreshInfoLine();
         // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, TONE, DYNAMICS and SPACE as in the stages above (nothing is processed while DRY)
-        const std::array<bool, numRail> dots = { false, false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], ! dry && ! legacy.isEmpty(), false, false };
-        for (int i : { 3, 4, 5, 6, 7, 8 })
+        const std::array<bool, numRail> dots = { false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], ! dry && ! legacy.isEmpty(), false, false, false };
+        for (int i : { 2, 3, 4, 5, 6, 7 })
             if ((int) navButtons[i].getProperties().getWithDefault ("led", 0) != (dots[(size_t) i] ? 2 : 1))
             {
                 navButtons[i].getProperties().set ("led", dots[(size_t) i] ? 2 : 1);
@@ -1072,9 +1075,9 @@ void GlitchKidEditor::showStatus (const juce::String& text)
     statusTicks = 30 * 5; // about five seconds
 }
 
-// ---- BUILD MY VOCAL MIX ----------------------------------------------------------------------------------------------------------------------
+// ---- BUILD MY MIX ----------------------------------------------------------------------------------------------------------------------
 
-// ---- BUILD MY VOCAL MIX ----------------------------------------------------------------------------------------------------------------------
+// ---- BUILD MY MIX ----------------------------------------------------------------------------------------------------------------------
 
 void GlitchKidEditor::runBuild()
 {
@@ -1205,7 +1208,7 @@ void GlitchKidEditor::refreshAutoMode()
         text = "Nothing was changed.";
     }
     else
-        text = "Ready. Pick a profile (or none for a clean start), press BUILD MY VOCAL MIX, then play the vocal. It works without the beat.";
+        text = "Ready. Pick a profile (or none for a clean start), press BUILD MY MIX, then play the vocal. It works without the beat.";
 
     // what GlitchKid can really hear right now (never claims an analysis that did not happen)
     {
@@ -1265,7 +1268,7 @@ void GlitchKidEditor::refreshAutoMode()
     {
         shownAutoText = text;
         autoStatus.setText (text, juce::dontSendNotification);
-        autoAnalyzeButton.setButtonText (listening ? "BUILD NOW" : buildState == BuildState::failed ? "TRY AGAIN" : buildState == BuildState::built ? "BUILD AGAIN" : "BUILD MY VOCAL MIX");
+        autoAnalyzeButton.setButtonText (listening ? "BUILD NOW" : buildState == BuildState::failed ? "TRY AGAIN" : buildState == BuildState::built ? "BUILD AGAIN" : "BUILD MY MIX");
         autoApplyButton.setEnabled (lastProposal.usable);
     }
 
@@ -1285,7 +1288,7 @@ void GlitchKidEditor::refreshAutoMode()
         else
         {
             detailDesc.setText ("Choose a starting profile", juce::dontSendNotification);
-            detailSettings.setText ("Each one is an original starting point. Select a card to read about it, LOAD PROFILE to hear it as saved, or press BUILD MY VOCAL MIX to fit it to your vocal.",
+            detailSettings.setText ("Each one is an original starting point. Select a card to read about it, LOAD PROFILE to hear it as saved, or press BUILD MY MIX to fit it to your vocal.",
                                     juce::dontSendNotification);
             detailStart.setText (loaded >= 0 ? "Loaded now: " + juce::String (glitchkid::FactoryPresets::info (loaded).name) : juce::String(), juce::dontSendNotification);
         }
@@ -1882,7 +1885,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     }
     g.setFont (ui::fontOf (10.5f, true));
     g.setColour (ui::textDim);
-    for (int i = 0; i < 4; ++i)
+    for (int i = 0; i < 5; ++i)
         g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], 140.0f, 14.0f), juce::Justification::centredLeft, false);
 
     // the header: the workspace you are in and what it is for
@@ -1955,9 +1958,9 @@ void GlitchKidEditor::layoutContent()
     // ---- the rail, the header controls, the info line ----
     for (int i = 0; i < numRail; ++i)
         place (navButtons[i], { 8, railRowY[i], railW - 16, 30 });
-    place (railNote, { 18, 510, railW - 32, 40 });
+    place (railNote, { 18, 544, railW - 32, 36 });
     place (ioLabel, { 18, 508 + barDy, railW - 28, 44 });
-    place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 46, 12, 46, 28 });
+    place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 78, 12, 78, 28 });
     place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });
     place (undoButton, { designW - 16 - 70 - 4 - 46, 12, 46, 28 });
     place (motionButton, { designW - 16 - 70, 12, 70, 28 });
@@ -1988,23 +1991,28 @@ void GlitchKidEditor::layoutContent()
 
     // ---- KID: the main screen takes the whole window (its own top bar, no rail, no preset bar; its Advanced links open the detailed pages) ----
     // ---- MAIN: the instrument or Kid, each the whole window (their own header; the detailed pages and the rail are one click away) ----
+    // START: the instrument, in the frame like every other page. Kid (opened from START) takes the whole window and has its own way back.
     if (page == Page::kid && kidPanel != nullptr && mainScreen != nullptr)
     {
-        for (auto* c : persistent) // the rail, the header controls and the preset bar
-            c->setVisible (false);
-        juce::Component& shown = kidView ? static_cast<juce::Component&> (*kidPanel) : static_cast<juce::Component&> (*mainScreen);
-        content.addChildComponent (shown);
-        place (shown, { 0, 0, designW, designH });
-        shown.toFront (false);
+        if (kidView)
+        {
+            for (auto* c : persistent) // the rail, the header controls and the preset bar
+                c->setVisible (false);
+            content.addChildComponent (*kidPanel);
+            place (*kidPanel, { 0, 0, designW, designH });
+            kidPanel->toFront (false);
+        }
+        else
+        {
+            content.addChildComponent (*mainScreen);
+            place (*mainScreen, { railW, 58, pageW, 522 + barDy - 58 });
+        }
     }
-    // ---- MASTERING: the whole window, its own header ----
+    // ---- MASTER: the Mastering Lab, in the frame (ORIGINAL / PROCESSED at the top switch the level-matched original and the master) ----
     if (page == Page::master && masteringScreen != nullptr)
     {
-        for (auto* c : persistent)
-            c->setVisible (false);
         content.addChildComponent (*masteringScreen);
-        place (*masteringScreen, { 0, 0, designW, designH });
-        masteringScreen->toFront (false);
+        place (*masteringScreen, { railW, 58, pageW, 522 + barDy - 58 });
     }
     // ---- LAB: a self-contained page ----
     if (page == Page::lab && labPage != nullptr)
@@ -2104,12 +2112,14 @@ void GlitchKidEditor::layoutContent()
         {
             applyBeatButton.setVisible (false);
             undoBeatButton.setVisible (false);
+            if (! beatListening)
+                show (beatEmpty, { 486, 128, 440, 120 }); // never an empty panel: what will appear here, and when
         }
         else
             vocalOnlyButton.setVisible (false);
     }
 
-    // ---- BUILD MY VOCAL MIX (profiles, build, result) ----
+    // ---- BUILD MY MIX (profiles, build, result) ----
     else if (page == Page::build)
     {
         show (profileHeading, { 24, 106, 548, 14 });

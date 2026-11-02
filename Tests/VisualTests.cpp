@@ -128,6 +128,7 @@ struct VisualTests : public juce::UnitTest
             p.setUiInt ("uiLevel", 0); // START (a first launch opens KID)
             std::unique_ptr<juce::AudioProcessorEditor> a (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (a.get());
+            ed->uiShowWorkspaceForTest (0); // the old dashboard: no longer on the rail, still tested directly
             ed->uiWaitForRelicForTest();
             auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
             std::set<juce::uint32> colours;

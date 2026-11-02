@@ -8,8 +8,9 @@
 
 namespace glitchkid::ui
 {
-// THE MASTERING LAB: a separate workspace for a finished stereo mix (GlitchKid on the master bus in Mastering mode, or a mix file rendered offline).
-//   header  - the wordmark, back to the vocal instrument, the Mastering mode switch, ORIGINAL / MASTER (level-matched);
+// MASTER, the Mastering Lab: a separate workspace for a finished stereo mix (GlitchKid on the master bus in Mastering mode, or a mix file rendered
+// offline), inside the editor's frame (its ORIGINAL / PROCESSED switch the level-matched original and the master).
+//   top     - the Mastering mode switch and what it means;
 //   input   - the mix's real loudness, peaks, clipping and stereo correlation, and whether it is ready to master (the live input, or a loaded file);
 //   style   - four original starting points (real processing configurations, see master::resolve);
 //   output  - loudness (BS.1770), true peak against the -1 dBTP ceiling, limiting, clipping, output gain;
@@ -60,7 +61,7 @@ private:
     nk::Knob knob;
     std::array<Dial, 5> dials; // intensity, loudness, tone, width, output
     std::array<Tile, master::numStyles> tiles;
-    nk::Pill backButton { "Vocal" }, modeButton { "Mastering mode: off" }, originalButton { "Original" }, masterButton { "Master" },
+    nk::Pill modeButton { "Mastering mode: off" },
                loadButton { "Load mix" }, liveButton { "Use live input" }, exportButton { "Export master" }, resetButton { "Reset meters" };
     master::MasterJob job;
     std::unique_ptr<juce::FileChooser> chooser;
@@ -68,7 +69,7 @@ private:
     master::MixReport fileReport;
     bool waiting = false;
     juce::String status, verdict;
-    juce::Rectangle<int> inputBox, styleBox, outputBox, dialRow, footer;
+    juce::Rectangle<int> modeLine, inputBox, styleBox, outputBox, dialRow, footer;
 
     // what the meters show (copied from the audio thread's atomics on the timer)
     float inSt = master::LoudnessMeter::silence, inInt = master::LoudnessMeter::silence, inTp = master::LoudnessMeter::silence, inPk = master::LoudnessMeter::silence, inCorr = 1.0f;

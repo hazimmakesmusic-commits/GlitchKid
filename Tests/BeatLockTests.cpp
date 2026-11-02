@@ -60,7 +60,7 @@ struct BeatLockTests : public juce::UnitTest
         {
             const auto none = am::analyseBeatLock (lead(), crowded(), am::InstrumentalInput::notConnected);
             expect (none.status == S::noBeatInput && ! none.valid && none.items.empty());
-            expect (none.message.contains ("BEAT REQUIRED") && none.message.contains ("BUILD MY VOCAL MIX"));
+            expect (none.message.contains ("BEAT REQUIRED") && none.message.contains ("BUILD MY MIX"));
             const auto silent = am::analyseBeatLock (lead(), crowded(), am::InstrumentalInput::connectedSilent);
             expect (silent.status == S::beatSilent && ! silent.valid && silent.items.empty());
             au::VocalAnalysis idle;

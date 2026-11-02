@@ -27,7 +27,7 @@ BeatLockResult analyseBeatLock (const analysis::VocalAnalysis& lead, const analy
     if (input == InstrumentalInput::notConnected)
     {
         r.status = BeatLockResult::Status::noBeatInput;
-        r.message = "BEAT REQUIRED: no instrumental is connected to GlitchKid, so the beat cannot be heard. Route the beat's track to the Instrumental input (see docs/SOURCES.md), or use BUILD MY VOCAL MIX, which works with the vocal alone.";
+        r.message = "BEAT REQUIRED: no instrumental is connected to GlitchKid, so the beat cannot be heard. In your DAW, send the beat's track to GlitchKid's Instrumental (sidechain) input, or use BUILD MY MIX on SOUNDS, which works with the vocal alone.";
         return r;
     }
     if (input == InstrumentalInput::connectedSilent)

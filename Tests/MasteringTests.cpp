@@ -111,7 +111,9 @@ struct MasteringTests : public juce::UnitTest
             append (b, sine (fs, 10.0, 1000.0, -36.0f));
             append (b, sine (fs, 10.0, 1000.0, -72.0f));
             expectWithinAbsoluteError (measure (b, fs).integratedLufs(), -23.0f, 0.1f, "case 4");
-            expect (measure (Buf (2, 48000 * 5), fs).integratedLufs() <= LoudnessMeter::silence, "silence has no loudness");
+            Buf silence (2, 48000 * 5);
+            silence.clear(); // a new AudioBuffer is not cleared
+            expect (measure (silence, fs).integratedLufs() <= LoudnessMeter::silence, "silence has no loudness");
         }
 
         beginTest ("true peak: a quarter-sample-rate sine at 45 degrees reads its real peak, 3 dB above its samples; correlation and clipping are measured");

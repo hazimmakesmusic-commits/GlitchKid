@@ -96,12 +96,12 @@ private:
 // What the main action is doing. Every state comes from the real analyzer / build state (nothing is simulated).
 enum class AutoState { idle, waiting, working, ready, error };
 
-// BUILD MY VOCAL MIX: the strongest element of AUTO. idle/ready = solid lime; waiting for audio = a sweeping highlight; working = a progress fill that follows the
+// BUILD MY MIX: the strongest element of AUTO. idle/ready = solid lime; waiting for audio = a sweeping highlight; working = a progress fill that follows the
 // real analysis time; error = pink outline. It is an ordinary TextButton (text, clicks, focus).
 class BuildButton : public juce::TextButton
 {
 public:
-    BuildButton() : juce::TextButton ("BUILD MY VOCAL MIX") {}
+    BuildButton() : juce::TextButton ("BUILD MY MIX") {}
     void setState (AutoState, float progress01);
     void setMotion (bool on) { motion = on; }
     void tick (float dtSeconds);

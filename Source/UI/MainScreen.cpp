@@ -32,24 +32,11 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     keyBox.setTitle ("Key");
     scaleBox.setTitle ("Scale");
 
-    prevButton.setTooltip ("Previous preset. Replaces the current sound.");
-    nextButton.setTooltip ("Next preset. Replaces the current sound.");
-    presetButton.setTooltip ("Choose the clean default, a starting profile or one of your presets. Save and A/B are on the detailed pages.");
-    prevButton.onClick = [this] { if (hooks.presetStep) hooks.presetStep (-1); sync(); };
-    nextButton.onClick = [this] { if (hooks.presetStep) hooks.presetStep (1); sync(); };
-    presetButton.onClick = [this] { if (hooks.presetMenu) hooks.presetMenu (presetButton); };
-    originalButton.getProperties().set ("secondary", true);
-    originalButton.setTooltip ("Hear your untouched vocal (the real bypass, delay-matched).");
-    processedButton.setTooltip ("Hear GlitchKid.");
-    originalButton.onClick = [this] { setParam (GlitchKidProcessor::bypassId, 1.0f); sync(); };
-    processedButton.onClick = [this] { setParam (GlitchKidProcessor::bypassId, 0.0f); sync(); };
-    kidButton.setTooltip ("Kid, your vocal producer: describe the sound and Kid builds it from these controls.");
+    soundsButton.setTooltip ("The starting sounds, each described, and Build My Mix (fits a starting sound to your vocal).");
+    soundsButton.onClick = [this] { if (hooks.openSounds) hooks.openSounds(); };
+    kidButton.setTooltip ("Kid, your vocal producer: describe the sound you want and Kid sets these controls for you. Undo goes back.");
     kidButton.onClick = [this] { if (hooks.openKid) hooks.openKid(); };
-    advancedButton.setTooltip ("Every control in detail: Tune, Clean, Tone, Dynamics, Space, Lab, Beat, Reference, presets and A/B.");
-    advancedButton.onClick = [this] { if (hooks.openAdvanced) hooks.openAdvanced(); };
-    masteringButton.setTooltip ("The Mastering Lab: master a finished stereo mix (on your master bus, or a mix file). Separate from your vocal.");
-    masteringButton.onClick = [this] { if (hooks.openMastering) hooks.openMastering(); };
-    for (auto* b : { &prevButton, &presetButton, &nextButton, &originalButton, &processedButton, &kidButton, &advancedButton, &masteringButton })
+    for (auto* b : { &soundsButton, &kidButton })
         addAndMakeVisible (b);
     sync();
 }
@@ -178,11 +165,6 @@ void MainScreen::sync()
             if (std::abs (v - d.slider.getValue()) > 0.05)
                 d.slider.setValue (v, juce::dontSendNotification);
         }
-    const bool dry = value (GlitchKidProcessor::bypassId) >= 0.5f;
-    originalButton.setToggleState (dry, juce::dontSendNotification);
-    processedButton.setToggleState (! dry, juce::dontSendNotification);
-    const auto name = proc.getPresetName();
-    presetButton.setButtonText (name.isEmpty() ? juce::String ("No preset") : name);
     keyBox.setEnabled (value (GlitchKidProcessor::tuneOnId) >= 0.5f);
     scaleBox.setEnabled (keyBox.isEnabled());
     repaint (controls);
@@ -222,19 +204,11 @@ void MainScreen::timerCallback()
 void MainScreen::resized()
 {
     const int W = getWidth();
-    header = { 0, 0, W, 72 };
-    ribbon = { 48, 98, W - 96, 222 };
-    controls = { 48, 352, W - 96, getHeight() - 372 };
-
-    const int cy = header.getCentreY() - 15;
-    prevButton.setBounds (300, cy, 32, 30);
-    presetButton.setBounds (336, cy, 204, 30);
-    nextButton.setBounds (544, cy, 32, 30);
-    processedButton.setBounds (W - 48 - 104, cy, 104, 30);
-    originalButton.setBounds (processedButton.getX() - 104, cy, 100, 30);
-    advancedButton.setBounds (originalButton.getX() - 24 - 100, cy, 100, 30);
-    kidButton.setBounds (advancedButton.getX() - 62, cy, 56, 30);
-    masteringButton.setBounds (kidButton.getX() - 104, cy, 98, 30);
+    guide = { 16, 8, W - 32, 34 };
+    soundsButton.setBounds (guide.getX(), guide.getY() + 2, 150, 30);
+    kidButton.setBounds (guide.getRight() - 96, guide.getY() + 2, 96, 30);
+    ribbon = { 24, 54, W - 48, 172 };
+    controls = { 24, 244, W - 48, getHeight() - 252 };
 
     // three sections: VOICE (2 large), CHARACTER (3 large), OUTPUT (2 smaller)
     const int x0 = controls.getX(), w = controls.getWidth();
@@ -243,9 +217,9 @@ void MainScreen::resized()
     sections[2] = { sections[1].getRight(), controls.getY(), controls.getRight() - sections[1].getRight(), controls.getHeight() };
     auto place = [this] (int dial, juce::Rectangle<int> sec, int slot, int slots)
     {
-        const int size = dials[(size_t) dial].large ? 140 : 104;
+        const int size = dials[(size_t) dial].large ? 116 : 88;
         const int cx = sec.getX() + sec.getWidth() * (2 * slot + 1) / (2 * slots);
-        dials[(size_t) dial].slider.setBounds (cx - size / 2, sec.getY() + 56 + (140 - size) / 2, size, size);
+        dials[(size_t) dial].slider.setBounds (cx - size / 2, sec.getY() + 50 + (116 - size) / 2, size, size);
     };
     place (0, sections[0], 0, 2);
     place (1, sections[0], 1, 2);
@@ -255,8 +229,8 @@ void MainScreen::resized()
     place (5, sections[2], 0, 2);
     place (6, sections[2], 1, 2);
     const auto t = dials[0].slider.getBounds();
-    keyBox.setBounds (t.getCentreX() - 84, t.getBottom() + 32, 58, 26);
-    scaleBox.setBounds (t.getCentreX() - 22, t.getBottom() + 32, 106, 26);
+    keyBox.setBounds (t.getCentreX() - 84, t.getBottom() + 28, 58, 26);
+    scaleBox.setBounds (t.getCentreX() - 22, t.getBottom() + 28, 106, 26);
 }
 
 // ---- painting ----
@@ -274,19 +248,11 @@ void MainScreen::paint (juce::Graphics& g)
         g.fillEllipse (rc.x - R, rc.y - R, 2.0f * R, 2.0f * R);
     }
 
-    // header: the wordmark with its signature underline
-    g.setFont (fontOf (24.0f, true));
-    g.setColour (white);
-    const juce::String mark ("GLITCHKID");
-    const float mw = juce::GlyphArrangement::getStringWidth (fontOf (24.0f, true), mark);
-    g.drawText (mark, 48, 20, (int) mw + 4, 30, juce::Justification::centredLeft, false);
-    g.setGradientFill (juce::ColourGradient (uv, 48.0f, 0.0f, pinkNeon, 48.0f + mw, 0.0f, false));
-    g.fillRoundedRectangle (48.0f, 52.0f, mw, 2.0f, 1.0f);
-    g.setFont (fontOf (11.0f));
-    g.setColour (faint);
-    g.drawText ("VOCAL INSTRUMENT", 48 + (int) mw + 14, 30, 140, 14, juce::Justification::centredLeft, false);
-    g.setColour (hairline);
-    g.fillRect (0, header.getBottom(), getWidth(), 1);
+    // the guide: the next step, in one line
+    g.setFont (fontOf (12.5f));
+    g.setColour (dim);
+    g.drawFittedText ("then play your vocal, shape it with the dials, compare with ORIGINAL / PROCESSED (top right) and save it in the bar below.",
+                      soundsButton.getRight() + 14, guide.getY(), kidButton.getX() - 14 - soundsButton.getRight() - 14, guide.getHeight(), juce::Justification::centredLeft, 2, 0.85f);
 
     paintRibbon (g);
 
@@ -300,7 +266,7 @@ void MainScreen::paint (juce::Graphics& g)
         if (i > 0)
         {
             g.setColour (hairline);
-            g.fillRect (sections[(size_t) i].getX(), sections[(size_t) i].getY() + 4, 1, 256);
+            g.fillRect (sections[(size_t) i].getX(), sections[(size_t) i].getY() + 4, 1, 236);
         }
     }
     // each dial: its name above, its value below
@@ -387,13 +353,13 @@ void MainScreen::paintRibbon (juce::Graphics& g)
     {
         g.setFont (fontOf (14.0f));
         g.setColour (faint);
-        g.drawText ("Play your track to see your vocal", r.toNearestInt(), juce::Justification::centred, false);
+        g.drawText ("Play your track to see your vocal", r.toNearestInt().withHeight ((int) (r.getHeight() * 0.5f) - 10), juce::Justification::centredBottom, false); // above the flat line
     }
     if (proc.isMasteringMode())
     {
         g.setFont (fontOf (13.0f, true));
         g.setColour (pinkNeon);
-        g.drawText ("This GlitchKid is in Mastering mode: the vocal controls below are not in use. Open Mastering to switch back.",
+        g.drawText ("This GlitchKid is in Mastering mode: the vocal controls below are not in use. Switch it off on MASTER.",
                     r.toNearestInt().removeFromBottom (18), juce::Justification::centred, false);
     }
 }
