@@ -139,7 +139,8 @@ struct KidTests : public juce::UnitTest
             facts.bandFraction = { 0.06f, 0.41f, 0.31f, 0.15f, 0.07f };
             const auto line = d.respond (f, &facts);
             auto r = rowsOf (d);
-            expect (r.count ("clean_amount") && r.count ("eq_b1_gain") && r.count ("comp_thresh"), "cleaning, a mud cut and steadier compression");
+            expect (r.count ("clean_amount") && r.count ("comp_ratio"), "CLEAN for the measured mud and S's, steadier compression for the measured level jumps");
+            expect (! r.count ("eq_b1_freq"), "no fixed 300 Hz cut: the live read has no frequency, so CLEAN's own detector finds it");
             expect (line.contains ("6.2 s"));
             auto e = make();
             const auto noData = e.respond (f, nullptr);
@@ -169,7 +170,7 @@ struct KidTests : public juce::UnitTest
             expect (line.contains ("no reverb") && ! d.proposal().empty(), "reverb is answered honestly and built from Echo and Dimension");
             auto u = make();
             line = say (u, "purple elephants");
-            expect (u.proposal().empty() && line.contains ("didn't hear"));
+            expect (u.proposal().empty() && line.contains ("didn't catch"));
             expect (! parse ("purple elephants").understood());
         }
 
@@ -258,7 +259,7 @@ struct KidTests : public juce::UnitTest
             auto line = say (d, "Make the tuning harder");
             auto r = rowsOf (d);
             expect (r.count ("tune_on") && r.count ("tune_speed") && std::abs (r["tune_speed"].to) < 1e-3f, "hard: instant snap");
-            expect (line.contains ("haven't detected your key") && ! r.count ("tune_key"), line);
+            expect (line.contains ("can't tell your key") && ! r.count ("tune_key"), line);
 
             const auto f = parse ("Make it more emotional and less robotic");
             expect (f.tune == 1 && f.ops[glitchkid::kid::warm] > 0.0f && f.ops[glitchkid::kid::exp] <= 0.0f, "less robotic is natural tuning, not more Mutation");
@@ -271,7 +272,7 @@ struct KidTests : public juce::UnitTest
             line = k.respond (parse ("autotune it"), &facts);
             r = rowsOf (k);
             expect (r.count ("tune_key") && std::abs (r["tune_key"].to - 9.0f) < 1e-3f && std::abs (r["tune_scale"].to - 2.0f) < 1e-3f, "A natural minor from the estimate");
-            expect (line.contains ("A minor") && line.contains ("estimated"), line);
+            expect (line.contains ("A minor") && line.contains ("estimate"), line);
 
             GlitchKidProcessor q;
             setParam (q, "tune_on", 1.0f);
@@ -297,7 +298,7 @@ struct KidTests : public juce::UnitTest
                 expect (r.count ("clean_amount") && std::abs (r["clean_amount"].to - amounts[i]) < 1e-3f, words[i]);
                 for (auto& row : d.proposal())
                     expect (row.id.startsWith ("clean_"), juce::String (words[i]) + " touches only CLEAN: " + row.id);
-                expect (line.contains ("no noise reduction"), line);
+                expect (line.contains ("isn't noise reduction"), line);
                 expect (line.contains ("thin") == (i == 2), "only Aggressive warns about the tone");
             }
         }
@@ -333,6 +334,160 @@ struct KidTests : public juce::UnitTest
             expectWithinAbsoluteError (getParam (q, "mix"), getParam (p, "mix"), 1e-6f);
             d.accepted (q.captureSoundState());
             expect (! d.hasFoundation() && d.proposal().empty() && d.profile() == 0, "Apply ends the build");
+        }
+
+        // a third-octave tone shape (dB relative to the mean) for the diagnosis tests: a gentle natural slope, then whatever the test adds
+        auto shape = [] (std::initializer_list<std::pair<int, float>> bumps)
+        {
+            std::array<float, glitchkid::analysis::SpectralProfile::numBands> s {};
+            for (int b = 0; b < (int) s.size(); ++b)
+                s[(size_t) b] = 6.0f - 1.2f * (float) b; // about -3.6 dB per octave
+            for (auto [b, db] : bumps)
+                s[(size_t) b] += db;
+            return s;
+        };
+        auto fileFacts = [&] (std::initializer_list<std::pair<int, float>> bumps)
+        {
+            glitchkid::kid::AnalysisFacts f;
+            f.valid = f.fromFile = f.shapeKnown = true;
+            f.activeSeconds = 12.0f;
+            f.peakDb = -6.0f;
+            f.rmsDb = -20.0f;
+            f.crestDb = 14.0f;
+            f.dynamicRangeDb = 8.0f;
+            f.bandFraction = { 0.04f, 0.3f, 0.4f, 0.18f, 0.08f };
+            f.shapeDb = shape (bumps);
+            return f;
+        };
+
+        beginTest ("diagnosis: measured vs estimated, frequencies only where the analysis supports them, broad vs narrow harshness");
+        {
+            const auto none = glitchkid::kid::diagnose (fileFacts ({}));
+            expect (! none.has ("harsh") && ! none.has ("mud"), "a plain slope has nothing to fix");
+            const auto broad = glitchkid::kid::diagnose (fileFacts ({ { 10, 10.0f }, { 11, 10.0f }, { 12, 10.0f }, { 13, 10.0f }, { 14, 10.0f } }));
+            const auto* h = broad.find ("harsh");
+            expect (h != nullptr && ! h->narrow && ! h->measured && h->hz >= 2000.0f && h->hz <= 5100.0f, "broad, forward upper mids (an estimate)");
+            const auto narrow = glitchkid::kid::diagnose (fileFacts ({ { 10, 8.0f }, { 11, 8.0f }, { 12, 16.0f }, { 13, 8.0f }, { 14, 8.0f } }));
+            const auto* n = narrow.find ("harsh");
+            expect (n != nullptr && n->narrow && std::abs (n->hz - glitchkid::analysis::SpectralProfile::bandCentreHz (12)) < 1.0f, "concentrated at 3.2 kHz");
+            const auto mud = glitchkid::kid::diagnose (fileFacts ({ { 2, 9.0f } }));
+            const auto* m = mud.find ("mud");
+            expect (m != nullptr && std::abs (m->hz - glitchkid::analysis::SpectralProfile::bandCentreHz (2)) < 1.0f && m->detail.contains ("above your voice's own slope"), "mud located where it stands out");
+            auto live = fileFacts ({});
+            live.fromFile = live.shapeKnown = false;
+            live.bandFraction = { 0.05f, 0.45f, 0.25f, 0.2f, 0.05f };
+            const auto* lm = glitchkid::kid::diagnose (live).find ("mud");
+            expect (lm != nullptr && lm->hz <= 0.0f, "the live five-band read claims no frequency");
+            auto rec = fileFacts ({});
+            rec.clippedSamples = 40;
+            rec.noiseKnown = true;
+            rec.noiseFloorDb = -42.0f;
+            const auto r = glitchkid::kid::diagnose (rec);
+            expect (r.has ("clipping") && r.find ("clipping")->measured && r.find ("clipping")->plain.contains ("can't repair"), "clipping is a recording problem");
+            expect (r.has ("noise") && ! r.find ("noise")->measured && r.find ("noise")->plain.contains ("no noise reduction"), "noise is an estimate, and there is no noise reduction");
+            expect (glitchkid::kid::diagnose ({}).empty(), "no analysis, no findings");
+        }
+
+        beginTest ("the plan fits the recording: corrections with evidence, and taste adapted to what is already there");
+        {
+            auto d = make();
+            auto broadFacts = fileFacts ({ { 10, 10.0f }, { 11, 10.0f }, { 12, 10.0f }, { 13, 10.0f }, { 14, 10.0f } });
+            d.respond (parse ("build my mix"), &broadFacts);
+            auto r = rowsOf (d);
+            expect (r.count ("eq_b2_gain") && r["eq_b2_gain"].to < -1.0f && r.count ("eq_b2_q") && r["eq_b2_q"].to < 1.0f, "broad harshness: a wide cut");
+            expect (r["eq_b2_freq"].detail.contains ("2-5 kHz sits"), "the reason carries the measurement");
+
+            auto n = make();
+            auto narrowFacts = fileFacts ({ { 10, 8.0f }, { 11, 8.0f }, { 12, 16.0f }, { 13, 8.0f }, { 14, 8.0f } });
+            n.respond (parse ("build my mix"), &narrowFacts);
+            r = rowsOf (n);
+            expect (r.count ("eq_b2_q") && r["eq_b2_q"].to > 2.0f && std::abs (r["eq_b2_freq"].to - glitchkid::analysis::SpectralProfile::bandCentreHz (12)) < 30.0f,
+                    "narrow harshness: a narrower cut where it was found");
+            n.respond (parse ("make it brighter"));
+            r = rowsOf (n);
+            expect (r["eq_b2_gain"].to < 0.0f, "brighter never lifts upper mids that were diagnosed sharp");
+
+            auto b = make();
+            auto brightFacts = fileFacts ({ { 16, 30.0f }, { 17, 30.0f }, { 18, 30.0f } });
+            b.respond (parse ("make it brighter"), &brightFacts);
+            auto plain = make();
+            plain.respond (parse ("make it brighter"));
+            expect (rowsOf (b)["eq_hi_gain"].to < rowsOf (plain)["eq_hi_gain"].to, "an already-bright vocal gets less top");
+
+            auto c = make();
+            auto squashed = fileFacts ({});
+            squashed.crestDb = 7.0f;
+            squashed.dynamicRangeDb = 3.0f;
+            c.respond (parse ("make it punchy"), &squashed);
+            expect (rowsOf (c)["comp_ratio"].to <= 2.5f + 1e-3f, "a compressed take gets light compression");
+
+            for (auto* dd : { &d, &n, &b, &c })
+            {
+                never (*dd, "fitted plan");
+                expect (dd->refused().isEmpty());
+            }
+        }
+
+        beginTest ("feedback reshapes the same mix: less reverb, more raw, more like the reference, keep the centre strong");
+        {
+            auto d = make();
+            say (d, "Make the reverb more atmospheric");
+            const float wet = rowsOf (d)["echo_mix"].to;
+            expect (wet > 10.0f);
+            say (d, "less reverb");
+            auto r = rowsOf (d);
+            expect (r.count ("echo_mix") && r["echo_mix"].to < wet && r["echo_mix"].to > 0.0f, "about half, not off");
+            say (d, "Kid, reduce the reverb by about half");
+            expect (rowsOf (d)["echo_mix"].to < r["echo_mix"].to, "and again");
+
+            auto f = make();
+            f.setFoundation (glitchkid::kid::buildFoundation (1, start, p.factoryDefaultState(), {}, p.makeRangeLookup()));
+            say (f, "make me sound like the kid laroi");
+            const float profileEcho = rowsOf (f)["echo_mix"].to;
+            say (f, "less reverb");
+            expect (rowsOf (f)["echo_mix"].to < profileEcho, "less of the profile's own echo, even though KID never added any");
+            say (f, "more like that reference");
+            say (f, "less polished, more raw");
+            expectEquals (f.tuneStyle(), 1, "raw means natural tuning");
+            expect (f.natural());
+            say (f, "make it wider but keep the center strong");
+            expect (f.kept().count ("front") > 0);
+            say (f, "start over");
+            expect (f.proposal().empty(), "start over is the sound we started from");
+        }
+
+        beginTest ("questions are answered from the real plan and analysis, and never change the sound");
+        {
+            auto d = make();
+            auto f = fileFacts ({ { 10, 10.0f }, { 11, 10.0f }, { 12, 10.0f }, { 13, 10.0f }, { 14, 10.0f } });
+            d.respond (parse ("build my mix"), &f);
+            const auto rows = d.proposal().size();
+            const auto q = parse ("Why did you reduce the high mids?");
+            expect (q.ask == glitchkid::kid::IntentFrame::Ask::why && q.topic == "harsh" && ! q.anyOps(), "a why question, about the upper mids");
+            const auto why = d.respond (q);
+            expect (why.contains ("Upper mids eased") && why.contains ("2-5 kHz sits"), why);
+            expectEquals ((int) d.proposal().size(), (int) rows, "a question changes nothing");
+            expect (d.respond (parse ("why did you change the tuning?")).contains ("didn't change the tuning"));
+            expect (d.respond (parse ("Kid, explain what you changed")).contains ("The main reasons"));
+            const auto a = d.respond (parse ("analyze my vocal"));
+            expect (a.contains ("Measured:") && a.contains ("Estimate:"), a);
+            expect (d.respond (parse ("what key is it in?")).contains ("can't tell the key"), "no reliable key, no guess");
+            auto e = make();
+            expect (e.respond (parse ("analyze my vocal")).contains ("haven't heard"));
+            expect (Director::needsAnalysis (parse ("analyze my vocal")));
+        }
+
+        beginTest ("the plan as a whole sound: the start sound with the plan on top; level, the limiter and controls moved by hand stay as they are");
+        {
+            auto d = make();
+            say (d, "wider and warmer");
+            auto now = start;
+            now.set ("gain", 4.0f);
+            now.set ("sat_drive", 9.0f);
+            const auto target = d.plan (now, { "sat_drive" });
+            expectWithinAbsoluteError (target.get ("gain", 0.0f), 4.0f, 1e-6f, "Gain is yours");
+            expectWithinAbsoluteError (target.get ("sat_drive", 0.0f), 9.0f, 1e-6f, "a hand-moved control is left alone");
+            expect (target.get ("dbl_on", 0.0f) > 0.5f, "the plan is in it");
         }
     }
 };
@@ -405,78 +560,164 @@ struct KidSpeechTests : public juce::UnitTest
 };
 KidSpeechTests kidSpeechTests;
 
-// KID inside the real editor: the first page, nothing changes before Apply, Apply goes through the parameters, UNDO restores, the real analyser feeds "improve it".
+// KID inside the real editor: the whole window, four areas, a mix that is heard straight away, feedback, questions, hand moves respected, step-by-step undo.
 struct KidEditorTests : public juce::UnitTest
 {
     KidEditorTests() : juce::UnitTest ("KID page", "GlitchKid") {}
 
+    static juce::File writeLine (const juce::File& f)
+    {
+        juce::WavAudioFormat wav;
+        f.deleteFile();
+        std::unique_ptr<juce::OutputStream> os (f.createOutputStream());
+        auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
+        juce::AudioBuffer<float> b (1, 48000 * 14);
+        const int notes[] = { 57, 60, 64, 62, 60, 59, 57, 55, 53, 52, 57, 64, 60, 57 };
+        double ph = 0.0;
+        for (int i = 0; i < b.getNumSamples(); ++i)
+        {
+            const double hz = 440.0 * std::pow (2.0, (notes[i / 48000] - 69) / 12.0);
+            ph += juce::MathConstants<double>::twoPi * hz / 48000.0;
+            b.setSample (0, i, 0.25f * (float) (std::sin (ph) + 0.5 * std::sin (2.0 * ph) + 0.33 * std::sin (3.0 * ph)));
+        }
+        if (w != nullptr) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+        return f;
+    }
+
     void runTest() override
     {
-        beginTest ("type, review, Apply, UNDO; the analyser feeds improve it");
+        GlitchKidProcessor p;
+        p.prepareToPlay (48000.0, 480);
+        std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
+        auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+        auto& kid = ed->uiKidPanelForTest();
+        using Status = glitchkid::ui::KidPanel::Status;
+        auto shot = [&] (const juce::String& name)
         {
-            GlitchKidProcessor p;
-            p.prepareToPlay (48000.0, 480);
-            std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
-            auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+            const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
+            if (dir.isEmpty()) return;
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            juce::File f = juce::File (dir).getChildFile (name + ".png");
+            f.deleteFile();
+            juce::FileOutputStream os (f);
+            if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
+        };
+        std::function<bool (juce::Component&, const juce::String&)> visibleButton = [&] (juce::Component& c, const juce::String& text)
+        {
+            for (auto* ch : c.getChildren())
+                if (ch->isVisible() && ((dynamic_cast<juce::Button*> (ch) != nullptr && dynamic_cast<juce::Button*> (ch)->getButtonText() == text) || visibleButton (*ch, text)))
+                    return true;
+            return false;
+        };
+        auto same = [] (const glitchkid::SoundState& a, const glitchkid::SoundState& b)
+        {
+            for (auto& v : a.values)
+                if (std::abs (b.get (v.id, -999) - v.value) > 1e-4f) return false;
+            return true;
+        };
+
+        beginTest ("the main screen: the whole window, four areas, one main action, the detailed pages one click away");
+        {
             expectEquals (ed->uiRailIndexForTest(), 0, "KID is the first page");
-            auto& kid = ed->uiKidPanelForTest();
-            expect (kid.isVisible() && kid.getParentComponent() != nullptr);
-            const auto before = p.captureSoundState();
-            auto same = [&] (const glitchkid::SoundState& a, const glitchkid::SoundState& b)
-            {
-                for (auto& v : a.values)
-                    if (std::abs (b.get (v.id, -999) - v.value) > 1e-4f) return false;
-                return true;
-            };
-
-            std::function<bool (juce::Component&, const juce::String&)> visibleButton = [&] (juce::Component& c, const juce::String& text)
-            {
-                for (auto* ch : c.getChildren())
-                    if (ch->isVisible() && ((dynamic_cast<juce::TextButton*> (ch) != nullptr && dynamic_cast<juce::TextButton*> (ch)->getButtonText() == text) || visibleButton (*ch, text)))
-                        return true;
-                return false;
-            };
-            expect (! visibleButton (*ed, "RESET") && ! visibleButton (*ed, "HARD"), "no other workspace shows through the KID page");
-            auto shot = [&] (const juce::String& name)
-            {
-                const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
-                if (dir.isEmpty()) return;
-                auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
-                juce::File f = juce::File (dir).getChildFile (name + ".png");
-                f.deleteFile();
-                juce::FileOutputStream os (f);
-                if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
-            };
-            shot ("kid_ready");
-            kid.sendForTest ("Make my vocal wider and more atmospheric");
-            expect (! kid.directorForTest().proposal().empty(), "a take is proposed");
-            kid.sendForTest ("Too much. Make it subtle");
-            kid.sendForTest ("Keep the vocal upfront");
-            shot ("kid_take");
-            expect (same (before, p.captureSoundState()), "nothing changes before Apply");
-            expectEquals (kid.phaseNameForTest(), juce::String ("READY TO APPLY"));
-            const auto firstId = kid.directorForTest().proposal().front().id;
-            kid.setSelectedForTest (firstId, false);
-            const auto ticked = kid.directorForTest().selectedChanges();
-            kid.applyForTest();
-            const auto after = p.captureSoundState();
-            expect (std::abs (after.get (firstId, -1) - before.get (firstId, -1)) < 1e-4f, "the unticked change is not applied");
-            for (auto& v : ticked.values)
-                expectWithinAbsoluteError (after.get (v.id, -999), v.value, 1e-3f, v.id);
-            expect (ed->uiCanUndoForTest(), "UNDO is armed");
-            ed->uiUndoForTest();
-            expect (same (before, p.captureSoundState()), "UNDO restores the sound exactly");
-            for (int i = 0; i < 7; ++i) kid.tickForTest();
-            expect (kid.directorForTest().proposal().empty() && kid.phaseNameForTest().startsWith ("READY"), "KID starts again from the restored sound");
-
+            expect (kid.isVisible() && kid.getParentComponent() != nullptr && kid.getBounds() == kid.getParentComponent()->getLocalBounds(), "Kid fills the window");
+            expect (visibleButton (*ed, "BUILD MY MIX") && visibleButton (*ed, "Load vocal") && visibleButton (*ed, "Original") && visibleButton (*ed, "Processed"));
+            expect (! visibleButton (*ed, "TUNE") && ! visibleButton (*ed, "SAVE") && ! visibleButton (*ed, "MOTION"), "no rail, preset bar or header buttons on this screen");
+            expect (kid.statusForTest() == Status::ready && kid.statusTextForTest() == "Ready");
             if (! glitchkid::kid::SpeechModel::isInstalled())
                 expect (! kid.micEnabledForTest(), "without the speech model the mic is off and typing still works");
+            shot ("kid_ready");
+            {
+                juce::Image img (juce::Image::ARGB, kid.getWidth(), kid.getHeight(), true);
+                juce::Graphics g (img);
+                const auto t0 = juce::Time::getMillisecondCounterHiRes();
+                for (int i = 0; i < 30; ++i)
+                {
+                    kid.tickForTest();
+                    kid.paintEntireComponent (g, true);
+                }
+                const double ms = (juce::Time::getMillisecondCounterHiRes() - t0) / 30.0;
+                logMessage ("  KID screen: " + juce::String (ms, 2) + " ms per full repaint (software renderer)");
+                expect (ms < 30.0, "a full repaint stays cheap: " + juce::String (ms, 2) + " ms");
+            }
+            kid.pressForTest ("Tune");
+            expectEquals (ed->uiRailIndexForTest(), 4, "Advanced: Tune opens the TUNE page");
+            expect (visibleButton (*ed, "KID") && visibleButton (*ed, "SAVE"), "the rail and the preset bar are back on the detailed pages");
+            ed->uiSelectRailForTest (0);
+            expect (kid.isVisible() && ! visibleButton (*ed, "SAVE"));
+        }
 
-            kid.sendForTest ("I don't know what it needs. Improve it");
-            expectEquals (kid.phaseNameForTest(), juce::String ("ANALYSING YOUR VOCAL"));
+        beginTest ("a vocal file: analysed off the audio thread, then Kid says what it found");
+        juce::TemporaryFile tmp (".wav");
+        {
+            kid.loadFileForTest (writeLine (tmp.getFile()));
+            expect (kid.statusForTest() == Status::analyzing);
+            for (int i = 0; i < 500 && kid.fileBusyForTest(); ++i)
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            expect (kid.fileReportForTest().ok(), kid.fileReportForTest().message);
+            expect (kid.lastKidLineForTest().startsWith ("I've got"), kid.lastKidLineForTest());
+            expect (kid.directorForTest().facts().fromFile && kid.directorForTest().facts().shapeKnown, "the tone shape reaches Kid");
+            shot ("kid_file");
+        }
+
+        const auto before = p.captureSoundState();
+        beginTest ("a request becomes a mix you hear straight away; Gain, Mix and Bypass stay yours");
+        {
+            kid.sendForTest ("Make me sound like The Kid LAROI");
+            expect (kid.builtForTest() && kid.mainActionTextForTest() == "UPDATE MY MIX");
+            expect (kid.lastKidLineForTest().contains ("can't copy"), kid.lastKidLineForTest());
+            expect (! same (before, p.captureSoundState()), "the mix is applied");
+            expect (getParam (p, "tune_on") > 0.5f, "smooth tuning is on");
+            for (auto* id : { "gain", "mix", "lim_on" })
+                expectWithinAbsoluteError (getParam (p, id), before.get (id, -1.0f), 1e-6f, id);
+            expect (getParam (p, "bypass") < 0.5f, "Bypass untouched");
+            expectEquals (kid.undoDepthForTest(), 1);
+            shot ("kid_build");
+        }
+
+        beginTest ("feedback updates the same mix; questions change nothing; controls moved by hand are left alone");
+        {
+            const float echo = getParam (p, "echo_mix");
+            kid.sendForTest ("less reverb");
+            expect (getParam (p, "echo_mix") < echo || getParam (p, "echo_on") < 0.5f, "less echo");
+            const auto now = p.captureSoundState();
+            kid.sendForTest ("Why did you change the tuning?");
+            expect (kid.lastKidLineForTest().containsIgnoreCase ("tuning"), kid.lastKidLineForTest());
+            expect (same (now, p.captureSoundState()), "a question changes nothing");
+            kid.sendForTest ("purple elephants");
+            expect (kid.lastKidLineForTest().contains ("didn't catch") && same (now, p.captureSoundState()));
+
+            setParam (p, "sat_drive", 11.0f);
+            for (int i = 0; i < 6; ++i) kid.tickForTest();
+            expect (kid.manualForTest().count ("sat_drive") > 0, "noticed the hand move");
+            kid.sendForTest ("make it warmer and more aggressive");
+            expectWithinAbsoluteError (getParam (p, "sat_drive"), 11.0f, 0.06f, "your setting wins");
+            expect (kid.lastKidLineForTest().contains ("moved by hand"), kid.lastKidLineForTest());
+            shot ("kid_chat");
+        }
+
+        beginTest ("before / after at matched loudness, and step-by-step undo back to your sound");
+        {
+            kid.compareForTest (true);
+            expect (getParam (p, "bypass") > 0.5f && p.isLevelMatchedCompare());
+            kid.compareForTest (false);
+            while (kid.undoDepthForTest() > 0)
+                kid.pressForTest ("Undo");
+            setParam (p, "sat_drive", before.get ("sat_drive", 0.0f));
+            expect (same (before, p.captureSoundState()), "every Kid step undone: your sound exactly");
+            expect (! kid.builtForTest() && kid.mainActionTextForTest() == "BUILD MY MIX");
+        }
+
+        beginTest ("no file: Kid listens to the live input first, then builds; a missing file is an honest error");
+        {
+            GlitchKidProcessor q;
+            q.prepareToPlay (48000.0, 480);
+            std::unique_ptr<juce::AudioProcessorEditor> e2 (q.createEditor());
+            auto& k2 = dynamic_cast<GlitchKidEditor*> (e2.get())->uiKidPanelForTest();
+            k2.sendForTest ("I don't know what it needs. Improve it");
+            expect (k2.waitingForTest() && k2.statusForTest() == Status::listening, "waiting for the vocal");
             juce::MidiBuffer midi;
             juce::Random rng (7);
-            for (int b = 0; b < 1000 && kid.phaseNameForTest() == "ANALYSING YOUR VOCAL"; ++b) // a sung-like tone with noise, played through the plug-in
+            for (int b = 0; b < 1000 && k2.waitingForTest(); ++b) // a sung-like tone with noise, played through the plug-in
             {
                 juce::AudioBuffer<float> buf (2, 480);
                 for (int i = 0; i < 480; ++i)
@@ -486,124 +727,19 @@ struct KidEditorTests : public juce::UnitTest
                     buf.setSample (0, i, v);
                     buf.setSample (1, i, v);
                 }
-                p.processBlock (buf, midi);
-                if (b % 10 == 0) kid.tickForTest();
+                q.processBlock (buf, midi);
+                if (b % 10 == 0) k2.tickForTest();
             }
-            kid.tickForTest();
-            expect (kid.phaseNameForTest() != "ANALYSING YOUR VOCAL", "the real analysis finished");
-            expect (kid.lastKidLineForTest().contains ("I listened to"), kid.lastKidLineForTest());
-            shot ("kid_improve");
-            expect (same (before, p.captureSoundState()), "still nothing changed before Apply");
-        }
-
-        beginTest ("the Vocal Producer screen: six real dials, level-matched before/after, a vocal file, profiles, Build My Mix, Clean My Vocal, honest errors");
-        {
-            GlitchKidProcessor p;
-            p.prepareToPlay (48000.0, 480);
-            std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
-            auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
-            auto& kid = ed->uiKidPanelForTest();
-            using Mood = glitchkid::ui::KidPanel::Mood;
-            expect (kid.moodForTest() == Mood::idle);
-            auto shot = [&] (const juce::String& name)
-            {
-                const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
-                if (dir.isEmpty()) return;
-                auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
-                juce::File f = juce::File (dir).getChildFile (name + ".png");
-                f.deleteFile();
-                juce::FileOutputStream os (f);
-                if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
-            };
-
-            // the dials move real parameters, and 0 switches CLEAN / Pitch Tune off
-            kid.dialForTest (0).setValue (40.0, juce::sendNotificationSync);
-            expect (getParam (p, "clean_on") > 0.5f && std::abs (getParam (p, "clean_amount") - 40.0f) < 0.2f, "CLEAN dial");
-            kid.dialForTest (0).setValue (0.0, juce::sendNotificationSync);
-            expect (getParam (p, "clean_on") < 0.5f, "CLEAN dial at 0 is off");
-            kid.dialForTest (1).setValue (60.0, juce::sendNotificationSync);
-            expect (getParam (p, "tune_on") > 0.5f && std::abs (getParam (p, "tune_strength") - 60.0f) < 0.2f, "TUNE dial");
-            kid.dialForTest (1).setValue (0.0, juce::sendNotificationSync);
-            kid.dialForTest (3).setValue (50.0, juce::sendNotificationSync);
-            expect (getParam (p, "echo_on") > 0.5f, "SPACE dial drives the SPACE macro");
-            kid.dialForTest (4).setValue (3.0, juce::sendNotificationSync);
-            expectWithinAbsoluteError (getParam (p, "eq_b2_gain"), 3.0f, 0.06f, "PRESENCE dial");
-            kid.dialForTest (5).setValue (80.0, juce::sendNotificationSync);
-            expectWithinAbsoluteError (getParam (p, "mix"), 80.0f, 0.1f, "MIX dial");
-            setParam (p, "mix", 100.0f);
-            for (int i = 0; i < 6; ++i) kid.tickForTest();
-            expectWithinAbsoluteError ((float) kid.dialForTest (5).getValue(), 100.0f, 0.1f, "a dial follows the parameter when it moves elsewhere");
-            expect (kid.dialTextForTest (0) == "Off" && kid.dialTextForTest (4).endsWith ("dB"));
-
-            // before / after: the real bypass, level-matched on this screen
-            kid.compareForTest (true);
-            expect (getParam (p, "bypass") > 0.5f && p.isLevelMatchedCompare(), "ORIGINAL = bypass with level matching");
-            kid.compareForTest (false);
-            expect (getParam (p, "bypass") < 0.5f);
-
-            // a vocal file: analysed on a worker thread, then KID reports what it found
-            juce::TemporaryFile tmp (".wav");
-            {
-                juce::WavAudioFormat wav;
-                std::unique_ptr<juce::OutputStream> os (tmp.getFile().createOutputStream());
-                auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (48000.0).withNumChannels (1).withBitsPerSample (24));
-                juce::AudioBuffer<float> b (1, 48000 * 14);
-                const int notes[] = { 57, 60, 64, 62, 60, 59, 57, 55, 53, 52, 57, 64, 60, 57 };
-                double ph = 0.0;
-                for (int i = 0; i < b.getNumSamples(); ++i)
-                {
-                    const double hz = 440.0 * std::pow (2.0, (notes[i / 48000] - 69) / 12.0);
-                    ph += juce::MathConstants<double>::twoPi * hz / 48000.0;
-                    b.setSample (0, i, 0.25f * (float) (std::sin (ph) + 0.5 * std::sin (2.0 * ph) + 0.33 * std::sin (3.0 * ph)));
-                }
-                if (w != nullptr) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
-            }
-            kid.loadFileForTest (tmp.getFile());
-            expect (kid.moodForTest() == Mood::analysing, "the mascot shows the analysis");
-            for (int i = 0; i < 500 && kid.fileBusyForTest(); ++i)
+            k2.tickForTest();
+            expect (! k2.waitingForTest() && k2.builtForTest(), "the real analysis finished and the mix was built");
+            expect (k2.lastKidLineForTest().contains ("I listened to"), k2.lastKidLineForTest());
+            k2.loadFileForTest (tmp.getFile().getSiblingFile ("does-not-exist.wav"));
+            for (int i = 0; i < 200 && k2.fileBusyForTest(); ++i)
                 juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
-            expect (kid.fileReportForTest().ok(), kid.fileReportForTest().message);
-            expect (kid.lastKidLineForTest().startsWith ("I read"), kid.lastKidLineForTest());
-            shot ("kid_file");
-
-            // profile, then Build My Mix: the existing engine's foundation + KID's tuning, nothing applied before Apply
-            const auto before = p.captureSoundState();
-            kid.pressForTest ("MELODIC POP-RAP");
-            kid.pressForTest ("BUILD MY MIX");
-            const auto& rows = kid.directorForTest().proposal();
-            expect (! rows.empty() && kid.directorForTest().hasFoundation(), "a whole mix is proposed");
-            bool tune = false;
-            for (auto& r : rows)
-            {
-                tune = tune || r.id == "tune_on";
-                expect (r.id != "gain" && r.id != "mix" && r.id != "bypass" && ! r.id.startsWith ("lim_"), r.id);
-            }
-            expect (tune, "Melodic Pop-Rap brings Light tuning");
-            expect (kid.lastKidLineForTest().contains ("Foundation: MODERN MELODIC RAP"), kid.lastKidLineForTest());
-            shot ("kid_build");
-            kid.applyForTest();
-            expect (kid.moodForTest() == Mood::complete, "the mascot celebrates an Apply");
-            expectWithinAbsoluteError (getParam (p, "gain"), before.get ("gain", 0.0f), 1e-6f);
-            ed->uiUndoForTest();
-            for (int i = 0; i < 7; ++i) kid.tickForTest();
-
-            // Clean My Vocal, aggressive: CLEAN only, with the warning
-            kid.pressForTest ("AGGRESSIVE");
-            kid.pressForTest ("CLEAN MY VOCAL");
-            for (auto& r : kid.directorForTest().proposal())
-                expect (r.id.startsWith ("clean_"), "Clean My Vocal touches CLEAN only: " + r.id);
-            expect (kid.lastKidLineForTest().contains ("no noise reduction") && kid.lastKidLineForTest().contains ("thin"), kid.lastKidLineForTest());
-            kid.cancelForTest();
-
-            // an unreadable file is an honest error
-            kid.loadFileForTest (tmp.getFile().getSiblingFile ("does-not-exist.wav"));
-            for (int i = 0; i < 200 && kid.fileBusyForTest(); ++i)
-                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
-            expect (kid.moodForTest() == Mood::error && kid.lastKidLineForTest().contains ("could not be found"), kid.lastKidLineForTest());
-            shot ("kid_error");
-            e.reset();
-            expect (! p.isLevelMatchedCompare(), "closing the editor leaves bypass exact");
+            expect (k2.lastKidLineForTest().contains ("could not be found"), k2.lastKidLineForTest());
         }
+        e.reset();
+        expect (! p.isLevelMatchedCompare(), "closing the editor leaves bypass exact");
     }
 };
 KidEditorTests kidEditorTests;

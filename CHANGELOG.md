@@ -3,6 +3,40 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- KID simplified, and given audio intelligence (no parameter IDs, presets or saved-state fields changed).
+  - **Screen.** The KID page is now the whole window, with four areas:
+    - a top bar with Kid's status;
+    - your vocal: load, waveform, Original/Processed at matched loudness;
+    - the conversation;
+    - one main action, BUILD MY MIX, which becomes UPDATE MY MIX after the first mix, with Undo.
+
+    The links to the detailed pages (Tune, Clean, Tone, Dynamics, Space) sit at the foot. The mascot, the six dials, the take panel, the profile buttons and the extra panels were removed from this page. The rail and the preset bar are unchanged on every other page.
+  - **Kid's mix is applied straight away** and can be undone step by step.
+    - The plan is always rebuilt from the session's starting sound, so feedback ("less reverb", "more raw", "more like that reference") reshapes the same mix.
+    - Controls moved by hand are left alone.
+    - A large jump (a preset or A/B recall) starts a new session.
+  - **Analysis.** File analysis adds the third-octave tone shape (the existing SpectralAccumulator).
+  - **Diagnosis** (new `Source/Kid/VocalDiagnosis`). Findings are labelled measured or estimate. Each has a plain sentence and its evidence, and gives a frequency only where the analysis supports one:
+    - clipping, low level, background noise, possible rumble;
+    - low-mid build-up, harsh upper mids (broad or concentrated in one band), sharp S's;
+    - a dark or an already-bright top;
+    - a jumpy level, an already-compressed take;
+    - notes that drift off pitch, the key.
+  - **Planner.** Corrections from the diagnosis, each row with its reason and technical detail:
+    - CLEAN's rumble filter, low-mid bell, resonance finder and de-esser;
+    - a wide or narrower EQ cut placed where the harshness was measured;
+    - an air lift for a dark top;
+    - compression from the measured level, kept light on a compressed or noisy take.
+
+    Taste rules adapt to the recording: no presence lift on sharp upper mids, less top on a bright vocal, no low end on built-up low mids. The fixed 300 Hz mud cut was removed: CLEAN finds the frequency, or a measured one is used. "Less reverb" now reduces the space that is there by the amount asked, instead of switching it off.
+  - **Questions** ("why did you reduce the high mids?", "what did you change?", "analyze my vocal", "what key is it in?") are answered only from the real plan and measurements, and never change the sound.
+  - **Tests:**
+    - diagnosis, adaptation, feedback, questions;
+    - the whole-window screen, file, build, feedback, hand moves, undo, live listening;
+    - file analysis at 44.1, 48 and 96 kHz;
+    - a repaint-cost check.
+
+    One older test (`LevelUiTests`) now starts from a detailed page, because the rail is hidden on KID by design.
 - The Vocal Producer (the KID page redesigned as one instrument; plan and audit in `docs/VOCAL_PRODUCER_PLAN.md`). Parameter IDs, presets, automation and saved state are unchanged (no parameter was added, removed or renamed).
   - Screen: a central display with an original, path-drawn GlitchKid mascot that reacts to idle, listening, analysing, building, previewing, applied and error (message thread only, 30 Hz, only while the page is showing); YOUR VOCAL (LOAD VOCAL FILE, LISTEN LIVE, waveform, the read); KID's take; six large dials bound to real controls (CLEAN = `clean_amount` and `clean_on`, TUNE = `tune_strength` and `tune_on`, STYLE = the PUNCH macro, SPACE = the SPACE macro, PRESENCE = `eq_b2_gain`, MIX = `mix`), each read back from the parameters; BEFORE / AFTER; SOUND PROFILES, BUILD MY MIX and CLEAN MY VOCAL (Gentle / Balanced / Aggressive); links to the detailed pages (Tune, Clean, Dynamics, Tone, Space, Creative). THE PATH strip was removed from this page.
   - Level-matched compare (`GlitchKidProcessor::setLevelMatchedCompare`): while PROCESSED plays, the long-term loudness of the output is compared with the dry input (3 s running averages, above -50 dBFS, at any Mix); with matching on, ORIGINAL (the real bypass) plays the dry signal at that loudness (limited to +/-24 dB, 20 ms smoothing). No allocation, no locks. Off by default and switched on only while the producer screen is shown, so bypass anywhere else (and host-automated bypass with the editor closed) is still the exact delayed dry signal.

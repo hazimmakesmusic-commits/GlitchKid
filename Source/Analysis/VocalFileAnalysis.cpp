@@ -116,6 +116,8 @@ VocalFileReport analyseVocalFile (const juce::File& file, const std::atomic<bool
     const int frameLen = juce::jmax (1, juce::roundToInt (r.sampleRate * 0.05));
 
     pitch::YinPitchDetector yin;
+    SpectralAccumulator spectrum (r.sampleRate);
+    std::vector<float> monoBlock;
     yin.prepare (r.sampleRate, 70.0f, 900.0f);
     std::vector<float> frameDb, heldMidi;
     frameDb.reserve ((size_t) (total / frameLen + 1));
@@ -136,6 +138,7 @@ VocalFileReport analyseVocalFile (const juce::File& file, const std::atomic<bool
         const int n = (int) std::min<juce::int64> (buf.getNumSamples(), total - pos);
         if (! reader->read (&buf, 0, n, pos, true, channels > 1))
             return fail (VocalFileReport::Status::unreadable, "The file could not be read to the end (it may be damaged).");
+        monoBlock.resize ((size_t) n);
         const float* L = buf.getReadPointer (0);
         const float* R = buf.getReadPointer (channels > 1 ? 1 : 0);
         for (int i = 0; i < n; ++i)
@@ -154,6 +157,7 @@ VocalFileReport analyseVocalFile (const juce::File& file, const std::atomic<bool
             auto& col = r.overview[(size_t) ((pos + i) * VocalFileReport::overviewColumns / total)];
             col = std::max (col, std::min (1.0f, mag));
             frameSq += (double) m * m;
+            monoBlock[(size_t) i] = m;
             if (yin.push (m))
             {
                 const auto& e = yin.result();
@@ -184,6 +188,7 @@ VocalFileReport analyseVocalFile (const juce::File& file, const std::atomic<bool
                 framePos = 0;
             }
         }
+        spectrum.pushSamples (monoBlock.data(), n);
         report (0.85f * (float) (pos + n) / (float) total);
     }
 
@@ -256,6 +261,7 @@ VocalFileReport analyseVocalFile (const juce::File& file, const std::atomic<bool
     for (int i = 0; i < toneLen; ++i)
         mono[(size_t) i] = channels > 1 ? 0.5f * (tb.getSample (0, i) + tb.getSample (1, i)) : tb.getSample (0, i);
     r.tone = VocalAnalyzer::analyzeOffline (mono.data(), toneLen, r.sampleRate);
+    r.shape = spectrum.finish (std::min (2, r.channels)); // gated to the active voice; valid only with enough active frames
     report (1.0f);
 
     r.status = VocalFileReport::Status::ok;

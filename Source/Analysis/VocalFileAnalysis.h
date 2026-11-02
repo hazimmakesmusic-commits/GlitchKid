@@ -1,5 +1,6 @@
 #pragma once
 #include "VocalAnalyzer.h"
+#include "ReferenceAnalyzer.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <juce_events/juce_events.h>
 #include <atomic>
@@ -32,6 +33,7 @@ struct VocalFileReport
     float correlation = 1.0f;                         // left/right correlation (stereo files only)
     bool stereoIdentical = false;                     // a stereo file whose channels are the same: mono content
     VocalAnalysis tone;                               // levels, tone, dynamics and sibilance of the busiest 30 s (VocalAnalyzer, the same measure as live listening)
+    SpectralProfile shape;                            // the tonal shape of the active voice: 19 third-octave bands 200 Hz - 12.8 kHz, dB relative to their mean (the REFERENCE measure)
     std::vector<float> overview;                      // overviewColumns peak values 0..1 (for the waveform)
 
     // ESTIMATES

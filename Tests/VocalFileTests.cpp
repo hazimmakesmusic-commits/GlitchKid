@@ -118,6 +118,17 @@ struct VocalFileTests : public juce::UnitTest
             expect (describeVocalFile (r).joinIntoString (" ").contains ("cannot repair clipping"), "honest about clipping");
         }
 
+        beginTest ("sample rates: 44.1, 48 and 96 kHz give the same key, pitch and tone read");
+        {
+            for (double rate : { 44100.0, 48000.0, 96000.0 })
+            {
+                const auto r = analyseVocalFile (writeWav (dir, "rate.wav", rate, { melody (rate, aMinorLine, 2, -70.0f) }), noCancel);
+                expect (r.ok() && r.keyReliable && (r.keyMinor ? (r.keyTonic + 3) % 12 : r.keyTonic) == 0, juce::String (rate) + ": " + r.keyNote);
+                expect (r.medianHz > 180.0f && r.medianHz < 280.0f, juce::String (rate) + ": median " + juce::String (r.medianHz));
+                expect (r.shape.valid && r.shape.usedBands == glitchkid::analysis::SpectralProfile::numBands, juce::String (rate) + ": the tone shape covers 200 Hz - 12.8 kHz");
+            }
+        }
+
         beginTest ("errors: missing, not audio, silent, cancelled; the job reports on the message thread");
         {
             expect (analyseVocalFile (dir.getChildFile ("nope.wav"), noCancel).status == VocalFileReport::Status::missingFile);

@@ -746,7 +746,7 @@ void GlitchKidEditor::visualTick()
 
 void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
 {
-    if (transition >= 1.0f)
+    if (transition >= 1.0f || page == Page::kid)
         return;
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
     const float y = (float) pageTop + transition * 458.0f;
@@ -1965,13 +1965,21 @@ void GlitchKidEditor::layoutContent()
     place (abLabel, bar.removeFromRight (34));
     place (presetStatus, bar);
 
-    // ---- KID (the Booth) and LAB: self-contained pages ----
-    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { labPage.get(), Page::lab } })
-        if (page == p)
-        {
-            content.addChildComponent (*c);
-            place (*c, { railW, 58, pageW, 522 + barDy - 58 });
-        }
+    // ---- KID: the main screen takes the whole window (its own top bar, no rail, no preset bar; its Advanced links open the detailed pages) ----
+    if (page == Page::kid && kidPanel != nullptr)
+    {
+        for (auto* c : persistent) // the rail, the header controls and the preset bar
+            c->setVisible (false);
+        content.addChildComponent (*kidPanel);
+        place (*kidPanel, { 0, 0, designW, designH });
+        kidPanel->toFront (false);
+    }
+    // ---- LAB: a self-contained page ----
+    if (page == Page::lab && labPage != nullptr)
+    {
+        content.addChildComponent (*labPage);
+        place (*labPage, { railW, 58, pageW, 522 + barDy - 58 });
+    }
 
     // ---- HOME / SESSION ----
     if (page == Page::home)

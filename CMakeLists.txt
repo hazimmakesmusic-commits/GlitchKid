@@ -82,6 +82,7 @@ target_sources(GlitchKid PRIVATE
     Source/AutoMode/ReferenceMatch.cpp
     Source/Macros/MacroEngine.cpp
     Source/Kid/KidDirector.cpp
+    Source/Kid/VocalDiagnosis.cpp
     Source/Kid/KidSpeech.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/LabKit.cpp
@@ -207,6 +208,7 @@ if(GLITCHKID_BUILD_TESTS)
     Source/AutoMode/BeatLock.cpp
         Source/Macros/MacroEngine.cpp
         Source/Kid/KidDirector.cpp
+        Source/Kid/VocalDiagnosis.cpp
         Source/Kid/KidSpeech.cpp
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/LabKit.cpp

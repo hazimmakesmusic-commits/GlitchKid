@@ -6,29 +6,30 @@
 
 namespace glitchkid::ui
 {
-// The KID page, the Vocal Producer: the first screen. Talk or type to KID, pick a profile, Build My Mix or Clean My Vocal, review KID's take and Apply it.
-// Nothing changes the sound until Apply; Apply goes through GlitchKidProcessor::applyParameterChanges (host gestures) and the editor's one-step UNDO.
-// The six big dials are bound to real parameters (or the existing macros) and move them directly, like any other control.
-// Speech is push-to-talk on a separate command microphone. A loaded vocal file is ANALYSED on a worker thread; it is not played (playback stays in the DAW).
-// Everything here runs on the message thread at 30 Hz, only while the page is showing.
+// KID, the vocal producer: GlitchKid's main screen (the whole window). Four areas only: the top bar (wordmark and Kid's status), the vocal (load a file,
+// its real waveform or the live output, ORIGINAL / PROCESSED at matched loudness), the conversation with Kid, and one main action (BUILD MY MIX, then
+// UPDATE MY MIX). The detailed pages are a small row of links at the foot.
+//
+// Kid's mix is applied straight away through GlitchKidProcessor::applyParameterChanges (host gestures, automation, saved state as usual) and can be undone
+// step by step. The plan is always rebuilt from the sound the session started with, so feedback reshapes the same mix. Controls moved by hand are left alone.
+// A loaded vocal file is ANALYSED on a worker thread, never played (playback stays in the DAW). Everything here runs on the message thread, at 30 Hz,
+// only while the screen is showing.
 class KidPanel : public juce::Component, private juce::Timer
 {
 public:
     struct Hooks
     {
-        std::function<void (const SoundState& before)> beforeApply; // the editor stores it for UNDO
+        std::function<void (const SoundState& before)> beforeApply; // the editor stores it for its own UNDO on the detailed pages
         std::function<void (const juce::String&)> status;
-        std::function<void (int stage)> openStage;                  // ADVANCED: open the page that holds this stage's controls
+        std::function<void (int stage)> openStage;                  // the detailed controls for a stage (1..17)
     };
-    enum class Mood { idle, listening, analysing, building, previewing, complete, error };
-    static constexpr int numDials = 6;
+    enum class Status { ready, listening, analyzing, processing };
 
     KidPanel (GlitchKidProcessor&, Hooks);
     ~KidPanel() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseDown (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
     void visibilityChanged() override;
@@ -37,24 +38,23 @@ public:
     void sendForTest (const juce::String& text) { send (text, false); }
     void tickForTest() { timerCallback(); }
     const kid::Director& directorForTest() const { return director; }
-    juce::String phaseNameForTest() const { return phaseLabel(); }
+    Status statusForTest() const { return status(); }
+    juce::String statusTextForTest() const { return statusText(); }
+    bool waitingForTest() const { return phase == Phase::analysing; }
     juce::String lastKidLineForTest() const;
-    void applyForTest() { apply(); }
-    void cancelForTest() { cancelTake(); }
-    void setSelectedForTest (const juce::String& id, bool on) { director.setSelected (id, on); }
     bool micEnabledForTest() const { return mic.isEnabled(); }
     void loadFileForTest (const juce::File& f) { loadFile (f); }
     bool fileBusyForTest() const { return fileJob.isRunning() || fileWaiting; }
     const analysis::VocalFileReport& fileReportForTest() const { return fileReport; }
-    Mood moodForTest() const { return mood(); }
-    juce::Slider& dialForTest (int i) { return dials[(size_t) i].slider; }
-    juce::String dialTextForTest (int i) const { return dials[(size_t) i].text (dials[(size_t) i].get()); }
     void compareForTest (bool original) { setCompare (original); }
     void pressForTest (const juce::String& buttonText);
+    juce::String mainActionTextForTest() const { return mainButton.getButtonText(); }
+    bool builtForTest() const { return built; }
+    int undoDepthForTest() const { return (int) history.size(); }
+    const std::set<juce::String>& manualForTest() const { return manualIds; }
 
 private:
-    enum class Phase { ready, recording, transcribing, analysing, review, downloading };
-    enum class Tab { take, read, limits };
+    enum class Phase { ready, recording, transcribing, analysing, downloading };
     struct Line { bool kid; juce::String text; bool spoken = false; };
 
     struct MicButton : juce::Component
@@ -68,18 +68,12 @@ private:
         void mouseUp (const juce::MouseEvent&) override;
         bool keyPressed (const juce::KeyPress&) override;
     };
-
-    // One big dial: a real parameter (or an existing macro), read back every tick so it always agrees with the detailed controls.
-    struct Dial
+    // One flat, quiet button style for the whole screen: text, a hairline when idle, violet when on, a soft glow for the main action.
+    struct Pill : juce::Button
     {
-        juce::Slider slider { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
-        juce::String name, what;
-        juce::Colour accent;
-        int stage = 0;                                   // ADVANCED page for this dial
-        std::function<float()> get;
-        std::function<void (float)> set;
-        std::function<juce::String (float)> text;
-        bool dragging = false;
+        explicit Pill (const juce::String& label, bool primary = false) : juce::Button (label), main (primary) { setWantsKeyboardFocus (true); }
+        bool main = false;
+        void paintButton (juce::Graphics&, bool over, bool down) override;
     };
 
     GlitchKidProcessor& proc;
@@ -92,42 +86,45 @@ private:
     analysis::VocalFileReport fileReport;
     std::unique_ptr<juce::FileChooser> chooser;
     Phase phase = Phase::ready;
-    Tab tab = Tab::take;
     std::vector<Line> lines;
-    juce::String errorText, pendingText;
-    bool pendingSpoken = false, fileWaiting = false, levelMatch = true;
-    int analysisStartCount = 0, chosenProfile = 0, cleanIntensity = 1;
-    juce::uint32 analysisStartedMs = 0, recordStartedMs = 0, builtAtMs = 0, appliedAtMs = 0, errorAtMs = 0;
+    juce::String pendingText;
+    bool pendingSpoken = false, fileWaiting = false;
+    int analysisStartCount = 0, chosenProfile = 0;
+    juce::uint32 analysisStartedMs = 0, recordStartedMs = 0, appliedAtMs = 0;
     bool haveFacts = false;
     kid::AnalysisFacts facts;
     analysis::VocalAnalysis lastAnalysis;
-    SoundState lastSeen;
+
+    // the session: the sound it started from, what Kid last applied, the controls moved by hand, and the undo steps (sound + Kid's memory)
+    bool built = false;
+    SoundState lastApplied;
+    std::set<juce::String> manualIds;
+    std::vector<std::pair<SoundState, kid::Director>> history;
+
     int tick = 0;
-    float scriptScroll = 0.0f, takeScroll = 0.0f, scriptMax = 0.0f, takeMax = 0.0f;
-    std::array<float, 96> env {};      // the live level history (from the output display tap)
-    std::array<float, 72> micLevels {}; // the recording waveform
+    float scroll = 0.0f, scrollMax = 0.0f;
+    std::array<float, 160> env {}; // the live output level history (the display tap)
+    std::array<float, 72> micLevels {};
     std::vector<float> tapScratch;
     bool signalPresent = false;
     juce::uint32 lastWriteCount = 0;
 
     MicButton mic;
     juce::TextEditor input;
-    juce::TextButton sendButton { "SEND" }, setupButton { "SET UP SPEECH" }, applyButton { "APPLY" }, cancelButton { "CANCEL" }, analyseButton { "LISTEN LIVE" },
-                     loadButton { "LOAD VOCAL FILE" }, buildButton { "BUILD MY MIX" }, cleanButton { "CLEAN MY VOCAL" },
-                     originalButton { "ORIGINAL" }, processedButton { "PROCESSED" }, matchButton { "LEVEL MATCH" };
-    juce::TextButton tabButtons[3], profileButtons[kid::numProfiles], intensityButtons[3], advancedButtons[6];
-    juce::OwnedArray<juce::TextButton> chips;
-    std::array<Dial, numDials> dials;
+    Pill sendButton { "Send" }, setupButton { "Set up speech" }, loadButton { "Load vocal" }, originalButton { "Original" }, processedButton { "Processed" },
+         mainButton { "BUILD MY MIX", true }, undoButton { "Undo" };
+    Pill advanced[5] { Pill ("Tune"), Pill ("Clean"), Pill ("Tone"), Pill ("Dynamics"), Pill ("Space") };
+    juce::OwnedArray<Pill> chips;
 
-    juce::Rectangle<int> srcBox, waveArea, dispBox, mascotBox, scriptBox, takeBox, takeBody, dialBox, compareBox, cmdBox, waveBox, actionBox;
-    std::vector<std::pair<juce::Rectangle<int>, juce::String>> rowHits; // take-row checkboxes
+    juce::Rectangle<int> topBar, vocalBox, waveArea, chatBox, inputBox, footBox;
 
     void send (const juce::String& text, bool spoken);
+    void startListening();
     void finishRequest();
-    void apply();
-    void cancelTake();
-    void say (const juce::String& kidLine) { lines.push_back ({ true, kidLine }); scriptScroll = 1.0e9f; }
-    void fail (const juce::String& kidLine) { say (kidLine); errorAtMs = juce::Time::getMillisecondCounter(); }
+    void run (kid::IntentFrame);
+    void applyPlan (const SoundState& before, const kid::Director& memoryBefore);
+    void undoStep();
+    void say (const juce::String& kidLine) { lines.push_back ({ true, kidLine }); scroll = 1.0e9f; repaint (chatBox); }
     void startRecording();
     void stopRecording (bool cancel);
     void chooseFile();
@@ -136,26 +133,15 @@ private:
     void setCompare (bool original);
     void refreshChips();
     void refreshButtons();
-    void setupDials();
-    void syncDials();
-    void setParam (const char* id, float plain); // one host gesture per call, like applyParameterChanges
     juce::StringArray suggestions() const;
-    juce::String phaseLabel() const;
-    juce::String phaseHint() const;
-    Mood mood() const;
+    Status status() const;
+    juce::String statusText() const;
     void readTap();
+    void watchManualMoves();
     void timerCallback() override;
-    void paintSource (juce::Graphics&);
-    void paintDisplay (juce::Graphics&);
-    void paintMascot (juce::Graphics&, juce::Rectangle<float>, Mood);
-    void paintScript (juce::Graphics&, juce::Rectangle<int>);
-    void paintTake (juce::Graphics&, juce::Rectangle<int>);
-    void paintRead (juce::Graphics&, juce::Rectangle<int>);
-    void paintLimits (juce::Graphics&, juce::Rectangle<int>);
-    void paintDials (juce::Graphics&);
-    void paintCompare (juce::Graphics&);
-    void paintCommand (juce::Graphics&);
-    void paintActions (juce::Graphics&);
+    void paintVocal (juce::Graphics&);
+    void paintChat (juce::Graphics&);
     float value (const char* id) const;
+    void setParam (const char* id, float plain);
 };
 }

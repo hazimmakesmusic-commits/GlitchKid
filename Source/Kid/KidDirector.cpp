@@ -69,6 +69,7 @@ const Keep keeps[] = {
     { "\\b(?:but|still|and) (?:keep )?(?:it |the vocal |me )?(?:upfront|up front|in front)\\b", "front", "presence" },
     { "\\bkeep (?:the |my |its |it )?(?:presence|clarity|words clear)\\b", "presence", nullptr },
     { "\\bkeep (?:the |my )?character\\b", "char", nullptr },
+    { "\\bkeep (?:the |my )?(?:center|centre|middle|vocal) (?:strong|solid|focused|clear)\\b", "front", "presence" },
     { "\\bkeep (?:the |my |it )?(?:warmth|warm|body|low end)\\b", "warm", nullptr } };
 
 bool find (const std::string& t, const char* pattern, std::string* match = nullptr)
@@ -114,7 +115,11 @@ const ProducerProfile& producerProfile (int index) { return profiles[juce::jlimi
 juce::String artistDisclaimer (const juce::String& artist, int profile)
 {
     const auto& p = producerProfile (profile);
-    return "I can't copy " + artist.toUpperCase() + "'s voice or vocal chain, and I don't claim to. I'll take it as a direction: " + juce::String (p.name)
+    juce::StringArray words;
+    words.addTokens (artist.toLowerCase(), " ", "");
+    for (auto& w : words)
+        w = w.substring (0, 1).toUpperCase() + (w == "laroi" ? juce::String ("AROI") : w.substring (1)); // "The Kid LAROI" is spelled that way
+    return "I can't copy " + words.joinIntoString (" ") + "'s voice or vocal chain, and I don't claim to. I'll take it as a direction: " + juce::String (p.name)
          + " (" + juce::String (p.tagline).upToFirstOccurrenceOf (":", false, false).toLowerCase() + "), built only from GlitchKid's own effects.";
 }
 
@@ -146,7 +151,25 @@ bool IntentFrame::anyOps() const
 bool IntentFrame::understood() const
 {
     return anyOps() || scale > 0.0f || more || improve || reset || ! locks.isEmpty() || role.isNotEmpty() || ! flags.isEmpty() || ! notes.isEmpty()
-        || profile > 0 || tune != 0 || cleanLevel > 0 || buildMix;
+        || profile > 0 || tune != 0 || cleanLevel > 0 || buildMix || raw || towardProfile || ask != Ask::none;
+}
+
+namespace
+{
+// What a "why" question is about, and the parameters that belong to it.
+struct Topic { const char* name; const char* pattern; const char* ids; };
+const Topic topics[] = {
+    { "tuning", "tun|pitch|autotune|auto-tune|key|scale|robotic", "tune_" },
+    { "space", "reverb|echo|delay|space|atmospher|ambien|wet|dry", "echo_ dim_" },
+    { "harsh", "harsh|high mids|high-mids|upper mids|upper-mids|presence|sharp|bite|3k|2k|4k", "eq_b2_ clean_res" },
+    { "ess", "\\bs\\b|s sounds|sibilan|de-?ess|esses", "clean_ess" },
+    { "lows", "low end|lows|bass|mud|muddy|low mids|low-mids|boxy|rumble|body|bottom", "eq_lo_ eq_b1_ clean_tone clean_amount clean_on" },
+    { "air", "air|top end|highs|treble|bright|dark|dull", "eq_hi_ air_" },
+    { "dynamics", "compress|dynamic|punch|level|squash|loud", "comp_" },
+    { "warmth", "saturat|distort|grit|warm|drive", "sat_" },
+    { "width", "wide|width|stereo|double|narrow|center|centre", "dbl_ dim_" },
+    { "clean", "clean|noise|resonan|ring", "clean_" },
+    { "effects", "mutation|stutter|harmony|formant|glitch|effect", "mut_ stutter_ harm_ formant_" } };
 }
 
 IntentFrame parse (const juce::String& text)
@@ -154,6 +177,29 @@ IntentFrame parse (const juce::String& text)
     IntentFrame f;
     auto t = normalise (text);
     std::string m;
+    // questions first: they are answered from the plan and the analysis, and never change the sound
+    const bool question = text.trim().endsWithChar ('?') || find (t, "^ (why|what|which|how|explain|is|are|did|tell me)\\b");
+    if (find (t, "\\bwhy\\b"))
+        f.ask = IntentFrame::Ask::why;
+    else if (find (t, "\\b(what did you (?:do|change)|what (?:have you|has) changed|what changed|explain (?:what|your|the) |what you changed|show me (?:the )?changes|walk me through)"))
+        f.ask = IntentFrame::Ask::changes;
+    else if (find (t, "\\b(what key|which key|key is it|key am i|what scale)\\b"))
+        f.ask = IntentFrame::Ask::key;
+    else if (find (t, "\\b(analy[sz]e|analysis|diagnos[ei]s?|what'?s wrong|what is wrong|how does my (?:vocal|voice) sound|check my (?:vocal|voice)|listen to my (?:vocal|voice))\\b")
+             || (question && find (t, "\\b(clip|clipping|noisy|noise|in tune|harsh|muddy)\\b")))
+        f.ask = IntentFrame::Ask::analysis;
+    else if (find (t, "\\b(what can you do|help|how do i|how does this work)\\b"))
+        f.ask = IntentFrame::Ask::help;
+    if (f.ask != IntentFrame::Ask::none)
+    {
+        for (const auto& tp : topics)
+            if (find (t, (std::string ("(") + tp.pattern + ")").c_str()))
+            {
+                f.topic = tp.name;
+                break;
+            }
+        return f;
+    }
     for (const auto& k : keeps)
         if (find (t, k.pattern, &m))
         {
@@ -187,6 +233,18 @@ IntentFrame parse (const juce::String& text)
         f.tune = pick (t, tuneWords, std::size (tuneWords), &w);
         if (f.tune != 0) f.heard.add (w);
     }
+    if (find (t, "\\b(more like (?:that|it|this|the reference|him|her|them|the profile)|closer to (?:that|the reference|the profile))\\b", &m))
+    {
+        f.towardProfile = true;
+        f.heard.add (m);
+        t = std::regex_replace (t, std::regex ("\\b(more like (?:that|it|this|the reference|him|her|them|the profile)|closer to (?:that|the reference|the profile))\\b"), " ");
+    }
+    if (find (t, "\\b(more raw|rawer|raw|less polished|not so polished|less produced|unpolished|grittier and raw)\\b", &m))
+    {
+        f.raw = true;
+        f.heard.add (m);
+        t = std::regex_replace (t, std::regex ("\\b(more raw|rawer|raw|less polished|not so polished|less produced|unpolished)\\b"), " ");
+    }
     if (find (t, "\\b(start over|reset|forget that|forget it|from scratch)\\b"))
     {
         f.reset = true;
@@ -200,20 +258,21 @@ IntentFrame parse (const juce::String& text)
     float mag = 1.0f;
     if (find (t, "\\b(a little|slightly|a bit|a touch)\\b")) mag = 0.5f;
     if (find (t, "\\b(much|way|really|very|super|a lot|lots)\\b")) mag = 1.5f;
-    if (find (t, "\\b(too much|a little less|bit less|less|tone it down|pull it back|pull back|subtle|subtler|not so much|too far|too strong)\\b", &m))
+    if (find (t, "\\b(too much|a little less|bit less|less|tone it down|pull it back|pull back|subtle|subtler|not so much|too far|too strong|reduce|lower|turn down|turn it down|halve|by half|by about half|half)\\b", &m))
     {
-        f.scale = find (t, "\\bsubtler?\\b") ? 0.4f : find (t, "(little less|bit less)") ? 0.7f : 0.5f;
+        f.scale = find (t, "\\bsubtler?\\b") ? 0.4f : find (t, "(little less|bit less|a little|slightly|a bit)") ? 0.7f : 0.5f;
         f.heard.add (m);
-        t = std::regex_replace (t, std::regex ("\\b(too much|a little less|bit less|less|tone it down|pull it back|pull back|make it subtle|subtle|subtler|not so much|too far|too strong)\\b"), " ");
+        t = std::regex_replace (t, std::regex ("\\b(too much|a little less|bit less|less|tone it down|pull it back|pull back|make it subtle|subtle|subtler|not so much|too far|too strong|reduce|lower|turn down|turn it down|halve|by about half|by half|half)\\b"), " ");
     }
     f.more = find (t, "\\b(more|stronger|further|push it|even more)\\b");
     if (find (t, "\\bad-? ?libs?\\b|\\bbacking\\b", &m)) { f.role = "adlib"; f.heard.add (m); }
     else if (find (t, "\\b(lead|main vocal)\\b")) f.role = "lead";
-    if (find (t, "\\breverb\\b"))
+    if (find (t, "\\b(reverb|echo|delay|ambience|ambiance)\\b", &m))
     {
-        f.notes.add ("GlitchKid has no reverb, so I build space with Echo and Dimension.");
+        if (find (t, "\\breverb\\b"))
+            f.notes.add ("GlitchKid has no reverb, so space comes from Echo and Dimension.");
         f.ops[depth] += mag;
-        f.heard.add ("reverb");
+        f.heard.add (m);
     }
     for (const auto& lx : lexicon)
     {
@@ -265,7 +324,7 @@ int Director::stageOf (const juce::String& id)
     return 0;
 }
 
-bool Director::needsAnalysis (const IntentFrame& f) { return f.improve || f.buildMix || f.ops[clean] > 0.0f; }
+bool Director::needsAnalysis (const IntentFrame& f) { return f.improve || f.buildMix || f.ask == IntentFrame::Ask::analysis || f.ops[clean] > 0.0f; }
 
 int Director::selectedCount() const
 {
@@ -313,8 +372,8 @@ void Director::updateDirection (const IntentFrame& f)
     if (f.tune != 0) tuneChoice = f.tune;
     if (f.cleanLevel > 0) cleanChoice = f.cleanLevel;
     if (f.scale > 0.0f && ! touched.empty())
-        for (auto d : touched)
-            dir[(size_t) d] = round2 (dir[(size_t) d] * f.scale); // "a little less dark": scale what is there
+        for (auto d : touched) // "a little less dark": scale what is there; "less reverb" when KID never added any: move the other way, as far as the word says
+            dir[(size_t) d] = std::abs (dir[(size_t) d]) > 0.1f ? round2 (dir[(size_t) d] * f.scale) : round2 (-(1.0f - f.scale));
     else
     {
         for (auto d : touched)
@@ -326,6 +385,25 @@ void Director::updateDirection (const IntentFrame& f)
             for (auto d : lastTouched)
                 dir[(size_t) d] = clampDir (round2 (dir[(size_t) d] * 1.5f));
     }
+    if (f.towardProfile)
+    {
+        if (profileIndex > 0)
+            for (int d = 0; d < numDims; ++d)
+                dir[(size_t) d] = clampDir (round2 (dir[(size_t) d] + 0.5f * producerProfile (profileIndex).direction[(size_t) d]));
+        else
+            for (auto d : lastTouched)
+                dir[(size_t) d] = clampDir (round2 (dir[(size_t) d] * 1.5f));
+    }
+    if (f.raw) // less polish: half the brightness, punch and cleanup KID added, natural tuning, no Lab effects
+    {
+        for (auto d : { bright, punch, clean, presence })
+            if (dir[(size_t) d] > 0.0f) dir[(size_t) d] = round2 (dir[(size_t) d] * 0.5f);
+        flags.insert ("natural");
+        if (tuneChoice > 1) tuneChoice = 1;
+        if (cleanChoice > 1) cleanChoice = 1;
+    }
+    if (f.flags.contains ("natural") && tuneChoice > 1)
+        tuneChoice = 1;
     for (auto& l : f.locks) locks.insert (l);
     for (auto& fl : f.flags) flags.insert (fl);
     if (f.role.isNotEmpty())
@@ -340,12 +418,12 @@ std::vector<Change> Director::decide()
 {
     refusedIds.clear();
     std::map<juce::String, float> T;
-    std::map<juce::String, juce::String> W;
+    std::map<juce::String, juce::String> W, D;
     const auto& d = dir;
     const bool front = locks.count ("front") > 0, adlib = roleName == "adlib", keepPresence = locks.count ("presence") > 0;
     auto B = [this] (const char* id) { return base.get (id, 0.0f); };
     auto cur = [&] (const char* id) { auto it = T.find (id); return it != T.end() ? it->second : B (id); };
-    auto put = [&] (const juce::String& id, float v, const juce::String& why)
+    auto put = [&] (const juce::String& id, float v, const juce::String& why, const juce::String& detail = {})
     {
         automode::Range r;
         if (! isAllowed (id) || ! ranges || ! ranges (id, r) || ! std::isfinite (v))
@@ -359,18 +437,82 @@ std::vector<Change> Director::decide()
         T[id] = v;
         auto& w = W[id];
         w = w.isEmpty() || w == why ? why : w + "; " + why;
+        if (detail.isNotEmpty())
+        {
+            auto& dd = D[id];
+            dd = dd.isEmpty() || dd == detail ? detail : dd + " " + detail;
+        }
     };
     for (const auto& c : foundation) // Build My Mix: the profile's foundation first; everything below moves from there
         put (c.id, c.to, "Foundation (" + foundationName + "): " + c.reason);
-    auto add = [&] (const char* id, float dv, const char* why) { put (id, cur (id) + dv, why); };
+    auto add = [&] (const char* id, float dv, const juce::String& why, const juce::String& detail = {}) { put (id, cur (id) + dv, why, detail); };
     auto k = [] (float x) { return juce::jmin (1.0f, std::abs (x) / 1.5f); }; // how far toward a goal: 1.5 units of direction = all the way
     auto toward = [&] (const char* id, float goal, float amount, const char* why) { const float c = cur (id); if (std::abs (goal - c) > 1e-6f) put (id, c + (goal - c) * amount, why); };
-    auto atMost = [&] (const char* id, float cap, const char* why) { if (cur (id) > cap) put (id, cap, why); };
+    auto atMost = [&] (const char* id, float cap, const juce::String& why) { if (cur (id) > cap) put (id, cap, why); };
+    auto atLeast = [&] (const char* id, float floor, const juce::String& why, const juce::String& detail = {}) { if (cur (id) < floor) put (id, floor, why, detail); };
+    auto hzText = [] (float hz) { return hz >= 1000.0f ? juce::String (hz / 1000.0f, 1) + " kHz" : juce::String (juce::roundToInt (hz)) + " Hz"; };
+
+    // ---- what the recording needs (the diagnosis), before any taste: corrections use only what was measured or estimated, each with its evidence ----
+    const auto* fRumble = diag.find ("rumble");
+    const auto* fMud = diag.find ("mud");
+    const auto* fHarsh = diag.find ("harsh");
+    const auto* fEss = diag.find ("sibilance");
+    const auto* fDull = diag.find ("dull");
+    const bool alreadyBright = diag.has ("bright"), squashed = diag.has ("compressed"), noisy = diag.has ("noise");
+    if (fRumble != nullptr || fMud != nullptr || fEss != nullptr || (fHarsh != nullptr && fHarsh->narrow))
+    {
+        put ("clean_on", 1.0f, "CLEAN on to fix what I found in your recording");
+        atLeast ("clean_amount", 55.0f, "CLEAN works firmly enough to matter");
+    }
+    if (fRumble != nullptr)
+        atLeast ("clean_tone", 85.0f, "Rumble: " + fRumble->plain, fRumble->detail);
+    if (fMud != nullptr)
+    {
+        atLeast ("clean_tone", 90.0f, "Mud: CLEAN's low-mid bell (wide, up to -3.5 dB) finds the exact frequency while it listens", fMud->detail);
+        if (fMud->hz > 0.0f && fMud->severity >= 0.5f && std::abs (B ("eq_b1_gain")) < 0.05f) // strong and located: one gentle extra cut where it was measured
+        {
+            put ("eq_b1_freq", fMud->hz, "Body band moved to " + hzText (fMud->hz) + ", where the build-up is", fMud->detail);
+            put ("eq_b1_q", 1.0f, "A wide bell, so it doesn't hollow out the voice");
+            put ("eq_b1_gain", -2.0f, "A gentle 2 dB cut at " + hzText (fMud->hz) + ": less mud, the body stays");
+        }
+    }
+    if (fHarsh != nullptr && std::abs (B ("eq_b2_gain")) < 0.05f && fHarsh->hz > 0.0f)
+    {
+        const float cut = fHarsh->narrow ? 2.0f + 2.0f * fHarsh->severity : 1.5f + 1.5f * fHarsh->severity;
+        put ("eq_b2_freq", fHarsh->hz, fHarsh->narrow ? "Presence band on the sharp spot at " + hzText (fHarsh->hz) : "Presence band centred on the forward upper mids (" + hzText (fHarsh->hz) + ")", fHarsh->detail);
+        put ("eq_b2_q", fHarsh->narrow ? 2.5f : 0.9f, fHarsh->narrow ? "A narrower bell: only the sharp spot, not your whole top" : "A wide bell: a broad tilt, not one ringing frequency");
+        put ("eq_b2_gain", -cut, "Upper mids eased by " + juce::String (cut, 1) + " dB: smoother, without going dull");
+        if (fHarsh->narrow) atLeast ("clean_res", 100.0f, "CLEAN's resonance finder catches narrow ringing while your voice moves (Q 6, up to -6 dB)");
+    }
+    else if (fHarsh != nullptr && fHarsh->hz <= 0.0f && std::abs (B ("eq_b2_gain")) < 0.05f) // the five-band live read: no frequency to aim at, so only a gentle wide cut at the band's default
+        put ("eq_b2_gain", -1.5f, "Upper mids eased 1.5 dB (wide bell at " + hzText (cur ("eq_b2_freq")) + ")", fHarsh->detail);
+    if (fEss != nullptr)
+    {
+        atLeast ("clean_ess", 100.0f, "De-esser: it only acts while an S is sounding (4.5-12.5 kHz, up to -9 dB)", fEss->detail);
+        put ("clean_on", 1.0f, "CLEAN on to fix what I found in your recording");
+    }
+    if (fDull != nullptr && fHarsh == nullptr && d[bright] >= 0.0f)
+        add ("eq_hi_gain", 1.5f + fDull->severity, "A gentle lift above 8 kHz brings back air", fDull->detail);
+    if (const auto* fDyn = diag.find ("dynamic"))
+    {
+        if (cur ("comp_ratio") < 3.0f) put ("comp_ratio", 3.0f, "The level jumps around: steady 3:1 compression", fDyn->detail);
+        if (known.rmsDb > -60.0f)
+            put ("comp_thresh", juce::jlimit (-40.0f, -8.0f, known.rmsDb + 3.0f), "Threshold set from your real level (RMS " + juce::String (known.rmsDb, 1) + " dBFS): the compressor works on the loud words");
+    }
+    if (squashed) atMost ("comp_ratio", 2.0f, "Your take is already compressed: only light compression on top");
+    if (noisy)
+    {
+        atMost ("comp_ratio", 3.0f, "Gentle compression: harder settings would lift the background noise");
+        atMost ("comp_makeup", 2.0f, "Little makeup gain, so the background stays down");
+    }
 
     if (std::abs (d[bright]) > 1e-6f)
     {
-        add ("eq_hi_gain", 3.0f * d[bright], d[bright] > 0 ? "Air shelf up: more top end" : "Air shelf down: less top end");
-        if (d[bright] > 0 || ! keepPresence)
+        if (d[bright] > 0 && alreadyBright)
+            add ("eq_hi_gain", 1.2f * d[bright], "Air shelf up only a little: your vocal is already bright on top");
+        else
+            add ("eq_hi_gain", 3.0f * d[bright], d[bright] > 0 ? "Air shelf up: more top end" : "Air shelf down: less top end");
+        if ((d[bright] > 0 && fHarsh == nullptr) || (d[bright] < 0 && ! keepPresence)) // no presence lift on upper mids that are already sharp
             add ("eq_b2_gain", d[bright], d[bright] > 0 ? "Presence lifts with the top" : "Presence eases with the top");
         if (flags.count ("air") > 0 && d[bright] > 0)
         {
@@ -381,15 +523,22 @@ std::vector<Change> Director::decide()
     if (std::abs (d[warm]) > 1e-6f)
     {
         add ("sat_drive", 1.5f * d[warm], "Saturation: density and warmth");
-        if (locks.count ("warm") == 0 || d[warm] > 0) add ("eq_lo_gain", d[warm], "Low body");
+        if (d[warm] > 0 && fMud != nullptr) {} // warmth from saturation only: the low mids are already built up
+        else if (locks.count ("warm") == 0 || d[warm] > 0) add ("eq_lo_gain", d[warm], "Low body");
     }
     if (std::abs (d[presence]) > 1e-6f)
-        add ("eq_b2_gain", 1.5f * d[presence], d[presence] > 0 ? "Presence band: the words cut through" : "Presence down: the voice steps back");
+    {
+        if (d[presence] > 0 && fHarsh != nullptr)
+            add ("eq_b2_gain", 0.6f * d[presence], "Presence band up only a little: your upper mids are already sharp");
+        else
+            add ("eq_b2_gain", 1.5f * d[presence], d[presence] > 0 ? "Presence band: the words cut through" : "Presence down: the voice steps back");
+    }
     if (d[punch] > 0)
     {
-        if (cur ("comp_ratio") < 6.0f) toward ("comp_ratio", 6.0f, k (d[punch]), "Firmer compression: steadier and harder");
+        const float goal = squashed ? 2.5f : noisy ? 3.5f : 6.0f;
+        if (cur ("comp_ratio") < goal) toward ("comp_ratio", goal, k (d[punch]), squashed ? "A little firmer (your take is already compressed)" : noisy ? "Firmer, but held back so the background noise stays down" : "Firmer compression: steadier and harder");
         if (cur ("comp_attack") > 2.0f) toward ("comp_attack", 2.0f, k (d[punch]), "Faster attack grabs the front of words");
-        add ("comp_thresh", -3.0f * d[punch], "The compressor works harder");
+        add ("comp_thresh", (noisy || squashed ? -1.5f : -3.0f) * d[punch], "The compressor works harder");
         add ("sat_drive", 1.5f * d[punch], "Saturation: grit and energy");
     }
     if (d[punch] < 0)
@@ -411,9 +560,9 @@ std::vector<Change> Director::decide()
     }
     if (d[width] < 0)
     {
-        if (B ("dbl_on") >= 0.5f && d[width] <= -0.75f) put ("dbl_on", 0.0f, "Doubler off: one voice in the middle");
-        else if (B ("dbl_on") >= 0.5f) add ("dbl_amount", 15.0f * d[width], "Quieter doubles");
-        if (B ("dim_on") >= 0.5f && d[width] <= -0.75f) put ("dim_on", 0.0f, "Dimension off");
+        if (cur ("dbl_on") >= 0.5f && d[width] <= -0.75f) put ("dbl_on", 0.0f, "Doubler off: one voice in the middle");
+        else if (cur ("dbl_on") >= 0.5f) put ("dbl_amount", cur ("dbl_amount") * (1.0f + d[width]), "Quieter doubles");
+        if (cur ("dim_on") >= 0.5f && d[width] <= -0.75f) put ("dim_on", 0.0f, "Dimension off");
     }
     if (d[depth] > 0)
     {
@@ -437,10 +586,16 @@ std::vector<Change> Director::decide()
         }
         if (! keepPresence) add ("eq_b2_gain", -0.75f * d[depth], "Presence eased: the voice steps back");
     }
-    if (d[depth] < 0)
+    if (d[depth] <= -0.75f)
     {
-        if (B ("echo_on") >= 0.5f) put ("echo_on", 0.0f, "Echo off: nothing behind you");
-        if (B ("dim_on") >= 0.5f && ! (d[width] > 0)) put ("dim_on", 0.0f, "Dimension off: close and direct");
+        if (cur ("echo_on") >= 0.5f) put ("echo_on", 0.0f, "Echo off: nothing behind you");
+        if (cur ("dim_on") >= 0.5f && ! (d[width] > 0)) put ("dim_on", 0.0f, "Dimension off: close and direct");
+    }
+    else if (d[depth] < 0) // "less reverb": the space that is there, scaled down by as much as was asked
+    {
+        const float f = 1.0f + d[depth];
+        if (cur ("echo_on") >= 0.5f) put ("echo_mix", cur ("echo_mix") * f, "Less echo: about " + juce::String (juce::roundToInt ((1.0f - f) * 100.0f)) + " % down");
+        if (cur ("dim_on") >= 0.5f && ! (d[width] > 0)) put ("dim_mix", cur ("dim_mix") * f, "Less Dimension haze");
     }
     if (front && std::abs (d[width]) < 1e-6f && std::abs (d[depth]) < 1e-6f)
     {
@@ -452,9 +607,9 @@ std::vector<Change> Director::decide()
     {
         put ("clean_on", 1.0f, "CLEAN on: rumble, mud, resonances and harsh S");
         if (cur ("clean_amount") < 85.0f) toward ("clean_amount", 85.0f, k (d[clean]), "More cleaning");
-        if (flags.count ("mud") > 0)
+        if (flags.count ("mud") > 0 && known.mudHz > 0.0f && fMud == nullptr) // only where CLEAN really measured it; otherwise CLEAN's own bell finds it
         {
-            put ("eq_b1_freq", 300.0f, "Body band moved to 300 Hz, where the mud is");
+            put ("eq_b1_freq", known.mudHz, "Body band moved to " + hzText (known.mudHz) + ", where CLEAN measured the mud");
             put ("eq_b1_gain", juce::jmin (B ("eq_b1_gain"), -2.0f * d[clean]), "Body band cut: less mud");
             put ("clean_tone", 100.0f, "Corrective EQ at full strength");
         }
@@ -517,7 +672,7 @@ std::vector<Change> Director::decide()
     {
         const float from = base.get (id, v);
         if (std::abs (v - from) > 1e-4f)
-            out.push_back ({ id, from, v, W[id] });
+            out.push_back ({ id, from, v, W[id], D[id] });
     }
     return out;
 }
@@ -545,49 +700,58 @@ void Director::rebuild()
         previous[r.id] = r.to;
 }
 
-juce::String Director::respond (IntentFrame f, const AnalysisFacts* facts)
+void Director::setFacts (const AnalysisFacts& f)
 {
-    if (facts != nullptr && facts->valid && facts->keyReliable)
+    if (! f.valid)
+        return;
+    known = f;
+    diag = diagnose (f);
+    if (f.keyReliable)
     {
         keyKnown = true;
-        keyRoot = facts->keyTonic;
-        keyIsMinor = facts->keyMinor;
+        keyRoot = f.keyTonic;
+        keyIsMinor = f.keyMinor;
     }
-    if (f.buildMix && facts != nullptr && facts->valid) // the foundation already fits tone and dynamics to the voice; KID adds what it does not touch
-    {
-        if (facts->sibilanceIndex > 0.25f || facts->bandFraction[1] > 0.35f) f.cleanLevel = juce::jmax (f.cleanLevel, cleanChoice, 1);
-        if (facts->fromFile && facts->voicedShare > 0.5f && facts->offNoteCents > 15.0f && f.tune == 0 && tuneChoice == 0) f.tune = 1;
-        if (facts->clippedSamples > 0) f.notes.add ("Your recording clips. Lower the input level when you record; GlitchKid can't repair clipping.");
-    }
-    if (f.improve && facts != nullptr && facts->valid)
-    {
-        if (facts->sibilanceIndex > 0.25f) { f.ops[clean] = juce::jmax (f.ops[clean], 1.0f); f.flags.addIfNotAlreadyThere ("ess"); }
-        if (facts->bandFraction[1] > 0.35f) { f.ops[clean] = juce::jmax (f.ops[clean], 1.0f); f.flags.addIfNotAlreadyThere ("mud"); }
-        if (facts->dynamicRangeDb > 12.0f) f.ops[punch] += 0.5f;
-        if (facts->bandFraction[3] + facts->bandFraction[4] < 0.25f) f.ops[bright] += 0.5f;
-        if (facts->clippedSamples > 0) f.notes.add ("Your recording clips. Lower the input level when you record; I don't fix clipping with Gain.");
-        if (facts->fromFile && facts->voicedShare > 0.5f && facts->offNoteCents > 15.0f && f.tune == 0 && tuneChoice == 0) f.tune = 1;
-    }
+    rebuild();
+}
+
+juce::String Director::respond (IntentFrame f, const AnalysisFacts* facts)
+{
+    if (facts != nullptr && facts->valid)
+        setFacts (*facts);
+    if (f.ask != IntentFrame::Ask::none && ! f.anyOps())
+        return answer (f); // a question: the sound does not change
+    if ((f.improve || f.buildMix) && known.valid && diag.has ("offpitch") && f.tune == 0 && tuneChoice == 0)
+        f.tune = 1; // notes drift: gentle correction, never more unless asked
     updateDirection (f);
     rebuild();
     return reply (f, facts);
 }
 
-juce::String Director::reply (const IntentFrame& f, const AnalysisFacts* facts) const
+juce::String Director::reply (const IntentFrame& f, const AnalysisFacts*) const
 {
+    if (! f.understood())
+        return "I didn't catch a sound in that. Try \"warmer\", \"less reverb\", \"make the tuning harder\", or ask me \"why did you change the high mids?\"";
     juce::StringArray parts;
-    if (f.reset) parts.add ("Clean slate. Your sound is untouched.");
+    if (f.reset) parts.add ("Back to where we started: your sound before my mix.");
+    if (f.artist.isNotEmpty()) parts.add (artistDisclaimer (f.artist, f.profile));
+    else if (f.profile > 0) parts.add ("Going for " + juce::String (producerProfile (f.profile).name) + ": " + producerProfile (f.profile).tagline);
     const bool touched = f.anyOps();
-    if (f.improve)
+    if (f.improve || f.buildMix)
     {
-        if (facts != nullptr && facts->valid)
-            parts.add ("I listened to " + juce::String (facts->activeSeconds, 1) + " s of your vocal. "
-                       + juce::String (facts->bandFraction[1] > 0.35f ? (facts->mudHz > 0.0f ? "It gets muddy around " + juce::String (juce::roundToInt (facts->mudHz)) + " Hz. " : juce::String ("There is a build-up in the low mids (120-500 Hz). ")) : juce::String())
-                       + juce::String (facts->sibilanceIndex > 0.25f ? "The S's are sharp. " : "")
-                       + juce::String (facts->dynamicRangeDb > 12.0f ? "The level jumps about. " : "")
-                       + "Here's my take.");
+        if (known.valid)
+        {
+            juce::StringArray heard;
+            std::vector<const Finding*> top;
+            for (auto& x : diag.items)
+                if (x.id != "key") top.push_back (&x);
+            std::stable_sort (top.begin(), top.end(), [] (const Finding* a, const Finding* b) { return a->severity > b->severity; });
+            for (size_t i = 0; i < top.size() && i < 3; ++i) heard.add (top[i]->plain);
+            parts.add ((known.fromFile ? juce::String ("I read your file. ") : "I listened to " + juce::String (known.activeSeconds, 1) + " s of your vocal. ")
+                       + (heard.isEmpty() ? juce::String ("Nothing in the recording needs fixing.") : heard.joinIntoString (" ")));
+        }
         else
-            parts.add ("I need a few seconds of you singing or rapping first: press play in your project, then ask again.");
+            parts.add ("I haven't heard your vocal yet, so this isn't fitted to it: press play in your project (or load the vocal file), then UPDATE MY MIX.");
     }
     else if (touched)
     {
@@ -595,47 +759,106 @@ juce::String Director::reply (const IntentFrame& f, const AnalysisFacts* facts) 
         for (int d = 0; d < numDims; ++d)
             if (std::abs (f.ops[(size_t) d]) > 1e-6f)
                 w.addIfNotAlreadyThere (dimWords[d][f.ops[(size_t) d] > 0 ? 0 : 1]);
-        auto s = f.scale > 0.0f ? juce::String ("Eased that back.") : w.joinIntoString (", ") + ".";
+        auto s = f.scale > 0.0f ? juce::String ("Less of that: ") + (f.scale <= 0.4f ? "about 40 % of what it was." : f.scale <= 0.5f ? "about half." : "eased a little.")
+                                : w.joinIntoString (", ") + ".";
         parts.add (s.substring (0, 1).toUpperCase() + s.substring (1));
     }
     if (f.scale > 0.0f && ! touched)
         parts.add (f.scale <= 0.4f ? "Made it subtle: about 40 % of what it was." : f.scale <= 0.5f ? "Pulled it back by half." : "Eased it off a little.");
     if (f.more && ! touched) parts.add ("Pushed it further.");
-    if (f.locks.contains ("front")) parts.add ("You stay in front: the width comes from the doubles, echo stays low and Presence isn't touched.");
-    else if (f.locks.contains ("presence")) parts.add ("Presence stays where it is; the change comes from the top end only.");
-    if (f.locks.contains ("char")) parts.add ("Your Lab effects stay exactly as they are.");
+    if (f.towardProfile) parts.add (profileIndex > 0 ? "Further toward " + juce::String (producerProfile (profileIndex).name) + "." : juce::String ("Pushed it further."));
+    if (f.raw) parts.add ("Less polish: half the brightness, punch and cleanup I added, natural tuning, no Lab effects.");
+    if (f.locks.contains ("front")) parts.add ("You stay in front: width from the doubles, echo kept low, Presence untouched.");
+    else if (f.locks.contains ("presence")) parts.add ("Presence stays where it is.");
+    if (f.locks.contains ("char")) parts.add ("Your Lab effects stay as they are.");
     if (f.role == "adlib") parts.add ("For the ad-libs: further back, thinner, with longer throws.");
-    if (f.flags.contains ("natural")) parts.add ("Keeping it natural: light saturation, no Lab effects.");
-    if (f.artist.isNotEmpty()) parts.add (artistDisclaimer (f.artist, f.profile));
-    else if (f.profile > 0) parts.add (juce::String (producerProfile (f.profile).name) + ": " + producerProfile (f.profile).tagline);
-    if (f.buildMix || f.profile > 0)
-        parts.add (hasFoundation() ? "Foundation: " + foundationName + "." : juce::String ("No foundation yet: the direction alone, from your current sound."));
-    if (f.tune != 0 || (f.profile > 0 && tuneChoice > 0) || (tuneChoice > 0 && (f.improve || f.buildMix)))
+    if (f.flags.contains ("natural") && ! f.raw) parts.add ("Keeping it natural: light saturation, gentle tuning, no Lab effects.");
+    if (f.tune != 0 || f.profile > 0 || ((f.improve || f.buildMix) && tuneChoice > 0))
     {
-        static const char* style[] = { "Natural", "Light", "Hard" };
-        if (tuneChoice < 0) parts.add ("Pitch Tune off.");
+        static const char* style[] = { "natural", "light", "hard" };
+        if (tuneChoice < 0) parts.add ("Pitch correction off.");
         else if (tuneChoice > 0)
-            parts.add ("Pitch Tune: " + juce::String (style[juce::jlimit (1, 3, tuneChoice) - 1]) + ". "
-                       + (keyKnown ? "Key " + analysis::keyName (keyRoot, keyIsMinor) + ", estimated from your vocal file: check it on TUNE."
-                                   : juce::String ("It pulls to the key set on TUNE. I haven't detected your key: load your vocal file, or set the key on TUNE.")));
+            parts.add ("Pitch correction: " + juce::String (style[juce::jlimit (1, 3, tuneChoice) - 1]) + ", "
+                       + (keyKnown ? "in " + analysis::keyName (keyRoot, keyIsMinor) + " (my estimate from your file: check it on TUNE)."
+                                   : juce::String ("in the key set on TUNE: I can't tell your key yet, so load the vocal file or set it there.")));
     }
-    if (f.cleanLevel > 0 || (cleanChoice > 0 && f.buildMix))
+    if (f.cleanLevel > 0)
     {
-        static const char* level[] = { "Gentle", "Balanced", "Aggressive" };
-        parts.add ("Clean My Vocal (" + juce::String (level[juce::jlimit (1, 3, cleanChoice) - 1]) + "): CLEAN takes out rumble, eases low-mid build-up, tames resonances and sharp S's."
-                   " It does not remove background noise, room reverb or clipping: GlitchKid has no noise reduction.");
+        static const char* level[] = { "gentle", "balanced", "aggressive" };
+        parts.add ("Cleanup (" + juce::String (level[juce::jlimit (1, 3, cleanChoice) - 1]) + "): rumble, low-mid build-up, resonances and sharp S's. It isn't noise reduction: background noise, room sound and clipping stay.");
         if (cleanChoice >= 3) parts.add ("Aggressive can thin your tone: compare with ORIGINAL.");
-        if (facts != nullptr && facts->noiseKnown && facts->noiseFloorDb > -60.0f)
-            parts.add ("The quiet moments in your file sit at about " + juce::String (juce::roundToInt (facts->noiseFloorDb)) + " dBFS: that background stays.");
     }
-    if (f.buildMix && ! rows.empty()) parts.add (summary());
+    if ((f.improve || f.buildMix || f.profile > 0) && ! rows.empty()) parts.add (summary());
     parts.addArray (f.notes);
-    if (! f.understood())
-        return "I didn't hear a sound in that. Try \"warmer\", \"wider\", \"more distant\", or \"I don't know, improve it\".";
-    const int n = selectedCount();
-    if (! rows.empty()) parts.add (juce::String (n) + (n == 1 ? " change" : " changes") + " ready. Apply when it's right, or tell me what to change.");
-    else parts.add ("That lands on your current sound: nothing to change.");
+    if (rows.empty() && ! f.reset) parts.add ("That's already where your sound is: nothing to change.");
     return parts.joinIntoString (" ");
+}
+
+juce::String Director::answer (const IntentFrame& f) const
+{
+    using Ask = IntentFrame::Ask;
+    auto rowText = [] (const Change& r)
+    {
+        auto t = r.reason + (r.detail.isNotEmpty() ? " (" + r.detail.trimCharactersAtEnd (".") + ")" : juce::String());
+        return t.endsWithChar ('.') ? t : t + ".";
+    };
+    switch (f.ask)
+    {
+        case Ask::why:
+        {
+            juce::StringArray prefixes;
+            for (const auto& tp : topics)
+                if (f.topic == tp.name) prefixes.addTokens (tp.ids, " ", "");
+            std::vector<const Change*> hits;
+            for (auto& r : rows)
+            {
+                bool match = prefixes.isEmpty();
+                for (auto& p : prefixes) match = match || r.id.startsWith (p);
+                if (r.selected && match) hits.push_back (&r);
+            }
+            std::stable_sort (hits.begin(), hits.end(), [] (const Change* a, const Change* b) // the main move first: a switch or a gain, with its evidence
+            {
+                auto rank = [] (const Change* c) { return (c->detail.isNotEmpty() ? 0 : 2) + (c->id.endsWith ("_on") || c->id.endsWith ("_gain") || c->id.endsWith ("_strength") ? 0 : 1); };
+                return rank (a) < rank (b);
+            });
+            juce::StringArray said;
+            for (auto* r : hits)
+                if (said.size() < 3) said.addIfNotAlreadyThere (rowText (*r));
+            if (said.isEmpty())
+                return f.topic.isNotEmpty() ? "I didn't change the " + f.topic + " in this mix." + (rows.empty() ? juce::String (" There's no mix from me yet.") : juce::String())
+                                            : juce::String ("There's nothing in my mix to explain yet.");
+            return said.joinIntoString (" ");
+        }
+        case Ask::changes:
+        {
+            if (rows.empty()) return "I haven't changed anything yet.";
+            juce::StringArray why;
+            for (auto& r : rows)
+                if (r.selected && why.size() < 4) why.addIfNotAlreadyThere (r.reason + ".");
+            return summary() + " The main reasons: " + why.joinIntoString (" ") + " Ask me why about any part.";
+        }
+        case Ask::analysis:
+        {
+            if (! known.valid) return "I haven't heard your vocal yet: load the vocal file, or press play in your project, then ask again.";
+            juce::StringArray out;
+            out.add ("Measured: " + juce::String (known.activeSeconds, 1) + " s of voice" + (known.peakDb > -120.0f ? ", peaks at " + juce::String (known.peakDb, 1) + " dBFS" : juce::String())
+                     + (known.rmsDb > -120.0f ? ", level " + juce::String (known.rmsDb, 1) + " dBFS RMS" : juce::String()) + ".");
+            for (auto& x : diag.items)
+                out.add (juce::String (x.measured ? "Measured: " : "Estimate: ") + x.plain);
+            if (diag.empty()) out.add ("Nothing stands out: the recording is in good shape to mix.");
+            if (! known.fromFile) out.add ("This is the live five-band read; load the vocal file for pitch, key, noise and a finer tone read.");
+            return out.joinIntoString (" ");
+        }
+        case Ask::key:
+            if (keyKnown) return "Probably " + analysis::keyName (keyRoot, keyIsMinor) + ": an estimate from the held notes in your file. Check it on TUNE before you rely on it.";
+            return known.fromFile ? "I can't tell the key reliably from this take (rap, short phrases and few different notes make it ambiguous), so I won't guess. Set it on TUNE."
+                                  : "Load your vocal file and I'll estimate it. The live input doesn't give me enough to name a key.";
+        case Ask::help:
+            return "Tell me the sound you want (\"polished emotional melodic rap with a little atmosphere\", \"less reverb\", \"make the tuning harder\") and I build it from GlitchKid's own effects, "
+                   "fitted to what I measured in your vocal. Ask \"why\" about any change, \"what did you change\", or \"analyze my vocal\". I run on this computer; no internet is needed.";
+        case Ask::none: break;
+    }
+    return {};
 }
 
 void Director::setFoundation (const automode::MixProposal& p)
@@ -711,6 +934,18 @@ void Director::noteManualEdit (const SoundState& now)
         }
     base = now;
     rebuild();
+}
+
+SoundState Director::plan (const SoundState& now, const std::set<juce::String>& keepAsIs) const
+{
+    SoundState s = base; // the session's starting sound, with the plan on top
+    for (auto& r : rows)
+        if (r.selected)
+            s.set (r.id, r.to);
+    for (auto& e : s.values) // level, the limiter, Bypass and anything moved by hand stay exactly as they are now
+        if (! isAllowed (e.id) || keepAsIs.count (e.id) > 0)
+            e.value = now.get (e.id, e.value);
+    return s;
 }
 
 SoundState Director::selectedChanges() const

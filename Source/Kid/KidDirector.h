@@ -1,5 +1,6 @@
 #pragma once
 #include "../AutoMode/MixEngine.h"
+#include "VocalDiagnosis.h"
 #include "../Presets/SoundState.h"
 #include <algorithm>
 #include <array>
@@ -9,9 +10,11 @@
 
 namespace glitchkid::kid
 {
-// KID, the vocal director: turns what the artist says (typed, tapped or transcribed) into a PROPOSAL of changes to GlitchKid's own parameters.
-// It never touches audio or plug-in state: the editor applies the ticked changes, through the normal parameter calls, only when the artist presses Apply.
-// Deterministic rule tables (no model): words -> intent -> a musical direction with memory -> goal-directed decisions -> validation -> proposal.
+// KID, the vocal producer: turns what the artist says (typed, tapped or transcribed) and what the analysis found into a MIX PLAN for GlitchKid's own parameters.
+// It never touches audio or plug-in state: the editor applies the plan through the normal parameter calls.
+// Deterministic and local (no model, no network): words -> intent -> a musical direction with memory; analysis -> diagnosis -> corrections;
+// both -> goal-directed decisions adapted to the recording -> validation against each parameter's real range -> the plan, every row with its reason.
+// The plan is always relative to the session's starting sound (begin()), so feedback ("less reverb") reshapes the same mix instead of piling up.
 enum Dim { bright = 0, warm, presence, punch, width, depth, clean, exp, numDims };
 
 // What one sentence asked for.
@@ -28,6 +31,11 @@ struct IntentFrame
     int tune = 0;                        // 0 = not mentioned, 1 natural, 2 light, 3 hard (macros::TuneStyle + 1), -1 = Pitch Tune off
     int cleanLevel = 0;                  // Clean My Vocal: 1 gentle, 2 balanced, 3 aggressive (0 = not asked)
     bool buildMix = false;               // "build my mix": a whole mix from the profile and the analysis
+    bool raw = false;                    // "more raw", "less polished": back off the polish
+    bool towardProfile = false;          // "more like that reference": further toward the chosen profile
+    enum class Ask { none, why, changes, analysis, key, help };
+    Ask ask = Ask::none;                 // a question: answered from the plan and the analysis, the sound does not change
+    juce::String topic;                  // what a "why" question is about: tuning, space, highs, harsh, lows, dynamics, warmth, width, air, ess, clean, effects
     juce::StringArray heard, notes;      // the words used; honest notes (level and tuning are yours, there is no reverb)
     bool touched (Dim d) const { return std::abs (ops[(size_t) d]) > 1e-6f; }
     bool anyOps() const;
@@ -55,29 +63,13 @@ juce::String artistDisclaimer (const juce::String& artist, int profile);
 // saved (labelled). Pitch Tune, Gain, Mix, CLEAN, AIR and the limiter are carried over from `current`, exactly as the BUILD page does. profile 0 = the clean default.
 automode::MixProposal buildFoundation (int profile, const SoundState& current, const SoundState& factoryDefault, const analysis::VocalAnalysis& lead, const automode::RangeLookup&);
 
-// Measurements KID may use; only fields the engine really measures (VocalAnalysis, CleanLab::Applied).
-struct AnalysisFacts
-{
-    bool valid = false;
-    float activeSeconds = 0.0f, sibilanceIndex = 0.0f, dynamicRangeDb = 0.0f, mudHz = 0.0f; // mudHz: CLEAN's detected mud frequency, 0 = not measured (CLEAN off)
-    std::array<float, 5> bandFraction {};
-    int clippedSamples = 0;
-    // From a loaded vocal file (VocalFileReport) when there is one; estimates, used only as stated.
-    bool fromFile = false;
-    bool keyReliable = false;            // only then may KID set Pitch Tune's key and scale
-    int keyTonic = 0;
-    bool keyMinor = false;
-    bool noiseKnown = false;
-    float noiseFloorDb = -120.0f;
-    float voicedShare = 0.0f, offNoteCents = 0.0f;
-};
-
 struct Change
 {
     enum class Tag { added, up, down, same, manual };
     juce::String id;
     float from = 0.0f, to = 0.0f;
-    juce::String reason;
+    juce::String reason;                 // plain English
+    juce::String detail;                 // the technical side, only where it adds something true (measurements, frequencies, filter shapes)
     Tag tag = Tag::added;
     bool selected = true;
 };
@@ -102,6 +94,12 @@ public:
     int tuneStyle() const { return tuneChoice; }
     int cleanLevel() const { return cleanChoice; }
     juce::String summary() const;                    // one explainable sentence made from the proposal's real rows ("Added gentle pitch correction, ...")
+    juce::String answer (const IntentFrame&) const;  // a question about the plan or the analysis, answered only from the real rows and measurements
+    const Diagnosis& diagnosis() const { return diag; }
+    const SoundState& start() const { return base; }  // the session's starting sound (begin())
+    const AnalysisFacts& facts() const { return known; }
+    void setFacts (const AnalysisFacts&);            // new measurements (a file or the live input): the diagnosis and the plan adapt
+    SoundState plan (const SoundState& now, const std::set<juce::String>& keepAsIs) const; // the whole target sound: the start sound, the selected rows on top; ids in keepAsIs stay as they are now
 
     const std::vector<Change>& proposal() const { return rows; }
     const juce::StringArray& removed() const { return removedIds; }
@@ -131,6 +129,8 @@ private:
     int profileIndex = 0, tuneChoice = 0, cleanChoice = 0;
     bool keyKnown = false, keyIsMinor = false;
     int keyRoot = 0;
+    AnalysisFacts known;
+    Diagnosis diag;
     std::vector<Change> rows;
     std::map<juce::String, float> previous;
     juce::StringArray removedIds, refusedIds;

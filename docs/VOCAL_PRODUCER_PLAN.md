@@ -1,3 +1,35 @@
+# Vocal Producer — plan and status
+
+## Round 2 (this build): simplify the screen, deepen the intelligence
+
+**Audit.** These parts already existed:
+
+| Area | What exists |
+|---|---|
+| DSP | Pitch Tune; 4-band EQ (Bell 2 can be aimed and its Q set); CLEAN LAB, which measures and corrects rumble (70 Hz high-pass blended in only as far as the measured sub energy calls for), low-mid build-up, up to 3 narrow resonances, and S's; compressor; saturation; AIR; Echo; Dimension; Doubler; limiter |
+| Analysis | Live VocalAnalyzer: 5 bands, levels, sibilance. VocalFileAnalysis (round 1). SpectralAccumulator: third-octave tone shape |
+| Build engine | MixEngine (Build My Mix with profiles) |
+| KID | The KID director |
+
+**Missing:**
+
+* a diagnosis step between measurement and decision;
+* adapting taste to the recording;
+* feedback that reshapes the same mix;
+* answers to "why";
+* a simple screen.
+
+**Smallest change:**
+
+1. Add the tone shape to the file analysis.
+2. Add a separate diagnosis module.
+3. Extend the KID director (corrections, adaptation, a plan relative to the starting sound, answers).
+4. Rewrite only the KID page, and give it the whole window.
+
+No new DSP and no new dependency.
+
+Round 1's plan below is kept for the record. Its screen was replaced in round 2.
+
 # Vocal Producer — audit and plan (this build)
 
 ## Audit (repository at `830cbbd`)
