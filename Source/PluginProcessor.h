@@ -19,6 +19,7 @@
 #include "AlterEgos.h"
 #include "Presets/SoundState.h"
 #include "Analysis/VocalAnalyzer.h"
+#include "Mastering/MasteringEngine.h"
 #include "AutoMode/AutoMix.h"
 
 // Signal path: input -> pitch tune (optional) -> formant shift (optional) -> harmony voice (optional, adds latency while on) -> vocal mutation (optional, zero latency) -> vocal doubler (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
@@ -65,6 +66,15 @@ public:
     static constexpr const char* limCeilingId  = "lim_ceiling";
     static constexpr const char* limDriveId    = "lim_drive";
     static constexpr const char* limReleaseId  = "lim_release";
+    // MASTERING: appended after the limiter. A separate chain for a finished stereo mix (GlitchKid on the master bus); off by default, so every existing
+    // session, preset and the vocal chain are unchanged. Not part of a vocal sound (presets, A/B, Kid): see SoundState::isSoundParameter.
+    static constexpr const char* masterOnId        = "master_on";        // Mastering mode: this instance masters instead of processing a vocal
+    static constexpr const char* masterStyleId     = "master_style";     // index into glitchkid::master::Style
+    static constexpr const char* masterIntensityId = "master_intensity"; // percent
+    static constexpr const char* masterLoudnessId  = "master_loudness";  // dB of drive into the limiter
+    static constexpr const char* masterToneId      = "master_tone";      // -100 (darker) .. +100 (brighter)
+    static constexpr const char* masterWidthId     = "master_width";     // percent
+    static constexpr const char* masterOutputId    = "master_output";    // dB, 0 or below
     static constexpr const char* cleanOnId     = "clean_on";
     static constexpr const char* cleanAmountId = "clean_amount"; // percent: how much of each section is allowed
     static constexpr const char* cleanToneId   = "clean_tone";   // percent trim of the corrective EQ section
@@ -225,6 +235,11 @@ public:
     // The newest audio for the interface's waveform and spectrum views (the vocal input before processing, the output after it, and the Instrumental input).
     const glitchkid::analysis::DisplayTap& getInputTap() const { return inputTap; }
     const glitchkid::analysis::DisplayTap& getOutputTap() const { return outputTap; }
+    // Mastering (UI read-outs; the meters are written by the audio thread and read through atomics)
+    bool isMasteringMode() const { return masterParams[0]->load() >= 0.5f; }
+    const glitchkid::master::MasteringEngine& getMastering() const { return mastering; }
+    glitchkid::master::Controls readMasterControls() const;
+    void requestMasterMeterReset() { masterMeterReset.store (true); } // message thread; the audio thread clears the meters at its next block
     const glitchkid::analysis::DisplayTap& getBeatTap() const { return beatTap; }
     float consumeLimiterGainReductionDb() { return limiter.consumeGainReductionDb(); } // the largest limiter gain reduction since the last call (dB, positive)
     float consumeBeatPeak() { return beatPeak.exchange (0.0f); } // peak of the Instrumental input since the last call (0 when none is connected)
@@ -334,6 +349,12 @@ private:
     glitchkid::analysis::DisplayTap inputTap, outputTap, beatTap;
     OutputLimiter limiter;
     std::atomic<float>* limParams[4] {};
+    glitchkid::master::MasteringEngine mastering;
+    std::atomic<float>* masterParams[7] {};
+    bool masterWasOn = false;
+    int modeFadeLeft = 0, modeFadeLength = 480;   // a short fade-in after Mastering mode is switched (no click)
+    std::atomic<bool> masterMeterReset { false };
+    void processMaster (juce::AudioBuffer<float>&);
     OutputLimiter::Settings readLimiterSettings() const;
     void runOutputLimiter (juce::AudioBuffer<float>&, int numChannels, int numSamples) noexcept;
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };

@@ -605,7 +605,7 @@ struct AutoModeTests : public juce::UnitTest
             expectEquals (a.getAutoIntensity(), 1.0f);
 
             // The intensity is not a sound parameter: presets neither store nor change it.
-            expectEquals ((int) a.captureSoundState().values.size(), a.getParameters().size() - 1);
+            expectEquals ((int) a.captureSoundState().values.size(), a.getParameters().size() - 1 - 7); // not Bypass, not mastering
             auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("glitchkid-am-" + juce::String::toHexString (juce::Random().nextInt64()));
             glitchkid::PresetController c (a, glitchkid::PresetStore (dir));
             a.setAutoIntensity (0.25f);

@@ -38,7 +38,7 @@ struct KidTests : public juce::UnitTest
                     ++total;
                     allowed += Director::isAllowed (r->paramID) ? 1 : 0;
                 }
-            expectEquals (total, 69);
+            expectEquals (total, 76);
             expectEquals (allowed, 62);
             for (auto* id : { "gain", "mix", "bypass", "lim_on", "lim_ceiling", "lim_drive", "lim_release" })
                 expect (! Director::isAllowed (id), id);

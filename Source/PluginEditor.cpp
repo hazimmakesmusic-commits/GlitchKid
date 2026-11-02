@@ -153,8 +153,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
     {
-        const int saved = p.getUiInt ("uiLevel", (int) Page::kid); // first launch: KID. 0-4 keep their old meaning, 5 is REFERENCE, 6 KID, 7 LAB; anything else behaves as before (clamped to FINAL TOUCH)
-        page = (Page) (saved >= 0 && saved <= 7 ? saved : juce::jlimit (0, 4, saved));
+        const int saved = p.getUiInt ("uiLevel", (int) Page::kid); // first launch: MAIN. 0-4 keep their old meaning, 5 is REFERENCE, 6 MAIN, 7 LAB, 8 MASTERING; anything else behaves as before (clamped to FINAL TOUCH)
+        page = (Page) (saved >= 0 && saved <= 8 ? saved : juce::jlimit (0, 4, saved));
     }
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
@@ -683,7 +683,11 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         mh.presetStep = [this] (int direction) { showStatus (presets.step (direction).message); shownPresetText = {}; refreshPresetBar(); };
         mh.openKid = [this] { showMainView (true); };
         mh.openAdvanced = [this] { selectRail (4); }; // the detailed pages, starting with TUNE; MAIN in the rail comes back
+        mh.openMastering = [this] { showPage (Page::master, true); };
         mainScreen = std::make_unique<ui::MainScreen> (p, std::move (mh));
+        ui::MasteringScreen::Hooks msh;
+        msh.back = [this] { showMainView (false); };
+        masteringScreen = std::make_unique<ui::MasteringScreen> (p, std::move (msh));
         kidView = p.getUiInt ("uiMainView", 0) == 1;
         labPage = std::make_unique<ui::LabPage> (p.apvts);
     }
@@ -754,7 +758,7 @@ void GlitchKidEditor::visualTick()
 
 void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
 {
-    if (transition >= 1.0f || page == Page::kid)
+    if (transition >= 1.0f || page == Page::kid || page == Page::master)
         return;
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
     const float y = (float) pageTop + transition * 458.0f;
@@ -808,6 +812,7 @@ int GlitchKidEditor::railIndex() const
         case Page::clean: return 3;
         case Page::finalTouch: return 4 + category;
         case Page::lab: return 8;
+        case Page::master: return 0; // full window, no rail
         case Page::beat: return 9;
         case Page::reference: return 10;
     }
@@ -1937,7 +1942,7 @@ void GlitchKidEditor::layoutContent()
             child->setVisible (false);
     if (referencePanel != nullptr && page != Page::reference && referencePanel->getParentComponent() == &content)
         content.removeChildComponent (referencePanel.get());
-    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { mainScreen.get(), Page::kid }, { labPage.get(), Page::lab } })
+    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { mainScreen.get(), Page::kid }, { labPage.get(), Page::lab }, { masteringScreen.get(), Page::master } })
         if (c != nullptr && (page != p || (c == kidPanel.get() && ! kidView) || (c == mainScreen.get() && kidView)) && c->getParentComponent() == &content)
             content.removeChildComponent (c);
     panelRects.clear();
@@ -1991,6 +1996,15 @@ void GlitchKidEditor::layoutContent()
         content.addChildComponent (shown);
         place (shown, { 0, 0, designW, designH });
         shown.toFront (false);
+    }
+    // ---- MASTERING: the whole window, its own header ----
+    if (page == Page::master && masteringScreen != nullptr)
+    {
+        for (auto* c : persistent)
+            c->setVisible (false);
+        content.addChildComponent (*masteringScreen);
+        place (*masteringScreen, { 0, 0, designW, designH });
+        masteringScreen->toFront (false);
     }
     // ---- LAB: a self-contained page ----
     if (page == Page::lab && labPage != nullptr)

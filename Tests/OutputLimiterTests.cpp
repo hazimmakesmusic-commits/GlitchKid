@@ -312,10 +312,10 @@ struct OutputLimiterTests : public juce::UnitTest
             expect (frac < 0.25);
         }
 
-        beginTest ("in the real plug-in: 69 parameters, the limiter ones are appended last and off by default (an older state is unchanged)");
+        beginTest ("in the real plug-in: the limiter parameters keep indices 65-68 (mastering is appended after them), off by default (an older state is unchanged)");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 69);
+            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
             const char* ids[4] = { "lim_on", "lim_ceiling", "lim_drive", "lim_release" };
             for (int i = 0; i < 4; ++i)
                 expectEquals (juce::String (dynamic_cast<juce::RangedAudioParameter*> (p.getParameters()[65 + i])->paramID), juce::String (ids[i]));

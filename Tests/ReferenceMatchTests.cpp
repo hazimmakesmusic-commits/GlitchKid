@@ -299,7 +299,7 @@ struct ReferenceMatchTests : public juce::UnitTest
             p2.applyParameterChanges (after);
             for (const auto& c : applied)
                 expectWithinAbsoluteError (th::getParam (p2, c.id.toRawUTF8()), c.to, 0.06f);
-            expectEquals (p2.getParameters().size(), 69);
+            expectEquals (p2.getParameters().size(), 76);
             (void) cur;
         }
 
@@ -525,16 +525,16 @@ struct ReferenceUiTests : public juce::UnitTest
         refBright.fullMix = true;
         auto voc = profileOf (plain, sr);
 
-        beginTest ("saved tab numbers keep their meaning: 0-4 as before, 5 is REFERENCE, 6 KID, 7 LAB, junk behaves as before; choosing the tab remembers it");
+        beginTest ("saved tab numbers keep their meaning: 0-4 as before, 5 is REFERENCE, 6 MAIN, 7 LAB, 8 MASTERING, junk behaves as before; choosing the tab remembers it");
         {
-            for (int saved : { 0, 1, 2, 3, 4, 5, 6, 7 })
+            for (int saved : { 0, 1, 2, 3, 4, 5, 6, 7, 8 })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
                 std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
                 expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), saved);
             }
-            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 0 }, { 8, 4 } })
+            for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 0 }, { 12, 4 } })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
@@ -549,7 +549,7 @@ struct ReferenceUiTests : public juce::UnitTest
             expect (ed->uiReferencePanelForTest().isVisible() && ed->uiReferencePanelForTest().getParentComponent() != nullptr);
             ed->uiShowWorkspaceForTest (0);
             expect (ed->uiReferencePanelForTest().getParentComponent() == nullptr, "the panel is only part of the window while its own tab is open");
-            expectEquals (p.getParameters().size(), 69);
+            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
         }
 
         beginTest ("the eleven rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
@@ -615,7 +615,7 @@ struct ReferenceUiTests : public juce::UnitTest
             expect (moved >= 1 && ed->uiCanUndoForTest());
             for (const char* id : { "gain", "mix", "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed", "eq_lo_gain" })
                 expectWithinAbsoluteError (after.get (id, -99.0f), before.get (id, -99.0f), 1.0e-4f, id);
-            expectEquals (p.getParameters().size(), 69);
+            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
             ed->uiUndoForTest();
             for (const auto& v : before.values)
                 expectWithinAbsoluteError (th::getParam (p, v.id.toRawUTF8()), v.value, 1.0e-3f);

@@ -3,6 +3,29 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- **Mastering Lab.** A separate mastering workspace and chain for a finished stereo mix. See `docs/MASTERING.md`.
+  - **Parameters:** 7 new ones (`master_*`), appended after the limiter.
+    - `master_on` (Mastering mode) is not automatable and is off by default, so every existing session, preset and the vocal chain are unchanged.
+    - `SoundState::isSoundParameter` excludes `master_*`, so vocal presets, A/B and Kid never touch mastering.
+  - **New DSP** (`Source/Mastering`), each part tested on its own:
+    - `LoudnessMeter`: BS.1770-4 K-weighting for any sample rate; momentary, short-term and integrated loudness (gated, histogram-based, no allocation); sample peak, true peak (4x), correlation and clipping.
+    - `MasterLimiter`: look-ahead, true-peak aware, linked, with a smooth in-time gain.
+    - `StereoWidth`: the mid is untouched; only content above 120 Hz is widened (4th-order high-pass); the side is capped at 90 % of the mid's energy.
+    - `MasteringEngine`: the existing EQ, compressor and 4x saturation, then width, the limiter, a trim and meters; four styles; a level-matched, time-aligned ORIGINAL that is never raised into clipping.
+    - `MasterRender`: offline analysis and a 24-bit WAV export on a worker thread.
+  - **Processor:** in Mastering mode the main bus goes through the mastering engine instead of the vocal chain, with a 10 ms fade when switching. The latency is reported for the active chain.
+  - **UI:**
+    - the Mastering Lab screen (page 8, the whole window);
+    - a Mastering button on the instrument, and a notice there when an instance is in Mastering mode;
+    - the instrument's dial and button styles moved to `UI/NeonKit` so both screens share them.
+  - **Tests** are in `MasteringTests`, `MasteringPluginTests` and `Mastering Lab (screen)`:
+    - loudness accuracy (EBU-style cases), true peak;
+    - the limiter's ceiling at 44.1, 48 and 96 kHz;
+    - width mono-safety;
+    - the chain on quiet, loud, transient, bass-heavy, wide and mono mixes in every style;
+    - the compare, export alignment, CPU.
+
+    Parameter-count tests were updated from 69 to 76, and the saved page 8 now opens Mastering.
 - The GlitchKid instrument: a new first screen (UI only: no audio, DSP, parameter ID, preset, state or routing change). `Source/UI/MainScreen`. Three zones, one ultraviolet accent and an electric-pink second accent used sparingly:
   - **Header:** the wordmark, a preset selector (previous / menu / next, the editor's own preset logic), ORIGINAL / PROCESSED (the real bypass), Kid, and Advanced (the detailed pages).
   - **The ribbon:** the level of what comes in (a faint line) and what GlitchKid sends out (a glowing mirrored ribbon, newest on the right), read from the plug-in's existing input and output display taps, with the real peak levels; "Play your track" when nothing arrives.

@@ -18,7 +18,7 @@ struct SoundState
     float egoChaos = 0.0f;
     int egoSeed = 0;
 
-    static bool isSoundParameter (const juce::String& id) { return id != "bypass"; }
+    static bool isSoundParameter (const juce::String& id) { return id != "bypass" && ! id.startsWith ("master_"); } // mastering is not part of a vocal sound
 
     bool has (const juce::String& id) const;
     float get (const juce::String& id, float fallback) const; // the stored value, or `fallback` if the id is not in the state

@@ -145,7 +145,7 @@ struct BeatLockTests : public juce::UnitTest
         beginTest ("applied to the real plug-in and undone: the parameters really move and come back; the parameter count is unchanged");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 69);
+            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
             const auto r = am::analyseBeatLock (lead(), crowded(), am::InstrumentalInput::live);
             const auto before = p.captureSoundState();
             std::vector<bool> all (r.items.size(), true);

@@ -86,7 +86,7 @@ struct PresetTests : public juce::UnitTest
         {
             GlitchKidProcessor p;
             const auto d = p.factoryDefaultState();
-            expectEquals ((int) d.values.size(), p.getParameters().size() - 1, "every parameter except Bypass");
+            expectEquals ((int) d.values.size(), p.getParameters().size() - 1 - 7, "every parameter except Bypass and the 7 mastering ones");
             expect (! d.has ("bypass"));
             expect (d.egoId.isEmpty());
             for (auto* r : soundParameters (p))

@@ -29,12 +29,12 @@ struct MainScreenTests : public juce::UnitTest
                 if (std::abs (b.get (v.id, -999) - v.value) > 1e-4f) return false;
             return true;
         };
-        auto shot = [&] (const juce::String& name)
+        auto shot = [&] (const juce::String& shotName)
         {
             const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
             if (dir.isEmpty()) return;
             auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
-            juce::File f = juce::File (dir).getChildFile (name + ".png");
+            juce::File f = juce::File (dir).getChildFile (shotName + ".png");
             f.deleteFile();
             juce::FileOutputStream os (f);
             if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
@@ -102,10 +102,10 @@ struct MainScreenTests : public juce::UnitTest
 
         beginTest ("presets from the header, the real bypass, and the views never change the sound");
         {
-            const auto name = main.presetTextForTest();
+            const auto presetBefore = main.presetTextForTest();
             main.pressForTest (">");
             for (int i = 0; i < 6; ++i) main.tickForTest();
-            expect (main.presetTextForTest() != name && main.presetTextForTest() == p.getPresetName(), "next preset: " + main.presetTextForTest());
+            expect (main.presetTextForTest() != presetBefore && main.presetTextForTest() == p.getPresetName(), "next preset: " + main.presetTextForTest());
             main.pressForTest ("Original");
             expect (getParam (p, "bypass") > 0.5f && ! p.isLevelMatchedCompare(), "ORIGINAL is the exact bypass here");
             main.pressForTest ("Processed");
@@ -150,4 +150,116 @@ struct MainScreenTests : public juce::UnitTest
     }
 };
 static MainScreenTests mainScreenTests;
+
+// The Mastering Lab inside the editor: reached from the instrument, every control a parameter, the mode switch, the live verdict, a file loaded and exported.
+struct MasteringScreenTests : public juce::UnitTest
+{
+    MasteringScreenTests() : juce::UnitTest ("Mastering Lab (screen)", "GlitchKid") {}
+
+    void runTest() override
+    {
+        const double fs = 48000.0;
+        GlitchKidProcessor p;
+        p.prepareToPlay (fs, 480);
+        std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
+        auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+        auto& lab = ed->uiMasteringScreenForTest();
+        auto mixOf = [fs] (double seconds, float peak)
+        {
+            juce::Random rng (3);
+            juce::AudioBuffer<float> b (2, (int) (fs * seconds));
+            double a = 0.0;
+            for (int i = 0; i < b.getNumSamples(); ++i)
+            {
+                a += 0.03 * ((rng.nextFloat() * 2.0 - 1.0) - a);
+                const float side = 0.15f * (rng.nextFloat() * 2.0f - 1.0f);
+                b.setSample (0, i, (float) (4.0 * a) + side);
+                b.setSample (1, i, (float) (4.0 * a) - side);
+            }
+            b.applyGain (juce::Decibels::decibelsToGain (peak) / juce::jmax (b.getMagnitude (0, 0, b.getNumSamples()), b.getMagnitude (1, 0, b.getNumSamples())));
+            return b;
+        };
+        auto shot = [&] (const juce::String& shotName)
+        {
+            const auto dir = juce::SystemStats::getEnvironmentVariable ("GLITCHKID_SNAPSHOT_DIR", {});
+            if (dir.isEmpty()) return;
+            auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+            juce::File f = juce::File (dir).getChildFile (shotName + ".png");
+            f.deleteFile();
+            juce::FileOutputStream os (f);
+            if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
+        };
+
+        beginTest ("reached from the instrument; the whole window; every control is a mastering parameter; Vocal goes back");
+        {
+            ed->uiMainScreenForTest().pressForTest ("Mastering");
+            expectEquals (ed->uiPageForTest(), 8);
+            expect (lab.getParentComponent() != nullptr && lab.getBounds() == lab.getParentComponent()->getLocalBounds() && lab.isVisible());
+            expectEquals (p.getUiInt ("uiLevel", -1), 8, "remembered with the session");
+            lab.pressForTest ("Warm & Smooth");
+            expectWithinAbsoluteError (getParam (p, "master_style"), 1.0f, 0.01f, "a style tile sets the style");
+            lab.dialForTest (0).setValue (80.0, juce::sendNotificationSync);
+            lab.dialForTest (1).setValue (5.0, juce::sendNotificationSync);
+            lab.dialForTest (2).setValue (-40.0, juce::sendNotificationSync);
+            lab.dialForTest (3).setValue (130.0, juce::sendNotificationSync);
+            lab.dialForTest (4).setValue (-2.0, juce::sendNotificationSync);
+            expectWithinAbsoluteError (getParam (p, "master_intensity"), 80.0f, 0.6f);
+            expectWithinAbsoluteError (getParam (p, "master_loudness"), 5.0f, 0.06f);
+            expectWithinAbsoluteError (getParam (p, "master_tone"), -40.0f, 0.6f);
+            expectWithinAbsoluteError (getParam (p, "master_width"), 130.0f, 0.6f);
+            expectWithinAbsoluteError (getParam (p, "master_output"), -2.0f, 0.06f);
+            for (auto& v : p.captureSoundState().values)
+                expect (! v.id.startsWith ("master_"));
+            expect (! p.isMasteringMode() && lab.verdictForTest().startsWith ("Mastering mode is off"), "off until switched on, and says so");
+            expect (! lab.exportEnabledForTest(), "nothing to export before a mix is loaded");
+        }
+
+        beginTest ("Mastering mode on: the live mix is measured and judged; ORIGINAL / MASTER switch the real bypass");
+        {
+            lab.pressForTest ("Mastering mode: off");
+            expect (p.isMasteringMode());
+            p.updateReportedLatency();
+            expectEquals (p.getLatencySamples(), p.getMastering().latencySamples());
+            auto mix = mixOf (6.0, -6.0f);
+            juce::MidiBuffer midi;
+            for (int s = 0; s < mix.getNumSamples(); s += 480) { juce::AudioBuffer<float> v (mix.getArrayOfWritePointers(), 2, s, 480); p.processBlock (v, midi); }
+            lab.tickForTest();
+            expect (lab.verdictForTest().startsWith ("Ready to master"), lab.verdictForTest());
+            lab.pressForTest ("Original");
+            expect (getParam (p, "bypass") > 0.5f);
+            lab.pressForTest ("Master");
+            expect (getParam (p, "bypass") < 0.5f);
+            shot ("mastering_live");
+        }
+
+        beginTest ("a mix file: measured, then exported as a 24-bit WAV master with these settings");
+        {
+            juce::TemporaryFile dirFile;
+            const auto dir = dirFile.getFile();
+            dir.createDirectory();
+            const auto src = dir.getChildFile ("song.wav");
+            {
+                juce::WavAudioFormat wav;
+                std::unique_ptr<juce::OutputStream> os (src.createOutputStream());
+                auto w = wav.createWriterFor (os, juce::AudioFormatWriterOptions{}.withSampleRate (fs).withNumChannels (2).withBitsPerSample (24));
+                const auto b = mixOf (5.0, -9.0f);
+                if (w != nullptr) w->writeFromAudioSampleBuffer (b, 0, b.getNumSamples());
+            }
+            lab.loadForTest (src);
+            for (int i = 0; i < 500 && lab.busyForTest(); ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            expect (lab.statusForTest().startsWith ("Loaded") && lab.exportEnabledForTest(), lab.statusForTest());
+            expect (lab.verdictForTest().startsWith ("Ready to master"), lab.verdictForTest());
+            const auto out = dir.getChildFile ("song master.wav");
+            lab.exportForTest (out);
+            for (int i = 0; i < 1000 && lab.busyForTest(); ++i) juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+            expect (lab.statusForTest().startsWith ("Saved") && out.existsAsFile(), lab.statusForTest());
+            shot ("mastering_file");
+            dir.deleteRecursively();
+            lab.pressForTest ("Vocal");
+            expect (ed->uiPageForTest() == 6 && ed->uiMainScreenForTest().isVisible(), "back to the instrument");
+            th::setParam (p, "master_on", 0.0f);
+        }
+    }
+};
+static MasteringScreenTests masteringScreenTests;
 }

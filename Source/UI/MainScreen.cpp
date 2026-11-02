@@ -1,87 +1,11 @@
 #include "MainScreen.h"
+#include "NeonKit.h"
 #include "PlaygroundWidgets.h"
 #include "../Macros/MacroEngine.h"
 
 namespace glitchkid::ui
 {
-namespace
-{
-// One primary accent (ultraviolet) and one secondary (electric pink, used sparingly: the newest point of the ribbon, the wordmark's underline, ORIGINAL).
-const juce::Colour bgTop (0xff0b0910), bgBottom (0xff060509), surface (0xff121117), surfaceHi (0xff1b1922), hairline (0xff25222d),
-                   uv (0xff9b5cff), uvSoft (0xffc4a6ff), pinkNeon (0xffff4fb8), white (0xfff4f2f7), dim (0xff8d8798), faint (0xff5d5868);
-}
-
-// ---- the dial: a tactile dark body with a neon value ring ----
-void MainScreen::Knob::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end, juce::Slider& s)
-{
-    const float size = (float) juce::jmin (w, h), r = size * 0.5f - 7.0f;
-    const juce::Point<float> c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f);
-    const bool hot = s.isMouseOverOrDragging() || s.hasKeyboardFocus (false);
-    const float angle = start + pos * (end - start);
-
-    juce::Path track;
-    track.addCentredArc (c.x, c.y, r, r, 0.0f, start, end, true);
-    g.setColour (hairline);
-    g.strokePath (track, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    if (pos > 0.002f)
-    {
-        juce::Path arc;
-        arc.addCentredArc (c.x, c.y, r, r, 0.0f, start, angle, true);
-        for (auto [width, alpha] : { std::pair { 10.0f, 0.08f }, std::pair { 6.0f, 0.16f } }) // a soft neon halo
-        {
-            g.setColour (uv.withAlpha (alpha * (hot ? 1.6f : 1.0f)));
-            g.strokePath (arc, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
-        g.setColour (hot ? uvSoft : uv);
-        g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    // the body: a dark machined cap, lit from above
-    const float br = r * 0.74f;
-    const auto body = juce::Rectangle<float> (2.0f * br, 2.0f * br).withCentre (c);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.fillEllipse (body.translated (0.0f, 3.0f).expanded (1.0f));
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2e2a38), c.x, body.getY(), juce::Colour (0xff111016), c.x, body.getBottom(), false));
-    g.fillEllipse (body);
-    g.setColour (juce::Colours::white.withAlpha (0.09f));
-    g.drawEllipse (body.reduced (0.5f), 1.0f);
-    const auto cap = body.reduced (br * 0.22f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1820), c.x, cap.getY(), juce::Colour (0xff23202b), c.x, cap.getBottom(), false));
-    g.fillEllipse (cap);
-    // the pointer
-    const juce::Point<float> a (c.x + std::sin (angle) * br * 0.38f, c.y - std::cos (angle) * br * 0.38f), b (c.x + std::sin (angle) * br * 0.84f, c.y - std::cos (angle) * br * 0.84f);
-    g.setColour (s.isEnabled() ? white : faint);
-    g.drawLine ({ a, b }, 2.4f);
-}
-
-void MainScreen::Pill::paintButton (juce::Graphics& g, bool over, bool down)
-{
-    auto r = getLocalBounds().toFloat().reduced (1.0f);
-    const float rad = r.getHeight() * 0.5f;
-    const bool on = getToggleState();
-    const juce::Colour accent = getProperties()["secondary"] ? pinkNeon : uv;
-    if (on)
-    {
-        g.setColour (accent.withAlpha (0.2f));
-        g.fillRoundedRectangle (r, rad);
-        g.setColour (accent);
-        g.drawRoundedRectangle (r, rad, 1.2f);
-    }
-    else
-    {
-        g.setColour (down ? surfaceHi.brighter (0.1f) : over ? surfaceHi : surface);
-        g.fillRoundedRectangle (r, rad);
-        g.setColour (hairline);
-        g.drawRoundedRectangle (r, rad, 1.0f);
-    }
-    g.setColour (on || over ? white : juce::Colour (0xffd6d2de));
-    g.setFont (fontOf (13.0f, on));
-    g.drawFittedText (getButtonText(), getLocalBounds().reduced (10, 0), juce::Justification::centred, 1, 0.8f);
-    if (hasKeyboardFocus (false))
-    {
-        g.setColour (uvSoft.withAlpha (0.8f));
-        g.drawRoundedRectangle (r.expanded (1.0f), rad + 1.0f, 1.0f);
-    }
-}
+using namespace nk;
 
 // ---- the screen ----
 MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move (h))
@@ -123,7 +47,9 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     kidButton.onClick = [this] { if (hooks.openKid) hooks.openKid(); };
     advancedButton.setTooltip ("Every control in detail: Tune, Clean, Tone, Dynamics, Space, Lab, Beat, Reference, presets and A/B.");
     advancedButton.onClick = [this] { if (hooks.openAdvanced) hooks.openAdvanced(); };
-    for (auto* b : { &prevButton, &presetButton, &nextButton, &originalButton, &processedButton, &kidButton, &advancedButton })
+    masteringButton.setTooltip ("The Mastering Lab: master a finished stereo mix (on your master bus, or a mix file). Separate from your vocal.");
+    masteringButton.onClick = [this] { if (hooks.openMastering) hooks.openMastering(); };
+    for (auto* b : { &prevButton, &presetButton, &nextButton, &originalButton, &processedButton, &kidButton, &advancedButton, &masteringButton })
         addAndMakeVisible (b);
     sync();
 }
@@ -301,13 +227,14 @@ void MainScreen::resized()
     controls = { 48, 352, W - 96, getHeight() - 372 };
 
     const int cy = header.getCentreY() - 15;
-    prevButton.setBounds (336, cy, 32, 30);
-    presetButton.setBounds (372, cy, 236, 30);
-    nextButton.setBounds (612, cy, 32, 30);
+    prevButton.setBounds (300, cy, 32, 30);
+    presetButton.setBounds (336, cy, 204, 30);
+    nextButton.setBounds (544, cy, 32, 30);
     processedButton.setBounds (W - 48 - 104, cy, 104, 30);
     originalButton.setBounds (processedButton.getX() - 104, cy, 100, 30);
     advancedButton.setBounds (originalButton.getX() - 24 - 100, cy, 100, 30);
-    kidButton.setBounds (advancedButton.getX() - 70, cy, 64, 30);
+    kidButton.setBounds (advancedButton.getX() - 62, cy, 56, 30);
+    masteringButton.setBounds (kidButton.getX() - 104, cy, 98, 30);
 
     // three sections: VOICE (2 large), CHARACTER (3 large), OUTPUT (2 smaller)
     const int x0 = controls.getX(), w = controls.getWidth();
@@ -461,6 +388,13 @@ void MainScreen::paintRibbon (juce::Graphics& g)
         g.setFont (fontOf (14.0f));
         g.setColour (faint);
         g.drawText ("Play your track to see your vocal", r.toNearestInt(), juce::Justification::centred, false);
+    }
+    if (proc.isMasteringMode())
+    {
+        g.setFont (fontOf (13.0f, true));
+        g.setColour (pinkNeon);
+        g.drawText ("This GlitchKid is in Mastering mode: the vocal controls below are not in use. Open Mastering to switch back.",
+                    r.toNearestInt().removeFromBottom (18), juce::Justification::centred, false);
     }
 }
 }

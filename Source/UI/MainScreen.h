@@ -1,5 +1,6 @@
 #pragma once
 #include "../PluginProcessor.h"
+#include "NeonKit.h"
 #include <array>
 #include <functional>
 #include <memory>
@@ -19,7 +20,7 @@ public:
     {
         std::function<void (juce::Component& anchor)> presetMenu;  // the editor's preset menu, opened under `anchor`
         std::function<void (int direction)> presetStep;            // previous (-1) / next (+1) preset
-        std::function<void()> openKid, openAdvanced;
+        std::function<void()> openKid, openAdvanced, openMastering;
     };
     static constexpr int numDials = 7;
 
@@ -50,12 +51,8 @@ private:
         std::unique_ptr<juce::SliderParameterAttachment> attachment; // single-parameter dials: JUCE's own gesture-correct binding
         bool large = true;
     };
-    struct Knob : juce::LookAndFeel_V4 { void drawRotarySlider (juce::Graphics&, int, int, int, int, float, float, float, juce::Slider&) override; };
-    struct Pill : juce::Button
-    {
-        explicit Pill (const juce::String& label) : juce::Button (label) { setWantsKeyboardFocus (true); }
-        void paintButton (juce::Graphics&, bool over, bool down) override;
-    };
+    using Knob = nk::Knob;
+    using Pill = nk::Pill;
 
     GlitchKidProcessor& proc;
     Hooks hooks;
@@ -64,7 +61,7 @@ private:
     juce::ComboBox keyBox, scaleBox;
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
     Pill prevButton { "<" }, presetButton { "Preset" }, nextButton { ">" }, originalButton { "Original" }, processedButton { "Processed" },
-         kidButton { "Kid" }, advancedButton { "Advanced" };
+         kidButton { "Kid" }, advancedButton { "Advanced" }, masteringButton { "Mastering" };
 
     std::array<float, 240> envIn {}, envOut {}; // level history, newest first (0..1 on a 60 dB scale)
     std::vector<float> scratch;

@@ -299,7 +299,7 @@ Director::Director (automode::RangeLookup r) : ranges (std::move (r)) {}
 
 bool Director::isAllowed (const juce::String& id)
 {
-    return ! (id.startsWith ("lim_") || id == "gain" || id == "mix" || id == "bypass") && id.isNotEmpty(); // level and the safety limiter stay the artist's
+    return ! (id.startsWith ("lim_") || id.startsWith ("master_") || id == "gain" || id == "mix" || id == "bypass") && id.isNotEmpty(); // level, the limiter and mastering stay the artist's
 }
 
 int Director::stageOf (const juce::String& id)

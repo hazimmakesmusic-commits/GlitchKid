@@ -83,6 +83,9 @@ target_sources(GlitchKid PRIVATE
     Source/Macros/MacroEngine.cpp
     Source/Kid/KidDirector.cpp
     Source/Kid/VocalDiagnosis.cpp
+    Source/Mastering/MasterDsp.cpp
+    Source/Mastering/MasteringEngine.cpp
+    Source/Mastering/MasterRender.cpp
     Source/Kid/KidSpeech.cpp
     Source/UI/PlaygroundWidgets.cpp
     Source/UI/LabKit.cpp
@@ -90,6 +93,8 @@ target_sources(GlitchKid PRIVATE
     Source/UI/ReferencePanel.cpp
     Source/UI/KidPanel.cpp
     Source/UI/MainScreen.cpp
+    Source/UI/NeonKit.cpp
+    Source/UI/MasteringScreen.cpp
     Source/UI/LabPage.cpp
     Source/Analysis/DisplaySpectrum.cpp
     Source/UI/EffectModel.cpp
@@ -179,6 +184,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/KidTests.cpp
         Tests/VocalFileTests.cpp
         Tests/MainScreenTests.cpp
+        Tests/MasteringTests.cpp
+        Tests/MasteringPluginTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -211,6 +218,9 @@ if(GLITCHKID_BUILD_TESTS)
         Source/Macros/MacroEngine.cpp
         Source/Kid/KidDirector.cpp
         Source/Kid/VocalDiagnosis.cpp
+        Source/Mastering/MasterDsp.cpp
+        Source/Mastering/MasteringEngine.cpp
+        Source/Mastering/MasterRender.cpp
         Source/Kid/KidSpeech.cpp
         Source/UI/PlaygroundWidgets.cpp
         Source/UI/LabKit.cpp
@@ -218,6 +228,8 @@ if(GLITCHKID_BUILD_TESTS)
         Source/UI/ReferencePanel.cpp
         Source/UI/KidPanel.cpp
         Source/UI/MainScreen.cpp
+        Source/UI/NeonKit.cpp
+        Source/UI/MasteringScreen.cpp
         Source/UI/LabPage.cpp
         Source/Analysis/DisplaySpectrum.cpp
         Source/UI/EffectModel.cpp

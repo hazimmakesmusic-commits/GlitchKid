@@ -184,6 +184,21 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { limReleaseId, 1 }, "Limiter Release",
         NormalisableRange<float> (10.0f, 500.0f, 1.0f), 80.0f, AudioParameterFloatAttributes().withLabel ("ms")));
 
+    // MASTERING: appended after the limiter, so every existing parameter keeps its host index. The mode switch is not automatable (it changes the chain and the latency).
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { masterOnId, 1 }, "Mastering Mode", false, AudioParameterBoolAttributes().withAutomatable (false)));
+    layout.add (std::make_unique<AudioParameterChoice> (ParameterID { masterStyleId, 1 }, "Master Style",
+        StringArray { "Clean & Balanced", "Warm & Smooth", "Loud & Punchy", "Wide & Atmospheric" }, 0));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterIntensityId, 1 }, "Master Intensity",
+        NormalisableRange<float> (0.0f, 100.0f, 1.0f), 60.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterLoudnessId, 1 }, "Master Loudness",
+        NormalisableRange<float> (0.0f, 10.0f, 0.1f), 3.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterToneId, 1 }, "Master Tone",
+        NormalisableRange<float> (-100.0f, 100.0f, 1.0f), 0.0f));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterWidthId, 1 }, "Master Width",
+        NormalisableRange<float> (0.0f, 200.0f, 1.0f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterOutputId, 1 }, "Master Output",
+        NormalisableRange<float> (-12.0f, 0.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+
     return layout;
 }
 
@@ -240,6 +255,9 @@ GlitchKidProcessor::GlitchKidProcessor()
     const char* limIds[] = { limOnId, limCeilingId, limDriveId, limReleaseId };
     for (int i = 0; i < 4; ++i)
         limParams[i] = apvts.getRawParameterValue (limIds[i]);
+    const char* masterIds[] = { masterOnId, masterStyleId, masterIntensityId, masterLoudnessId, masterToneId, masterWidthId, masterOutputId };
+    for (int i = 0; i < 7; ++i)
+        masterParams[i] = apvts.getRawParameterValue (masterIds[i]);
 
     if (juce::MessageManager::existsAndIsCurrentThread())
         startTimerHz (10); // keeps the reported latency in step with the Tune switch (never touches the audio thread)
@@ -300,8 +318,22 @@ glitchkid::pitch::PitchCorrector::Settings GlitchKidProcessor::readTuneSettings(
     return s;
 }
 
+glitchkid::master::Controls GlitchKidProcessor::readMasterControls() const
+{
+    glitchkid::master::Controls c;
+    c.style = (glitchkid::master::Style) juce::jlimit (0, glitchkid::master::numStyles - 1, (int) std::lround (masterParams[1]->load()));
+    c.intensity = masterParams[2]->load() * 0.01f;
+    c.loudnessDb = masterParams[3]->load();
+    c.tone = masterParams[4]->load() * 0.01f;
+    c.width = masterParams[5]->load() * 0.01f;
+    c.outputDb = masterParams[6]->load();
+    return c;
+}
+
 int GlitchKidProcessor::getWantedLatencySamples() const
 {
+    if (masterParams[0]->load() >= 0.5f)
+        return mastering.latencySamples();
     return Saturation::latencySamples + (tuneParams[0]->load() >= 0.5f ? pitchLatency : 0)
            + (formantIsOn (formantShift->load()) ? formantLatency : 0) + (harmParams[0]->load() >= 0.5f ? harmonyLatency : 0)
            + (limParams[0]->load() >= 0.5f ? limiter.latencySamples() : 0);
@@ -781,6 +813,12 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     mutation.prepare (sampleRate);
 
     dryBuffer.setSize (2, juce::jmax (samplesPerBlock, 512));
+    mastering.setControls (readMasterControls());
+    mastering.prepare (sampleRate, dryBuffer.getNumSamples());
+    masterWasOn = masterParams[0]->load() >= 0.5f;
+    modeFadeLength = juce::jmax (1, (int) (sampleRate * 0.01));
+    modeFadeLeft = 0;
+    updateReportedLatency();
     dryBuffer2.setSize (2, dryBuffer.getNumSamples());
     undelayedBuffer.setSize (2, dryBuffer.getNumSamples());
     blendBuffer.assign ((size_t) dryBuffer.getNumSamples(), 0.0f);
@@ -855,14 +893,45 @@ void GlitchKidProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::M
     else
         beatBusOn.store (false, std::memory_order_relaxed);
 
+    // Mastering mode: the finished mix goes through the mastering chain instead of the vocal chain (never both). A switch fades in over 10 ms.
+    const bool masterOn = masterParams[0]->load() >= 0.5f;
+    if (masterOn != masterWasOn)
+    {
+        masterWasOn = masterOn;
+        mastering.reset();
+        modeFadeLeft = modeFadeLength;
+    }
     const int cap = dryBuffer.getNumSamples();
     const int total = main.getNumSamples();
     for (int start = 0; start < total; start += cap)
     {
         juce::AudioBuffer<float> chunk (main.getArrayOfWritePointers(), main.getNumChannels(),
                                         start, juce::jmin (cap, total - start));
-        processChunk (chunk);
+        if (masterOn)
+            processMaster (chunk);
+        else
+            processChunk (chunk);
     }
+    for (int i = 0; i < total && modeFadeLeft > 0; ++i, --modeFadeLeft)
+        for (int ch = 0; ch < main.getNumChannels(); ++ch)
+            main.getWritePointer (ch)[i] *= 1.0f - (float) modeFadeLeft / (float) modeFadeLength;
+}
+
+void GlitchKidProcessor::processMaster (juce::AudioBuffer<float>& buffer)
+{
+    const int numChannels = juce::jmin (2, buffer.getNumChannels()), numSamples = buffer.getNumSamples();
+    if (numChannels <= 0 || numSamples <= 0)
+        return;
+    if (masterMeterReset.exchange (false))
+        mastering.resetMeters();
+    raisePeak (inputPeak, maxMagnitude (buffer, numChannels, numSamples));
+    inputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
+    mastering.setControls (readMasterControls());
+    mastering.setCompareOriginal (bypass->load() >= 0.5f);
+    juce::AudioBuffer<float> view (buffer.getArrayOfWritePointers(), numChannels, numSamples);
+    mastering.process (view);
+    raisePeak (outputPeak, maxMagnitude (buffer, numChannels, numSamples));
+    outputTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 }
 
 // While Formant is not in use, still run the shifter at 0 semitones on a copy and throw the result away. That keeps its

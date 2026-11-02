@@ -10,6 +10,7 @@
 #include "UI/ReferencePanel.h"
 #include "UI/KidPanel.h"
 #include "UI/MainScreen.h"
+#include "UI/MasteringScreen.h"
 #include "UI/LabPage.h"
 
 // Simple vertical peak meter, -60 dBFS to +6 dBFS; red above 0 dBFS. Falls at a fixed rate.
@@ -74,6 +75,7 @@ public:
     juce::Rectangle<int> uiBarButtonBoundsForTest (int index) const { return index < numRail ? navButtons[index].getBounds() : index == numRail ? dryButton.getBounds() : motionButton.getBounds(); } // 0-10 the rail, 11 DRY, 12 MOTION
     glitchkid::ui::KidPanel& uiKidPanelForTest() { return *kidPanel; }
     glitchkid::ui::MainScreen& uiMainScreenForTest() { return *mainScreen; }
+    glitchkid::ui::MasteringScreen& uiMasteringScreenForTest() { return *masteringScreen; }
     void uiShowKidForTest (bool kid) { showMainView (kid); }
     bool uiKidViewForTest() const { return kidView; }
     juce::String uiHelpTextForTest() const { return infoLabel.getText(); }
@@ -94,7 +96,7 @@ private:
     static constexpr int barDy = 80; // the info line and the preset bar sit 80 px lower than in the 600-high layout the workspaces were written for
     static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
     static constexpr int numRail = 11; // the rail: KID, START, BUILD, CLEAN, TUNE, TONE, DYNAMICS, SPACE, LAB, BEAT, REFERENCE
-    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5, kid = 6, lab = 7 }; // new pages are only ever appended: the numbers are saved in sessions
+    enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5, kid = 6, lab = 7, master = 8 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;
     int category = 0;
@@ -247,6 +249,7 @@ private:
     std::unique_ptr<glitchkid::ui::ReferencePanel> referencePanel; // the REFERENCE workspace; created after the processor-bound members, destroyed first
     std::unique_ptr<glitchkid::ui::KidPanel> kidPanel;             // KID, the vocal producer
     std::unique_ptr<glitchkid::ui::MainScreen> mainScreen;         // the instrument: the first screen
+    std::unique_ptr<glitchkid::ui::MasteringScreen> masteringScreen; // the Mastering Lab (page 8)
     bool kidView = false;                                          // page 6 (MAIN) shows the instrument, or Kid
     void showMainView (bool kid);
     std::unique_ptr<glitchkid::ui::LabPage> labPage;               // LAB: Formant, Harmony, Mutation, Stutter
