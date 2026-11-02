@@ -89,6 +89,7 @@ target_sources(GlitchKid PRIVATE
     Source/UI/GlitchRelic.cpp
     Source/UI/ReferencePanel.cpp
     Source/UI/KidPanel.cpp
+    Source/UI/MainScreen.cpp
     Source/UI/LabPage.cpp
     Source/Analysis/DisplaySpectrum.cpp
     Source/UI/EffectModel.cpp
@@ -177,6 +178,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/DoublingHarmonyTests.cpp
         Tests/KidTests.cpp
         Tests/VocalFileTests.cpp
+        Tests/MainScreenTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -215,6 +217,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/UI/GlitchRelic.cpp
         Source/UI/ReferencePanel.cpp
         Source/UI/KidPanel.cpp
+        Source/UI/MainScreen.cpp
         Source/UI/LabPage.cpp
         Source/Analysis/DisplaySpectrum.cpp
         Source/UI/EffectModel.cpp

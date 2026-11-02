@@ -117,8 +117,8 @@ namespace
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
 const RailItem railItems[11] = {
-    { "KID", 6, 0, "KID", "Your vocal producer: load or play your vocal, say the sound you want, review every change, Apply.",
-      "KID, your vocal director: talk or type, review exactly what it would change, then Apply. Nothing changes until you do." },
+    { "MAIN", 6, 0, "Main", "The instrument: your sound at a glance, the main controls, and Kid.",
+      "The GlitchKid instrument: the main controls, the live in/out ribbon, presets, and Kid, your vocal producer." },
     { "START", 0, 0, "Start", "Your session: the real signal in and out, and the next step.", "Your session: the real-time signal and shortcuts." },
     { "BUILD", 3, 0, "Build", "Pick a starting sound, then build a first mix from your vocal.", "Pick a starting sound and build a starting mix from your vocal." },
     { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
@@ -676,7 +676,15 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             static const int row[18] = { 0, 4, 8, 8, 8, 7, 5, 3, 6, 3, 5, 5, 8, 7, 7, 6, 6, 6 };
             selectRail (row[juce::jlimit (1, 17, stage)]);
         };
+        hooks.back = [this] { showMainView (false); };
         kidPanel = std::make_unique<ui::KidPanel> (p, std::move (hooks)); // like REFERENCE: a child of `content` only while its page is open
+        ui::MainScreen::Hooks mh;
+        mh.presetMenu = [this] (juce::Component& anchor) { openPresetMenu (&anchor); };
+        mh.presetStep = [this] (int direction) { showStatus (presets.step (direction).message); shownPresetText = {}; refreshPresetBar(); };
+        mh.openKid = [this] { showMainView (true); };
+        mh.openAdvanced = [this] { selectRail (4); }; // the detailed pages, starting with TUNE; MAIN in the rail comes back
+        mainScreen = std::make_unique<ui::MainScreen> (p, std::move (mh));
+        kidView = p.getUiInt ("uiMainView", 0) == 1;
         labPage = std::make_unique<ui::LabPage> (p.apvts);
     }
 
@@ -1699,7 +1707,15 @@ void GlitchKidEditor::refreshPresetBar()
 }
 
 
-void GlitchKidEditor::openPresetMenu()
+void GlitchKidEditor::showMainView (bool kid)
+{
+    kidView = kid;
+    glitchProcessor.setUiInt ("uiMainView", kid ? 1 : 0);
+    showPage (Page::kid, true);
+    layoutContent();
+}
+
+void GlitchKidEditor::openPresetMenu (juce::Component* target)
 {
     juce::PopupMenu menu;
     menu.addSectionHeader ("STARTING PROFILES");
@@ -1716,7 +1732,7 @@ void GlitchKidEditor::openPresetMenu()
         menu.addItem (100 + i, names[i], true, names[i].equalsIgnoreCase (glitchProcessor.getPresetName()));
 
     juce::Component::SafePointer<GlitchKidEditor> safe (this);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (presetMenuButton), [safe, names] (int choice)
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target != nullptr ? target : &presetMenuButton), [safe, names] (int choice)
     {
         if (safe == nullptr || choice <= 0)
             return;
@@ -1921,8 +1937,8 @@ void GlitchKidEditor::layoutContent()
             child->setVisible (false);
     if (referencePanel != nullptr && page != Page::reference && referencePanel->getParentComponent() == &content)
         content.removeChildComponent (referencePanel.get());
-    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { labPage.get(), Page::lab } })
-        if (c != nullptr && page != p && c->getParentComponent() == &content)
+    for (auto [c, p] : { std::pair<juce::Component*, Page> (kidPanel.get(), Page::kid), { mainScreen.get(), Page::kid }, { labPage.get(), Page::lab } })
+        if (c != nullptr && (page != p || (c == kidPanel.get() && ! kidView) || (c == mainScreen.get() && kidView)) && c->getParentComponent() == &content)
             content.removeChildComponent (c);
     panelRects.clear();
     const int ox = railW, oy = page == Page::finalTouch ? -56 : pageDy;
@@ -1966,13 +1982,15 @@ void GlitchKidEditor::layoutContent()
     place (presetStatus, bar);
 
     // ---- KID: the main screen takes the whole window (its own top bar, no rail, no preset bar; its Advanced links open the detailed pages) ----
-    if (page == Page::kid && kidPanel != nullptr)
+    // ---- MAIN: the instrument or Kid, each the whole window (their own header; the detailed pages and the rail are one click away) ----
+    if (page == Page::kid && kidPanel != nullptr && mainScreen != nullptr)
     {
         for (auto* c : persistent) // the rail, the header controls and the preset bar
             c->setVisible (false);
-        content.addChildComponent (*kidPanel);
-        place (*kidPanel, { 0, 0, designW, designH });
-        kidPanel->toFront (false);
+        juce::Component& shown = kidView ? static_cast<juce::Component&> (*kidPanel) : static_cast<juce::Component&> (*mainScreen);
+        content.addChildComponent (shown);
+        place (shown, { 0, 0, designW, designH });
+        shown.toFront (false);
     }
     // ---- LAB: a self-contained page ----
     if (page == Page::lab && labPage != nullptr)

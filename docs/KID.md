@@ -1,6 +1,8 @@
 # KID — your vocal producer
 
-KID is GlitchKid's main screen. You tell Kid the sound you want. Kid listens to your vocal, works out what it needs, and builds the mix from GlitchKid's own effects. You hear it straight away. You can ask Kid why it made any change, give feedback, or undo.
+GlitchKid opens on the **instrument**: the header (presets, ORIGINAL / PROCESSED, Kid, Advanced), the live in/out ribbon and seven large dials (TUNE, CLEAN; TONE, PUNCH, SPACE; MIX, OUTPUT). Press **Kid** to open the vocal producer below, and **Instrument** in Kid's top bar to go back. MAIN in the side rail of the detailed pages brings back whichever of the two you had open.
+
+Kid is GlitchKid's vocal-producer screen. You tell Kid the sound you want. Kid listens to your vocal, works out what it needs, and builds the mix from GlitchKid's own effects. You hear it straight away. You can ask Kid why it made any change, give feedback, or undo.
 
 ## The screen
 

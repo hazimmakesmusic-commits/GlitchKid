@@ -590,6 +590,7 @@ struct KidEditorTests : public juce::UnitTest
         p.prepareToPlay (48000.0, 480);
         std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
         auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+        ed->uiShowKidForTest (true); // the instrument is the first view; Kid is one click away
         auto& kid = ed->uiKidPanelForTest();
         using Status = glitchkid::ui::KidPanel::Status;
         auto shot = [&] (const juce::String& name)
@@ -641,7 +642,7 @@ struct KidEditorTests : public juce::UnitTest
             }
             kid.pressForTest ("Tune");
             expectEquals (ed->uiRailIndexForTest(), 4, "Advanced: Tune opens the TUNE page");
-            expect (visibleButton (*ed, "KID") && visibleButton (*ed, "SAVE"), "the rail and the preset bar are back on the detailed pages");
+            expect (visibleButton (*ed, "MAIN") && visibleButton (*ed, "SAVE"), "the rail and the preset bar are back on the detailed pages");
             ed->uiSelectRailForTest (0);
             expect (kid.isVisible() && ! visibleButton (*ed, "SAVE"));
         }
@@ -712,6 +713,7 @@ struct KidEditorTests : public juce::UnitTest
             GlitchKidProcessor q;
             q.prepareToPlay (48000.0, 480);
             std::unique_ptr<juce::AudioProcessorEditor> e2 (q.createEditor());
+            dynamic_cast<GlitchKidEditor*> (e2.get())->uiShowKidForTest (true);
             auto& k2 = dynamic_cast<GlitchKidEditor*> (e2.get())->uiKidPanelForTest();
             k2.sendForTest ("I don't know what it needs. Improve it");
             expect (k2.waitingForTest() && k2.statusForTest() == Status::listening, "waiting for the vocal");

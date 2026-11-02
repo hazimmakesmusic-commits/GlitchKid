@@ -199,7 +199,9 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
         advanced[i].onClick = [this, i] { if (hooks.openStage) hooks.openStage (advancedStage[i]); };
         addAndMakeVisible (advanced[i]);
     }
-    for (auto* b : { &sendButton, &setupButton, &loadButton, &originalButton, &processedButton, &mainButton, &undoButton })
+    backButton.setTooltip ("Back to the GlitchKid instrument.");
+    backButton.onClick = [this] { if (hooks.back) hooks.back(); };
+    for (auto* b : { &sendButton, &setupButton, &loadButton, &originalButton, &processedButton, &mainButton, &undoButton, &backButton })
         addAndMakeVisible (b);
     refreshChips();
     refreshButtons();
@@ -695,6 +697,7 @@ void KidPanel::resized()
 {
     const int W = getWidth(), cx0 = 170, cx1 = W - 170;
     topBar = { 0, 0, W, 64 };
+    backButton.setBounds (178, 18, 104, 28);
     vocalBox = { 32, 76, W - 64, 116 };
     loadButton.setBounds (vocalBox.getX() + 18, vocalBox.getY() + 18, 132, 32);
     waveArea = { vocalBox.getX() + 168, vocalBox.getY() + 14, vocalBox.getWidth() - 168 - 252, vocalBox.getHeight() - 40 };

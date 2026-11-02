@@ -22,6 +22,7 @@ public:
         std::function<void (const SoundState& before)> beforeApply; // the editor stores it for its own UNDO on the detailed pages
         std::function<void (const juce::String&)> status;
         std::function<void (int stage)> openStage;                  // the detailed controls for a stage (1..17)
+        std::function<void()> back;                                  // back to the instrument
     };
     enum class Status { ready, listening, analyzing, processing };
 
@@ -112,7 +113,7 @@ private:
     MicButton mic;
     juce::TextEditor input;
     Pill sendButton { "Send" }, setupButton { "Set up speech" }, loadButton { "Load vocal" }, originalButton { "Original" }, processedButton { "Processed" },
-         mainButton { "BUILD MY MIX", true }, undoButton { "Undo" };
+         mainButton { "BUILD MY MIX", true }, undoButton { "Undo" }, backButton { "Instrument" };
     Pill advanced[5] { Pill ("Tune"), Pill ("Clean"), Pill ("Tone"), Pill ("Dynamics"), Pill ("Space") };
     juce::OwnedArray<Pill> chips;
 

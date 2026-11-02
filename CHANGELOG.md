@@ -3,6 +3,29 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- The GlitchKid instrument: a new first screen (UI only: no audio, DSP, parameter ID, preset, state or routing change). `Source/UI/MainScreen`. Three zones, one ultraviolet accent and an electric-pink second accent used sparingly:
+  - **Header:** the wordmark, a preset selector (previous / menu / next, the editor's own preset logic), ORIGINAL / PROCESSED (the real bypass), Kid, and Advanced (the detailed pages).
+  - **The ribbon:** the level of what comes in (a faint line) and what GlitchKid sends out (a glowing mirrored ribbon, newest on the right), read from the plug-in's existing input and output display taps, with the real peak levels; "Play your track" when nothing arrives.
+  - **Seven large dials in three sections:**
+    - VOICE: TUNE (strength, 0 = off, with key and scale), CLEAN (amount, 0 = off);
+    - CHARACTER: TONE, PUNCH and SPACE (the existing macros);
+    - OUTPUT: MIX and OUTPUT (gain, through JUCE's parameter attachments).
+
+    Every dial reads back from its parameters.
+  - **Navigation:**
+    - the rail's first item is now MAIN (same saved page number), showing the instrument or Kid, whichever was last open (remembered in the session as `uiMainView`);
+    - Kid has an Instrument button back;
+    - every detailed page is unchanged.
+  - **Tests:** a new "Main screen" group covers:
+    - the window and the zones;
+    - every dial moving its parameters and following them;
+    - presets from the header;
+    - the exact bypass;
+    - navigation without any sound change;
+    - the ribbon showing only real audio;
+    - repaint cost.
+
+    The KID tests open Kid first; MacroTests looks for MAIN in the rail.
 - KID simplified, and given audio intelligence (no parameter IDs, presets or saved-state fields changed).
   - **Screen.** The KID page is now the whole window, with four areas:
     - a top bar with Kid's status;

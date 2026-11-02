@@ -422,7 +422,7 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY VOCAL MIX") && ! visible ("RESET"));
-                expect (visible ("KID") && visible ("LAB") && visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (visible ("MAIN") && visible ("LAB") && visible ("START") && visible ("BUILD") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("UNDO") && visible ("DRY") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
