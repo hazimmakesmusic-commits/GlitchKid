@@ -76,6 +76,16 @@ struct PageShotsTests : public juce::UnitTest
             lab.toggleMoreForTest();
             juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
             expect (lab.moreShownForTest(), "MORE shows Mutation's Character and Blend");
+            // each card's Reset returns only that card to its defaults
+            th::setParam (p, "mut_on", 1.0f);
+            th::setParam (p, "mut_amount", 80.0f);
+            th::setParam (p, "harm_on", 1.0f);
+            lab.resetForTest (2);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (50);
+            expect (! lab.cardOnForTest (2), "Reset turns Mutation off");
+            expectWithinAbsoluteError (th::getParam (p, "mut_amount"), p.apvts.getParameterRange ("mut_amount").convertFrom0to1 (p.apvts.getParameter ("mut_amount")->getDefaultValue()), 0.01f);
+            expect (lab.cardOnForTest (1), "the other cards are not touched");
+            th::setParam (p, "harm_on", 0.0f);
         }
     }
 };

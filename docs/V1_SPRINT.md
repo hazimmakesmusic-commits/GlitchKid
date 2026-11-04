@@ -74,6 +74,28 @@ Saved page numbers keep their meaning. 0, the old dashboard, now opens START. Th
 
 ## Deferred
 
-* An expandable "advanced" section on TUNE and TONE: they are already compact, and the risk outweighed the benefit for V1.
-* Collapsing REFERENCE's technical intro text.
 * Removing the old dashboard code.
+
+## Second pass: the producer workspace (UI only; no DSP, parameter, preset, state or routing change)
+
+* **TUNE / TONE:** one shared ADVANCED switch (remembered as the UI flag `uiShapeAdv`, off by default).
+  * TUNE: key, scale, on/off and style first; STRENGTH and SPEED behind ADVANCED.
+  * TONE: the Tone slider, the EQ curve, AIR LAB on/off and WARMTH first; the band buttons and knobs, AIR LAB's four sliders and LINK behind ADVANCED.
+  * Hidden controls keep their values and stay automatable.
+* **REFERENCE:** steps named "1 Choose a reference", "2 Analyze your vocal", "3 Preview the suggested EQ, then apply". A one-line notice (the full text is its tooltip). Auto-sections, the difference curve and "why this confidence" sit behind DETAILS. Nothing is suggested before both analyses exist (unchanged).
+* **CREATIVE:** a Reset on each card puts only that card's parameters back to their defaults (each effect's default is off). It uses host gestures, so a host records it as automation like any other move.
+* **Look (psychedelic pass, paint only):**
+  * the header's bottom edge is a spectrum line (ultraviolet, magenta, a little cyan);
+  * the pages have ultraviolet, magenta and a touch of cyan light pools and faint concentric op-art rings; Start has elliptical ripple rings around the ribbon. All static;
+  * panel edges run ultraviolet to magenta; dial arcs sweep from ultraviolet to magenta as the value rises (Start and Master);
+  * on Start the input line is cyan (the only cyan signal), the output runs ultraviolet to pink;
+  * while audio is really coming out: three echo contours of the real output edge and a cyan / magenta chromatic split. Nothing extra when idle;
+  * while audio plays and MOTION is on, the ribbon's middle colour drifts between ultraviolet and magenta (8 s cycle), and a glow follows the real output level (about 1 s). MOTION off: no drift, no glow.
+
+* **MANDALA (START):** a "Mandala" switch on the live view (remembered as the UI flag `uiMandala`, off by default) redraws the same real levels as a kaleidoscope.
+  * Each of 16 mirrored wedges holds the last 2 s of the output level (newest on the petal axis, a short average, level squared for contrast); the input is the same shape as a thin cyan outline.
+  * Two smaller mirrored reflections either side turn the other way.
+  * Echo contours and the chromatic split appear only while audio is coming out; it turns (one turn in 24 s) only while audio plays and MOTION is on. With no audio it is a still seed and the usual "Play your track" line.
+  * About 16 ms per full repaint of START on the software renderer (the ribbon: about 13 ms).
+
+Tests added: TONE starts simple and ADVANCED reveals the band knobs and the four AIR LAB sliders, and the choice is saved. CREATIVE's Reset turns only its own card off. MANDALA is remembered, never changes the sound, shows nothing without audio and repaints within budget.

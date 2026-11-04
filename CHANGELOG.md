@@ -3,6 +3,12 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- Producer workspace pass (UI only; see `docs/V1_SPRINT.md`, "Second pass").
+  - TUNE / TONE: less common controls behind one shared ADVANCED switch (off by default, remembered).
+  - REFERENCE: clearer step names, a one-line notice, technical detail behind DETAILS.
+  - CREATIVE: a Reset on each card.
+  - MANDALA on START: the live view as an 8-fold kaleidoscope of the real input and output levels, with mirrored reflections; turns only while audio plays and MOTION is on.
+  - Psychedelic look (paint only): spectrum header line, light pools and op-art rings on the pages, ripple rings on START, gradient panel edges and dial arcs, echo contours and a chromatic split on the output while audio plays, a slow colour drift and level glow that stop with MOTION off.
 - V1 finish sprint (UI only; see `docs/V1_SPRINT.md`).
   - **One navigation:** START, SOUNDS | CLEAN, TUNE, TONE, DYNAMICS, SPACE | CREATIVE | BEAT, REFERENCE | MASTER.
     - START (the instrument) and MASTER now sit in the same frame as every page.

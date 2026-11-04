@@ -89,11 +89,12 @@ private:
 
     // widgets
     static constexpr int rows = 3;
-    LabHeading title { "Reference Match", 17.0f }, step1 { "1  Reference file", 13.0f }, step2 { "2  Your vocal", 13.0f }, step3 { "3  Reference-Inspired EQ", 13.0f };
+    LabHeading title { "Reference Match", 17.0f }, step1 { "1  Choose a reference", 13.0f }, step2 { "2  Analyze your vocal", 13.0f }, step3 { "3  Preview the suggested EQ, then apply", 13.0f };
     juce::Label notice, fileName, refStatus, vocalStatus, confidence, confidenceWhy, intensityLabel, resultStatus, diffCaption;
     juce::TextButton chooseButton { "Choose file" }, analyseRefButton { "Analyze reference" }, cancelRefButton { "Cancel" }, vocalButton { "Analyze my vocal" }, applyButton { "Apply selected" },
                      cancelButton { "Cancel" }, resetButton { "Reset" }, undoButton { "Undo Reference EQ" };
     juce::ToggleButton autoSection { "Use the loudest 20 seconds" };
+    juce::ToggleButton details { "Details" }; // the technical parts: which 20 s of the reference, the tone difference graph, why the confidence is what it is
     juce::Slider sectionStart, intensity;
     LevelBar refProgress, vocalProgress;
     ToneDiffView diffView;

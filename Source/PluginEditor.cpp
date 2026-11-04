@@ -531,6 +531,17 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         glitchProcessor.setUiFlag ("uiCleanAdv", cleanAdvanced);
         layoutContent();
     };
+    content.addChildComponent (shapeAdvButton);
+    shapeAdvButton.setColour (juce::ToggleButton::tickColourId, ui::violet);
+    shapeAdvButton.setTooltip ("TUNE: strength and speed. TONE: the four EQ bands, AIR LAB detail and its link. Hidden controls keep their values.");
+    shapeAdvanced = glitchProcessor.getUiFlag ("uiShapeAdv", false);
+    shapeAdvButton.setToggleState (shapeAdvanced, juce::dontSendNotification);
+    shapeAdvButton.onClick = [this]
+    {
+        shapeAdvanced = shapeAdvButton.getToggleState();
+        glitchProcessor.setUiFlag ("uiShapeAdv", shapeAdvanced);
+        layoutContent();
+    };
     content.addAndMakeVisible (essBar);
     airPresenceSlider.onValueChange = [this] { linkAir (airPresenceSlider, airAirSlider); };
     airAirSlider.onValueChange = [this] { linkAir (airAirSlider, airPresenceSlider); };
@@ -1888,13 +1899,38 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     for (int i = 0; i < 5; ++i)
         g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], 140.0f, 14.0f), juce::Justification::centredLeft, false);
 
+    // the page's atmosphere: ultraviolet, magenta and a touch of cyan light pools on the near-black, and faint concentric op-art rings. Static: no motion, no data
+    {
+        const juce::Rectangle<float> pg (R, 53.0f, W - R, 522.0f + (float) barDy - 53.0f);
+        juce::Graphics::ScopedSaveState s (g);
+        g.reduceClipRegion (pg.toNearestInt());
+        g.setGradientFill (juce::ColourGradient (ui::violet.withAlpha (0.16f), pg.getRight() - 120.0f, pg.getY(), ui::violet.withAlpha (0.0f), pg.getRight() - 640.0f, pg.getY() + 340.0f, true));
+        g.fillRect (pg);
+        g.setGradientFill (juce::ColourGradient (ui::pink.withAlpha (0.10f), pg.getX() + 80.0f, pg.getBottom(), ui::pink.withAlpha (0.0f), pg.getX() + 600.0f, pg.getBottom() - 300.0f, true));
+        g.fillRect (pg);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff5ee6ff).withAlpha (0.045f), pg.getCentreX(), pg.getCentreY(), juce::Colour (0xff5ee6ff).withAlpha (0.0f), pg.getCentreX() + 260.0f, pg.getCentreY(), true));
+        g.fillRect (pg);
+        const juce::Point<float> o (pg.getRight() - 60.0f, pg.getY() - 40.0f);
+        for (int i = 1; i <= 48; ++i)
+        {
+            const float rr = 22.0f * (float) i;
+            g.setColour ((i % 2 ? ui::violet : ui::pink).withAlpha (0.10f * (1.0f - (float) i / 52.0f)));
+            g.drawEllipse (o.x - rr, o.y - rr, 2.0f * rr, 2.0f * rr, 1.0f);
+        }
+    }
+
     // the header: the workspace you are in and what it is for
     {
         const auto& item = railItems[railIndex()];
         g.setColour (ui::panelBottom);
         g.fillRect (R, 0.0f, W - R, 52.0f);
-        g.setColour (ui::border);
-        g.fillRect (R, 52.0f, W - R, 1.0f);
+        juce::ColourGradient spectrum (ui::violet, R, 0.0f, juce::Colour (0xff5ee6ff), W, 0.0f, false); // ultraviolet, magenta, then a little cyan
+        spectrum.addColour (0.6, ui::pink);
+        g.setGradientFill (spectrum);
+        g.setOpacity (0.18f);
+        g.fillRect (R, 50.0f, W - R, 5.0f);
+        g.setOpacity (1.0f);
+        g.fillRect (R, 52.0f, W - R, 1.5f);
         g.setColour (ui::textBright);
         g.setFont (ui::fontOf (20.0f, true));
         g.drawText (item.title, juce::Rectangle<float> (R + 20.0f, 6.0f, 360.0f, 26.0f), juce::Justification::centredLeft, false);
@@ -2188,37 +2224,49 @@ void GlitchKidEditor::layoutContent()
                 show (styleCaption, { 156, 270, 200, 14 });
                 for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
                     show (styleButtons[i], { 156 + i * 130, 288, 124, 30 });
-                for (int i = 0; i < tuneKnobs.size(); ++i)
-                    showK (*tuneKnobs[i], { 40 + i * 150, 336, 140, 150 });
-                show (tuneSummary, { 340, 336, 590, 28 });
-                show (tuneReadout, { 340, 366, 590, 22 });
-                show (tuneSubline, { 340, 392, 590, 34 });
-                show (scopeCaption, { 340, 430, 200, 14 });
-                show (scope, { 340, 446, 590, 42 });
+                show (shapeAdvButton, { 700, 506, 120, 32 });
+                if (shapeAdvanced) // strength and speed: the less common settings
+                    for (int i = 0; i < tuneKnobs.size(); ++i)
+                        showK (*tuneKnobs[i], { 40 + i * 150, 336, 140, 150 });
+                {
+                    const int tx = shapeAdvanced ? 340 : 36, tw = shapeAdvanced ? 590 : 894;
+                    show (tuneSummary, { tx, 336, tw, 28 });
+                    show (tuneReadout, { tx, 366, tw, 22 });
+                    show (tuneSubline, { tx, 392, tw, 34 });
+                    show (scopeCaption, { tx, 430, 200, 14 });
+                    show (scope, { tx, 446, tw, 42 });
+                }
                 break;
 
             case 1: // TONE: the real EQ response, the four bands, the selected band's knobs, warmth
                 show (*eqGraph, { 36, 192, 590, 204 });
                 show (airOnButton, { 44, 404, 120, 24 });
-                show (airLinkButton, { 176, 404, 76, 24 });
-                show (airHint, { 262, 404, 360, 24 });
-                show (airPresenceLabel, { 44, 432, 72, 24 });
-                show (airPresenceSlider, { 120, 432, 216, 24 });
-                show (airMixLabel, { 350, 432, 34, 24 });
-                show (airMixSlider, { 386, 432, 236, 24 });
-                show (airAirLabel, { 44, 460, 72, 24 });
-                show (airAirSlider, { 120, 460, 216, 24 });
-                show (airTrimLabel, { 350, 460, 34, 24 });
-                show (airTrimSlider, { 386, 460, 236, 24 });
-                for (int b = 0; b < ui::EqGraph::numBands; ++b)
-                {
-                    show (bandButtons[b], { 646 + b * 70, 192, 64, 30 });
-                    bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
-                }
-                for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
-                    showK (*eqKnobs[eqBand][i], { 646 + i * 92, 236, 88, 130 });
+                show (airHint, { 176, 404, 446, 24 });
                 showK (*warmthKnob[0], { 646, 376, 120, 112 });
-                show (eqNote, { 780, 384, 144, 96 });
+                show (shapeAdvButton, { 700, 506, 120, 32 });
+                if (shapeAdvanced) // the four bands, AIR LAB detail and its link
+                {
+                    show (airLinkButton, { 176, 404, 76, 24 });
+                    show (airHint, { 262, 404, 360, 24 });
+                    show (airPresenceLabel, { 44, 432, 72, 24 });
+                    show (airPresenceSlider, { 120, 432, 216, 24 });
+                    show (airMixLabel, { 350, 432, 34, 24 });
+                    show (airMixSlider, { 386, 432, 236, 24 });
+                    show (airAirLabel, { 44, 460, 72, 24 });
+                    show (airAirSlider, { 120, 460, 216, 24 });
+                    show (airTrimLabel, { 350, 460, 34, 24 });
+                    show (airTrimSlider, { 386, 460, 236, 24 });
+                    for (int b = 0; b < ui::EqGraph::numBands; ++b)
+                    {
+                        show (bandButtons[b], { 646 + b * 70, 192, 64, 30 });
+                        bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
+                    }
+                    for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
+                        showK (*eqKnobs[eqBand][i], { 646 + i * 92, 236, 88, 130 });
+                    show (eqNote, { 780, 384, 144, 96 });
+                }
+                else
+                    show (eqNote, { 646, 192, 268, 96 });
                 break;
 
             case 2: // DYNAMICS: the compressor and output gain, then the OUTPUT LIMITER

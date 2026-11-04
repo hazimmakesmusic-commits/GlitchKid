@@ -35,6 +35,7 @@ public:
     juce::String dialTextForTest (int i) const { return dials[(size_t) i].text ((float) dials[(size_t) i].slider.getValue()); }
     void tickForTest() { timerCallback(); }
     bool signalForTest() const { return signalOut; }
+    bool mandalaForTest() const { return mandala; }
     void pressForTest (const juce::String& buttonText);
 
 private:
@@ -57,7 +58,7 @@ private:
     std::array<Dial, numDials> dials;
     juce::ComboBox keyBox, scaleBox;
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
-    Pill soundsButton { "Choose a sound" }, kidButton { "Ask Kid" };
+    Pill soundsButton { "Choose a sound" }, kidButton { "Ask Kid" }, mandalaButton { "Mandala" }; // Mandala: the live view as a kaleidoscope (uiMandala)
 
     std::array<float, 240> envIn {}, envOut {}; // level history, newest first (0..1 on a 60 dB scale)
     std::vector<float> scratch;
@@ -65,6 +66,10 @@ private:
     bool signalOut = false;
     float inDb = -100.0f, outDb = -100.0f;
     int tick = 0;
+    bool motion = true;  // the editor's MOTION switch (uiMotion): off = the bloom holds still
+    float bloom = 0.0f;
+    bool mandala = false; // the live view drawn as a mirrored, 8-fold kaleidoscope of the same real levels
+    float spin = 0.0f;    // the mandala's slow turn: only while audio plays and MOTION is on  // the output level, slowly smoothed (about 1 s); lights the bloom behind the ribbon
     juce::Rectangle<int> guide, ribbon, controls;
     std::array<juce::Rectangle<int>, 3> sections;
 
@@ -74,5 +79,6 @@ private:
     void sync();
     void timerCallback() override;
     void paintRibbon (juce::Graphics&);
+    void paintMandala (juce::Graphics&);
 };
 }

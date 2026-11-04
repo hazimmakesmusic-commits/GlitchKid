@@ -214,6 +214,8 @@ private:
     juce::TextButton cleanResetButton { "RESET CLEAN" };
     juce::ToggleButton cleanAdvButton { "ADVANCED" }; // shows the three section trims; a display preference only
     bool cleanAdvanced = false;
+    juce::ToggleButton shapeAdvButton { "ADVANCED" }; // TUNE / TONE: shows the less common controls; a display preference only
+    bool shapeAdvanced = false;
     glitchkid::ui::ReductionBar essBar;
     void refreshClean (bool cleanOn);
 

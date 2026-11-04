@@ -11,6 +11,11 @@ const char* const cardNote[4] = {
     "A second voice at a fixed interval from yours. Adds Pitch Tune's latency while on.",
     "Bends the voice into something new. MORE: the kind (down, robot, up) and how much you hear.",
     "Tempo-locked slices of the finished voice." };
+const std::vector<const char*> cardParams[4] = {
+    { "formant_shift" },
+    { "harm_on", "harm_interval", "harm_level" },
+    { "mut_on", "mut_amount", "mut_character", "mut_blend" },
+    { "stutter_on", "stutter_rate", "stutter_mix" } };
 }
 
 LabPage::LabPage (juce::AudioProcessorValueTreeState& s) : state (s)
@@ -34,6 +39,23 @@ LabPage::LabPage (juce::AudioProcessorValueTreeState& s) : state (s)
         notes[i].setJustificationType (juce::Justification::topLeft);
         notes[i].getProperties().set ("rawText", true);
         addAndMakeVisible (notes[i]);
+    }
+    for (int i = 0; i < 4; ++i)
+    {
+        auto& b = resets[(size_t) i];
+        b.setButtonText ("Reset");
+        b.setTooltip ("Put this card's controls back to their defaults (the effect turns off). Other cards are not touched.");
+        b.onClick = [this, i]
+        {
+            for (auto* id : cardParams[i])
+                if (auto* prm = state.getParameter (id))
+                {
+                    prm->beginChangeGesture();
+                    prm->setValueNotifyingHost (prm->getDefaultValue());
+                    prm->endChangeGesture();
+                }
+        };
+        addAndMakeVisible (b);
     }
     more.setClickingTogglesState (true);
     more.setTooltip ("Mutation's finer controls: Character (down, robot, up) and Blend (how much of it you hear).");
@@ -125,7 +147,10 @@ void LabPage::resized()
     auto knob = [] (Knob& k, juce::Rectangle<int> r) { k.label.setBounds (r.removeFromTop (16)); k.slider.setBounds (r); };
     auto inner = [] (juce::Rectangle<int> c) { return c.reduced (14, 10).withTrimmedTop (26); };
     for (int i = 0; i < 4; ++i)
+    {
         notes[i].setBounds (inner (cards[(size_t) i]).removeFromBottom (48));
+        resets[(size_t) i].setBounds (cards[(size_t) i].reduced (14, 10).removeFromTop (20).withTrimmedRight (44).removeFromRight (56)); // left of the painted ON / OFF
+    }
 
     auto f = inner (cards[0]).withTrimmedBottom (52);
     knob (formant, f.withSizeKeepingCentre (110, f.getHeight()));

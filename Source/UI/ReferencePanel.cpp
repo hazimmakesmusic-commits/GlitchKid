@@ -99,8 +99,13 @@ ReferencePanel::ReferencePanel (GlitchKidProcessor& p, Hooks h) : processor (p),
         addAndMakeVisible (c);
     title.setColour (textBright);
     text (notice, 11.5f, false, textDim);
-    notice.setText ("A finished song is a full mix: vocal, instruments and mastering. Reference Match compares its overall tone, 200 Hz to 12 kHz, with your vocal and proposes small "
-                    "changes to three EQ gains (body, presence, high shelf). It is a hint toward that tone, not an exact vocal match. Only use audio you have the right to use.", juce::dontSendNotification);
+    notice.setText ("Tonal guidance from a song you have the right to use: small EQ suggestions toward its tone, never a copy of it.", juce::dontSendNotification);
+    notice.setTooltip ("A finished song is a full mix: vocal, instruments and mastering. Reference Match compares its overall tone, 200 Hz to 12 kHz, with your vocal and proposes small "
+                       "changes to three EQ gains (body, presence, high shelf). It is a hint toward that tone, not an exact vocal match. Only use audio you have the right to use.");
+    details.setTooltip ("Show the technical details: which part of the reference is measured, the tone difference graph, and why the confidence is what it is.");
+    details.setColour (juce::ToggleButton::tickColourId, violet);
+    details.onClick = [this] { resized(); repaint(); };
+    addAndMakeVisible (details);
     text (fileName, 12.0f, true, textBright, juce::Justification::centredLeft);
     fileName.setText ("No file chosen", juce::dontSendNotification);
     text (refStatus, 11.5f, false, textDim);
@@ -185,7 +190,14 @@ void ReferencePanel::resized()
 {
     const int lx = 24, lw = 430, rx = 486, rw = 450;
     title.setBounds (lx, 8, 250, 24);
+    details.setBounds (lx + lw - 90, 8, 90, 24);
     notice.setBounds (lx, 36, lw, 62);
+    const bool more = details.getToggleState(); // the technical parts are shown only on request
+    autoSection.setVisible (more);
+    diffCaption.setVisible (more);
+    diffView.setVisible (more);
+    confidenceWhy.setVisible (more);
+    sectionStart.setVisible (more && ! autoSection.getToggleState() && fileSeconds > 0.0);
     step1.setBounds (lx, 108, lw, 20);
     chooseButton.setBounds (lx, 132, 120, 28);
     fileName.setBounds (lx + 130, 132, lw - 130, 28);
@@ -242,7 +254,7 @@ void ReferencePanel::chooseFile()
         safe->fileSeconds = 0.0;
         safe->fileSeconds = analysis::referenceFileSeconds (safe->file);
         safe->sectionStart.setRange (0.0, juce::jmax (1.0, safe->fileSeconds - 20.0), 0.5);
-        safe->sectionStart.setVisible (! safe->autoSection.getToggleState() && safe->fileSeconds > 0.0);
+        safe->resized(); // shows the start slider when Details is open and the loudest-20-s option is off
         safe->refStatus.setText (safe->fileSeconds > 0.0 ? "Ready to analyse (" + juce::String (safe->fileSeconds, 1) + " s long). Press Analyze reference."
                                                                          : "This file could not be opened as audio. Formats that can be opened here: " + analysis::referenceFormatNames() + ".", juce::dontSendNotification);
         safe->propose();

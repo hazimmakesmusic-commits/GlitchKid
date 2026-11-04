@@ -140,6 +140,35 @@ struct MainScreenTests : public juce::UnitTest
             logMessage ("  Main screen: " + juce::String (ms, 2) + " ms per full repaint, audio included (software renderer)");
             expect (ms < 40.0, juce::String (ms, 2) + " ms");
         }
+
+        beginTest ("MANDALA: the live view as a kaleidoscope of the same real levels; remembered; never changes the sound; repaints cheaply");
+        {
+            const auto before = p.captureSoundState();
+            expect (! main.mandalaForTest());
+            main.pressForTest ("Mandala");
+            expect (main.mandalaForTest() && p.getUiFlag ("uiMandala", false), "on, and remembered with the session");
+            for (int k = 0; k < 240; ++k) { play (2, 0.04f + 0.5f * std::abs (std::sin ((float) k * 0.13f)) * (k % 40 < 28 ? 1.0f : 0.1f)); main.tickForTest(); } // phrases with gaps
+            expect (main.signalForTest());
+            shot ("main_mandala");
+            juce::Image img (juce::Image::ARGB, main.getWidth(), main.getHeight(), true);
+            juce::Graphics g (img);
+            const auto t0 = juce::Time::getMillisecondCounterHiRes();
+            for (int i = 0; i < 30; ++i)
+            {
+                play (2, 0.4f);
+                main.tickForTest();
+                main.paintEntireComponent (g, true);
+            }
+            const double ms = (juce::Time::getMillisecondCounterHiRes() - t0) / 30.0;
+            logMessage ("  Mandala: " + juce::String (ms, 2) + " ms per full repaint, audio included (software renderer)");
+            expect (ms < 40.0, juce::String (ms, 2) + " ms");
+            for (int k = 0; k < 260; ++k) main.tickForTest(); // no audio: the history drains, the seed stays still
+            expect (! main.signalForTest(), "no audio, nothing invented");
+            shot ("main_mandala_idle");
+            expect (same (before, p.captureSoundState()), "the view never changes the sound");
+            main.pressForTest ("Mandala");
+            expect (! main.mandalaForTest() && ! p.getUiFlag ("uiMandala", true), "off again");
+        }
     }
 };
 static MainScreenTests mainScreenTests;

@@ -36,7 +36,17 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     soundsButton.onClick = [this] { if (hooks.openSounds) hooks.openSounds(); };
     kidButton.setTooltip ("Kid, your vocal producer: describe the sound you want and Kid sets these controls for you. Undo goes back.");
     kidButton.onClick = [this] { if (hooks.openKid) hooks.openKid(); };
-    for (auto* b : { &soundsButton, &kidButton })
+    mandala = proc.getUiFlag ("uiMandala", false);
+    mandalaButton.setToggleState (mandala, juce::dontSendNotification);
+    mandalaButton.setTooltip ("Show the live view as a kaleidoscope: the same real input and output levels as the ribbon, mirrored eight ways. It turns slowly while audio plays and MOTION is on.");
+    mandalaButton.onClick = [this]
+    {
+        mandala = ! mandala;
+        mandalaButton.setToggleState (mandala, juce::dontSendNotification);
+        proc.setUiFlag ("uiMandala", mandala);
+        repaint (ribbon.expanded (12));
+    };
+    for (auto* b : { &soundsButton, &kidButton, &mandalaButton })
         addAndMakeVisible (b);
     sync();
 }
@@ -195,8 +205,14 @@ void MainScreen::timerCallback()
     envIn[0] = level (proc.getInputTap(), lastIn, inDb);
     envOut[0] = level (proc.getOutputTap(), lastOut, outDb);
     signalOut = envOut[0] > 0.0f || envIn[0] > 0.0f;
+    bloom = motion ? bloom + 0.035f * (envOut[0] - bloom) : 0.0f; // slow at 30 Hz; held dark with MOTION off
+    if (motion && envOut[0] > 0.0f)
+        spin = std::fmod (spin + juce::MathConstants<float>::twoPi / (30.0f * 24.0f), juce::MathConstants<float>::twoPi); // one turn in 24 s
     if (tick % 6 == 0)
+    {
+        motion = proc.getUiFlag ("uiMotion", true);
         sync();
+    }
     repaint (ribbon.expanded (12));
 }
 
@@ -208,6 +224,7 @@ void MainScreen::resized()
     soundsButton.setBounds (guide.getX(), guide.getY() + 2, 150, 30);
     kidButton.setBounds (guide.getRight() - 96, guide.getY() + 2, 96, 30);
     ribbon = { 24, 54, W - 48, 172 };
+    mandalaButton.setBounds (ribbon.getCentreX() - 50, ribbon.getY() - 4, 100, 22);
     controls = { 24, 244, W - 48, getHeight() - 252 };
 
     // three sections: VOICE (2 large), CHARACTER (3 large), OUTPUT (2 smaller)
@@ -244,7 +261,25 @@ void MainScreen::paint (juce::Graphics& g)
         juce::Graphics::ScopedSaveState glowState (g); // an elliptical bloom: a round gradient squashed vertically, fading to nothing before its edge
         g.addTransform (juce::AffineTransform::scale (1.0f, 0.32f, rc.x, rc.y));
         const float R = (float) ribbon.getWidth() * 0.6f;
-        g.setGradientFill (juce::ColourGradient (uv.withAlpha (0.11f), rc.x, rc.y, uv.withAlpha (0.0f), rc.x + R, rc.y, true));
+        g.setGradientFill (juce::ColourGradient (uv.withAlpha (0.16f), rc.x, rc.y, uv.withAlpha (0.0f), rc.x + R, rc.y, true));
+        g.fillEllipse (rc.x - R, rc.y - R, 2.0f * R, 2.0f * R);
+    }
+    { // static ripples around the ribbon: ultraviolet and magenta rings, squashed like the bloom, fading outward
+        juce::Graphics::ScopedSaveState ringState (g);
+        g.addTransform (juce::AffineTransform::scale (1.0f, 0.32f, rc.x, rc.y));
+        for (int i = 1; i <= 30; ++i)
+        {
+            const float rr = 34.0f * (float) i;
+            g.setColour ((i % 2 ? uv : pinkNeon).withAlpha (0.11f * (1.0f - (float) i / 32.0f)));
+            g.drawEllipse (rc.x - rr, rc.y - rr, 2.0f * rr, 2.0f * rr, 1.6f);
+        }
+    }
+    if (bloom > 0.002f) // the level-following glow: fades to nothing inside the ribbon's repaint area, so it never leaves a seam
+    {
+        juce::Graphics::ScopedSaveState glowState (g);
+        const float R = (float) ribbon.getWidth() * 0.5f;
+        g.addTransform (juce::AffineTransform::scale (1.0f, ((float) ribbon.getHeight() * 0.5f + 10.0f) / R, rc.x, rc.y));
+        g.setGradientFill (juce::ColourGradient (uv.interpolatedWith (pinkNeon, 0.45f).withAlpha (0.30f * bloom), rc.x, rc.y, uv.withAlpha (0.0f), rc.x + R, rc.y, true));
         g.fillEllipse (rc.x - R, rc.y - R, 2.0f * R, 2.0f * R);
     }
 
@@ -290,6 +325,10 @@ void MainScreen::paintRibbon (juce::Graphics& g)
     auto xAt = [&] (int i) { return r.getX() + (float) (n - 1 - i) / (float) (n - 1) * r.getWidth(); }; // newest on the right
     auto smooth = [] (const std::array<float, 240>& e, int i) { const int a = juce::jmax (0, i - 1), b = juce::jmin ((int) e.size() - 1, i + 1); return (e[(size_t) a] + 2.0f * e[(size_t) i] + e[(size_t) b]) * 0.25f; };
 
+    if (mandala)
+        paintMandala (g);
+    else
+    {
     g.setColour (hairline);
     g.fillRect (r.getX(), mid, r.getWidth(), 1.0f);
 
@@ -304,20 +343,47 @@ void MainScreen::paintRibbon (juce::Graphics& g)
     for (int i = 0; i < n; ++i)
         out.lineTo (xAt (i), mid + juce::jmax (0.5f, smooth (envOut, i) * amp));
     out.closeSubPath();
-    juce::ColourGradient fill (uv.withAlpha (0.04f), r.getX(), 0.0f, uv.withAlpha (0.42f), r.getRight(), 0.0f, false);
+    // the colour drift: while audio plays and MOTION is on, the ribbon's middle colour drifts slowly between ultraviolet and magenta (8 s cycle)
+    const bool live = envOut[0] > 0.0f;
+    const float drift = live && motion ? 0.5f + 0.5f * std::sin ((float) tick * juce::MathConstants<float>::twoPi / 240.0f) : 0.0f;
+    const auto midColour = uv.interpolatedWith (pinkNeon, 0.55f * drift);
+    juce::ColourGradient fill (uv.withAlpha (0.05f), r.getX(), 0.0f, pinkNeon.withAlpha (0.42f), r.getRight(), 0.0f, false);
+    fill.addColour (0.62, midColour.withAlpha (0.36f));
     g.setGradientFill (fill);
     g.fillPath (out);
     juce::Path lower (edge);
     lower.applyTransform (juce::AffineTransform::verticalFlip (2.0f * mid));
-    juce::ColourGradient line (uv.withAlpha (0.25f), r.getX(), 0.0f, uv, r.getRight() - 40.0f, 0.0f, false);
-    line.addColour (1.0, pinkNeon);
+    juce::ColourGradient line (uv.withAlpha (0.3f), r.getX(), 0.0f, pinkNeon, r.getRight(), 0.0f, false);
+    line.addColour (0.62, midColour);
+    if (live)
+    {
+        juce::Graphics::ScopedSaveState clip (g);
+        g.reduceClipRegion (ribbon.expanded (10)); // inside the area the timer repaints
+        // echo contours: the real output edge repeated outward, fading, like rings in water
+        for (auto [scale, alpha] : { std::pair { 1.22f, 0.30f }, std::pair { 1.46f, 0.18f }, std::pair { 1.72f, 0.09f } })
+            for (auto* p : { &edge, &lower })
+            {
+                g.setGradientFill (line);
+                g.setOpacity (alpha);
+                g.strokePath (*p, juce::PathStrokeType (1.1f, juce::PathStrokeType::curved), juce::AffineTransform::scale (1.0f, scale, 0.0f, mid));
+            }
+        g.setOpacity (1.0f);
+        // a chromatic split on the edge itself
+        for (auto* p : { &edge, &lower })
+        {
+            g.setColour (cyan.withAlpha (0.38f));
+            g.strokePath (*p, juce::PathStrokeType (1.4f), juce::AffineTransform::translation (-2.0f, -2.0f));
+            g.setColour (pinkNeon.withAlpha (0.45f));
+            g.strokePath (*p, juce::PathStrokeType (1.4f), juce::AffineTransform::translation (2.0f, 2.0f));
+        }
+    }
     for (auto* p : { &edge, &lower })
     {
         g.setGradientFill (line);
-        g.setOpacity (0.18f);
-        g.strokePath (*p, juce::PathStrokeType (6.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.setOpacity (0.22f);
+        g.strokePath (*p, juce::PathStrokeType (8.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setOpacity (1.0f);
-        g.strokePath (*p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (*p, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
     // what comes in: a faint line, so you see what GlitchKid did to it
     juce::Path in;
@@ -326,7 +392,7 @@ void MainScreen::paintRibbon (juce::Graphics& g)
         const float y = mid - smooth (envIn, i) * amp;
         if (i == n - 1) in.startNewSubPath (xAt (i), y); else in.lineTo (xAt (i), y);
     }
-    g.setColour (white.withAlpha (0.28f));
+    g.setColour (cyan.withAlpha (0.42f)); // cyan: the input, and only the input
     g.strokePath (in, juce::PathStrokeType (1.1f));
     if (envOut[0] > 0.0f)
     {
@@ -337,9 +403,10 @@ void MainScreen::paintRibbon (juce::Graphics& g)
         g.fillEllipse (r.getRight() - 3.0f, mid - y - 3.0f, 6.0f, 6.0f);
     }
 
+    }
     // the legend and the real levels
     g.setFont (fontOf (11.5f));
-    g.setColour (white.withAlpha (0.45f));
+    g.setColour (cyan.withAlpha (0.6f));
     g.fillRect (r.getX(), r.getY() + 7.0f, 14.0f, 1.2f);
     g.drawText ("In", (int) r.getX() + 20, (int) r.getY(), 40, 14, juce::Justification::centredLeft, false);
     g.setColour (uv);
@@ -362,5 +429,87 @@ void MainScreen::paintRibbon (juce::Graphics& g)
         g.drawText ("This GlitchKid is in Mastering mode: the vocal controls below are not in use. Switch it off on MASTER.",
                     r.toNearestInt().removeFromBottom (18), juce::Justification::centred, false);
     }
+}
+
+// The mandala: the ribbon's own level history (the last 2 s, newest at each petal's axis, oldest where the mirrored wedges meet) bent around a circle and
+// mirrored eight ways, so its outline is the shape of the last phrases. Smaller mirrored reflections sit either side. Nothing here is invented: with no
+// audio it is a small still seed.
+void MainScreen::paintMandala (juce::Graphics& g)
+{
+    juce::Graphics::ScopedSaveState clip (g);
+    g.reduceClipRegion (ribbon.expanded (10)); // inside the area the timer repaints
+    const auto r = ribbon.toFloat();
+    const auto c = r.getCentre();
+    const float R = r.getHeight() * 0.5f + 2.0f, r0 = 9.0f;
+    constexpr int folds = 8, perWedge = 20, N = 2 * folds * perWedge, span = 60; // each wedge: the last 2 s (60 frames), newest on the petal axis
+    const float wedge = juce::MathConstants<float>::pi / (float) folds;
+    auto shape = [&] (const std::array<float, 240>& e)
+    {
+        std::array<float, perWedge + 1> lv {};
+        for (int k = 0; k <= perWedge; ++k) // a short average around each point, so a phrase reads as a petal, not as fuzz
+        {
+            const int centre = k * (span - 1) / perWedge;
+            float sum = 0.0f;
+            int cnt = 0;
+            for (int i = juce::jmax (0, centre - 3); i <= juce::jmin ((int) e.size() - 1, centre + 3); ++i) { sum += e[(size_t) i]; ++cnt; }
+            const float v = sum / (float) cnt;
+            lv[(size_t) k] = v * v; // squared: quiet and loud parts differ more (the same real level, a steeper curve)
+        }
+        juce::Path p;
+        for (int j = 0; j < N; ++j)
+        {
+            const int w = j / perWedge, k = j % perWedge;
+            const int idx = (w % 2 == 0) ? k : perWedge - k; // mirror every other wedge, so the wedges meet seamlessly
+            const float a = (float) j * juce::MathConstants<float>::twoPi / (float) N;
+            const float rad = r0 + lv[(size_t) idx] * (R - r0);
+            const juce::Point<float> pt (std::sin (a) * rad, -std::cos (a) * rad);
+            if (j == 0) p.startNewSubPath (pt); else p.lineTo (pt);
+        }
+        p.closeSubPath();
+        return p;
+    };
+    const auto outShape = shape (envOut), inShape = shape (envIn);
+    const bool live = envOut[0] > 0.0f;
+
+    auto flower = [&] (juce::Point<float> centre, float scale, float alpha, float turn, bool flip)
+    {
+        const bool main = scale >= 1.0f; // the reflections get only a fill and an outline (cheap)
+        auto at = juce::AffineTransform::rotation (turn).scaled (flip ? -scale : scale, scale).translated (centre);
+        juce::Path o (outShape);
+        o.applyTransform (at);
+        g.setGradientFill (juce::ColourGradient (pinkNeon.withAlpha (0.50f * alpha), centre.x, centre.y, uv.withAlpha (0.10f * alpha), centre.x + R * scale, centre.y, true));
+        g.fillPath (o);
+        if (live && main)
+            for (auto [k, a] : { std::pair { 1.16f, 0.30f }, std::pair { 1.34f, 0.16f } }) // echo contours
+            {
+                g.setColour (uv.interpolatedWith (pinkNeon, 0.4f).withAlpha (a * alpha));
+                g.strokePath (o, juce::PathStrokeType (1.0f), juce::AffineTransform::scale (k, k, centre.x, centre.y));
+            }
+        juce::ColourGradient edge (uv.withAlpha (alpha), centre.x - R * scale, centre.y, pinkNeon.withAlpha (alpha), centre.x + R * scale, centre.y, false);
+        g.setGradientFill (edge);
+        if (main)
+        {
+            g.setOpacity (0.25f);
+            g.strokePath (o, juce::PathStrokeType (7.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setOpacity (1.0f);
+        }
+        g.strokePath (o, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        if (live && main)
+        {
+            g.setColour (cyan.withAlpha (0.35f * alpha));
+            g.strokePath (o, juce::PathStrokeType (1.2f), juce::AffineTransform::translation (-2.0f, -2.0f));
+            g.setColour (pinkNeon.withAlpha (0.40f * alpha));
+            g.strokePath (o, juce::PathStrokeType (1.2f), juce::AffineTransform::translation (2.0f, 2.0f));
+        }
+        juce::Path in (inShape);
+        in.applyTransform (at);
+        g.setColour (cyan.withAlpha (0.5f * alpha)); // the input, in cyan as on the ribbon
+        g.strokePath (in, juce::PathStrokeType (1.1f));
+    };
+    // the reflections first (mirrored, turning the other way), then the flower itself
+    for (auto [d, scale, alpha] : { std::tuple { 2, 0.42f, 0.22f }, std::tuple { 1, 0.66f, 0.45f } })
+        for (int side : { -1, 1 })
+            flower ({ c.x + (float) (side * d) * R * 2.15f, c.y }, scale, alpha, -spin, (d % 2) == 1);
+    flower (c, 1.0f, 1.0f, spin, false);
 }
 }

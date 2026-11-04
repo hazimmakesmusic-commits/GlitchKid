@@ -326,9 +326,9 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> r)
 {
-    g.setColour (panelBottom);
+    g.setGradientFill (juce::ColourGradient (panelBottom.interpolatedWith (violet, 0.06f), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false));
     g.fillPath (chamferPath (r, 5.0f));
-    g.setColour (border);
+    g.setGradientFill (juce::ColourGradient (violet.withAlpha (0.55f), r.getX(), r.getY(), pink.withAlpha (0.40f), r.getRight(), r.getBottom(), false));
     g.strokePath (chamferPath (r.reduced (0.5f), 5.0f), juce::PathStrokeType (1.0f));
 }
 

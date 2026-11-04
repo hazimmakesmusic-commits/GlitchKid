@@ -16,6 +16,7 @@ public:
     bool cardOnForTest (int i) const { return isOn (i); }
     void toggleMoreForTest() { more.triggerClick(); }
     bool moreShownForTest() const { return mutCharacter.slider.isVisible(); }
+    void resetForTest (int card) { resets[(size_t) card].triggerClick(); }
 
 private:
     struct Knob
@@ -45,6 +46,7 @@ private:
     void bind (Choice&, const char* id, const juce::String& name, const juce::String& tip);
     std::array<juce::Rectangle<int>, 4> cards;
     juce::TextButton more { "MORE" };
+    std::array<juce::TextButton, 4> resets; // each card's "Reset": its parameters back to their defaults (host-visible gestures)
     bool showMore = false;
     std::array<bool, 4> shownOn {};
     bool isOn (int card) const;

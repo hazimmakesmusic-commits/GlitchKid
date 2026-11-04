@@ -634,6 +634,40 @@ struct MacroTests : public juce::UnitTest
                 openLevel (4);
                 click ("SPACE");
 
+                // TONE starts simple: the bands' knobs and AIR LAB's detail sit behind ADVANCED (shared with TUNE); the switch reveals them
+                {
+                    click ("TONE");
+                    int rotaries = 0, airDetail = 0;
+                    juce::ToggleButton* adv = nullptr;
+                    std::function<void (juce::Component&)> scan = [&] (juce::Component& c)
+                    {
+                        for (auto* ch : c.getChildren())
+                        {
+                            if (! ch->isVisible())
+                                continue;
+                            if (auto* sl = dynamic_cast<juce::Slider*> (ch))
+                            {
+                                if (sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) ++rotaries;
+                                if (sl->getSliderStyle() == juce::Slider::LinearHorizontal && sl->getTextBoxPosition() == juce::Slider::TextBoxRight) ++airDetail;
+                            }
+                            if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->getButtonText() == "ADVANCED")
+                                adv = tb;
+                            scan (*ch);
+                        }
+                    };
+                    scan (*content);
+                    expectEquals (rotaries, 1, "simple TONE: WARMTH is the only knob");
+                    expectEquals (airDetail, 0, "simple TONE: AIR LAB's detail sliders are hidden");
+                    expect (adv != nullptr && ! adv->getToggleState(), "ADVANCED is shown and off by default");
+                    if (adv != nullptr)
+                        adv->triggerClick();
+                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
+                    rotaries = airDetail = 0;
+                    scan (*content);
+                    expect (rotaries > 1 && airDetail == 4, "ADVANCED shows the band knobs and the four AIR LAB sliders");
+                    expect (p.getUiFlag ("uiShapeAdv", false), "the choice is remembered with the session");
+                }
+
                 // detailed knobs are attached to the real (automatable) parameters, in both directions
                 {
                     click ("TONE");

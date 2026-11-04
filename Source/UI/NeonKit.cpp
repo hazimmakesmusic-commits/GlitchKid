@@ -19,12 +19,15 @@ void Knob::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, floa
     {
         juce::Path arc;
         arc.addCentredArc (c.x, c.y, r, r, 0.0f, start, angle, true);
-        for (auto [width, alpha] : { std::pair { 10.0f, 0.08f }, std::pair { 6.0f, 0.16f } }) // a soft neon halo
+        // the arc sweeps from ultraviolet at its start to magenta at the value
+        const juce::Point<float> p0 (c.x + std::sin (start) * r, c.y - std::cos (start) * r), p1 (c.x + std::sin (angle) * r, c.y - std::cos (angle) * r);
+        const auto tip = uv.interpolatedWith (pinkNeon, juce::jlimit (0.0f, 1.0f, pos * 1.2f));
+        for (auto [width, alpha] : { std::pair { 12.0f, 0.10f }, std::pair { 7.0f, 0.20f } }) // a soft neon halo
         {
-            g.setColour (uv.withAlpha (alpha * (hot ? 1.6f : 1.0f)));
+            g.setGradientFill (juce::ColourGradient (uv.withAlpha (alpha * (hot ? 1.6f : 1.0f)), p0, tip.withAlpha (alpha * (hot ? 1.6f : 1.0f)), p1, false));
             g.strokePath (arc, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         }
-        g.setColour (hot ? uvSoft : uv);
+        g.setGradientFill (juce::ColourGradient (hot ? uvSoft : uv, p0, hot ? tip.brighter (0.3f) : tip, p1, false));
         g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
     // the body: a dark machined cap, lit from above
