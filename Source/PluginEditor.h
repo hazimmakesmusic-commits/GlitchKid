@@ -253,6 +253,7 @@ private:
     std::unique_ptr<glitchkid::ui::KidPanel> kidPanel;             // KID, the vocal producer
     std::unique_ptr<glitchkid::ui::MainScreen> mainScreen;         // the instrument: the first screen
     std::unique_ptr<glitchkid::ui::MasteringScreen> masteringScreen; // the Mastering Lab (page 8)
+    int shownRestores = 0;                                         // the processor's session-restore count already announced
     bool kidView = false;                                          // page 6 (MAIN) shows the instrument, or Kid
     void showMainView (bool kid);
     std::unique_ptr<glitchkid::ui::LabPage> labPage;               // LAB: Formant, Harmony, Mutation, Stutter

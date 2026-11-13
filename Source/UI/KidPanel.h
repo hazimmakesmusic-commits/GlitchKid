@@ -47,6 +47,7 @@ public:
     void loadFileForTest (const juce::File& f) { loadFile (f); }
     bool fileBusyForTest() const { return fileJob.isRunning() || fileWaiting; }
     const analysis::VocalFileReport& fileReportForTest() const { return fileReport; }
+    const analysis::VocalFileReport& lastFileReport() const { return fileReport; } // HOME's key suggestion reads it
     void compareForTest (bool original) { setCompare (original); }
     void pressForTest (const juce::String& buttonText);
     juce::String mainActionTextForTest() const { return mainButton.getButtonText(); }

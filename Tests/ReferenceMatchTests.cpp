@@ -557,6 +557,7 @@ struct ReferenceUiTests : public juce::UnitTest
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
+            ed->uiSelectRailForTest (1); // the rail and the header controls are laid out on the detailed pages (HOME has its own bar)
             for (int size : { 70, 100, 150 })
             {
                 ed->setSize (1120 * size / 100, 680 * size / 100);

@@ -117,8 +117,8 @@ namespace
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
 const RailItem railItems[11] = {
-    { "START", 6, 0, "Start", "Choose a sound, play your vocal, shape it with the main dials, compare.",
-      "Start: the main dials, the live in/out view and Kid. Choose a sound on SOUNDS or in the bar below." },
+    { "HOME", 6, 0, "Home", "The vocal instrument: AUTOTUNE, CLEAN LAB, AIR LAB, LIMITER and the main dials around your live vocal.",
+      "Back to Home: the vocal instrument. Everything you set here is the same setting there." },
     { "SOUNDS", 3, 0, "Sounds", "Choose a starting sound, or build a first mix fitted to your vocal.", "Starting sounds, and Build My Mix (fits a starting sound to your vocal)." },
     { "CLEAN", 1, 0, "Clean", "Step 1: rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
     { "TUNE", 4, 0, "Tune", "Step 2: pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
@@ -699,6 +699,15 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         ui::MainScreen::Hooks mh;
         mh.openSounds = [this] { selectRail (1); };
         mh.openKid = [this] { showMainView (true); };
+        mh.openAdvanced = [this] { selectRail (juce::jlimit (1, numRail - 1, glitchProcessor.getUiInt ("uiAdvancedRow", 2))); }; // the last detailed page, CLEAN at first
+        mh.holdOriginal = [this] (bool original) { setBypassFromUi (original); };
+        mh.fileKey = [this] (int& tonic, bool& minor)
+        {
+            const auto& r = kidPanel->lastFileReport();
+            tonic = r.keyTonic;
+            minor = r.keyMinor;
+            return r.keyReliable;
+        };
         mainScreen = std::make_unique<ui::MainScreen> (p, std::move (mh));
         ui::MasteringScreen::Hooks msh;
         masteringScreen = std::make_unique<ui::MasteringScreen> (p, std::move (msh));
@@ -772,7 +781,7 @@ void GlitchKidEditor::visualTick()
 
 void GlitchKidEditor::paintOverChildren (juce::Graphics& g)
 {
-    if (transition >= 1.0f || (page == Page::kid && kidView))
+    if (transition >= 1.0f || page == Page::kid) // HOME and Kid fill the window: the scan line belongs to the detailed pages' frame
         return;
     g.addTransform (juce::AffineTransform::scale (scaleFactor));
     const float y = (float) pageTop + transition * 458.0f;
@@ -807,6 +816,8 @@ void GlitchKidEditor::showPage (Page p, bool remember)
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
+    if (remember && railIndex() > 0)
+        glitchProcessor.setUiInt ("uiAdvancedRow", railIndex()); // HOME's ADVANCED MIXING reopens the last detailed page
     syncRail();
     layoutContent();
     repaint();
@@ -1837,7 +1848,16 @@ void GlitchKidEditor::timerCallback()
     refreshBeatLock (inPeak, glitchProcessor.consumeBeatPeak());
     refreshStatus (inPeak, outPeak);
     grMeter.pushReduction (glitchProcessor.consumeGainReductionDb());
-    limGrBar.push (glitchProcessor.consumeLimiterGainReductionDb());
+    const float limGr = glitchProcessor.consumeLimiterGainReductionDb();
+    limGrBar.push (limGr);
+    if (mainScreen != nullptr)
+        mainScreen->setLimiterReduction (limGr); // HOME shows the same reading (it is consumed once, here)
+    if (const int restores = glitchProcessor.getStateRestoreCount(); restores != shownRestores)
+    {
+        shownRestores = restores;
+        const auto preset = glitchProcessor.getPresetName();
+        showStatus ("Session restored" + (preset.isNotEmpty() ? ": " + preset : juce::String()));
+    }
     if (eqGraph->isVisible())
         eqGraph->refresh();
 
@@ -2040,8 +2060,22 @@ void GlitchKidEditor::layoutContent()
         }
         else
         {
+            // HOME: the whole window. The rail, the info line, SAVE / DELETE and A/B stay on the detailed pages; the preset selector, UNDO, MOTION and
+            // ORIGINAL / PROCESSED are the same buttons, laid on HOME's own bar.
+            for (auto* c : persistent)
+                c->setVisible (false);
             content.addChildComponent (*mainScreen);
-            place (*mainScreen, { railW, 58, pageW, 522 + barDy - 58 });
+            place (*mainScreen, { 0, 0, designW, designH });
+            mainScreen->toFront (false);
+            const auto cmp = mainScreen->compareArea();
+            for (auto [c, r] : { std::pair<juce::Component*, Rect> (&presetPrevButton, { 190, 12, 28, 28 }), { &presetMenuButton, { 222, 12, 280, 28 } },
+                                 { &presetNextButton, { 506, 12, 28, 28 } }, { &infoLabel, { 20, 54, 700, 18 } }, { &presetStatus, { 730, 54, designW - 750, 18 } },
+                                 { &undoButton, undoButton.getBounds() }, { &motionButton, motionButton.getBounds() },
+                                 { &dryButton, cmp.withHeight (30) }, { &processedButton, cmp.withTrimmedTop (36) } })
+            {
+                place (*c, r);
+                c->toFront (false);
+            }
         }
     }
     // ---- MASTER: the Mastering Lab, in the frame (ORIGINAL / PROCESSED at the top switch the level-matched original and the master) ----

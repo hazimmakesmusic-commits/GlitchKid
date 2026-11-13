@@ -1289,6 +1289,7 @@ void GlitchKidProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
             hasPresetBaseline = false; // the restored sound is not known to match any preset on disk
+            ++stateRestores;
         }
 }
 

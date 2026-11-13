@@ -398,7 +398,7 @@ struct MacroTests : public juce::UnitTest
                     walk (*content);
                     return out;
                 };
-                static const char* navNames[5] = { "START", "CLEAN", "BEAT", "SOUNDS", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
+                static const char* navNames[5] = { "HOME", "CLEAN", "BEAT", "SOUNDS", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
                 auto openLevel = [&] (int level) // 1..4: the real rail row, from anywhere
                 {
                     click (navNames[level]);
@@ -423,7 +423,7 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY MIX") && ! visible ("RESET"));
-                expect (visible ("START") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (visible ("HOME") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
@@ -801,7 +801,7 @@ struct MacroTests : public juce::UnitTest
 
                 // the rail is the navigation: a row opens its workspace (and FINAL TOUCH category) and is selected afterwards
                 {
-                    click ("START");
+                    click ("CLEAN");
                     click ("DYNAMICS");
                     expectEquals (p.getUiInt ("uiLevel", -1), 4);
                     expectEquals (p.getUiInt ("uiCategory", -1), 2);
@@ -809,8 +809,9 @@ struct MacroTests : public juce::UnitTest
 
                 click ("SOUNDS");
                 expect (visible ("TRY AGAIN"), "SOUNDS shows the build button (TRY AGAIN after the silent attempt)");
-                click ("START");
-                expectEquals ((int) levelCards().size(), 0, "START is the instrument; the old dashboard's tiles are gone");
+                click ("HOME");
+                expectEquals ((int) levelCards().size(), 0, "HOME is the instrument; the old dashboard's tiles are gone");
+                expect (! visible ("DYNAMICS") && ! visible ("SAVE"), "HOME fills the window: the rail and SAVE stay in Advanced Mixing");
             }
 
             {

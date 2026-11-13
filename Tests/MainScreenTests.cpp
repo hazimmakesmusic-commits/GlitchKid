@@ -56,53 +56,128 @@ struct MainScreenTests : public juce::UnitTest
             }
         };
 
-        beginTest ("START: the first page, in the same frame as every page (rail, ORIGINAL / PROCESSED, UNDO, presets); seven dials; one next step");
+        using MS = glitchkid::ui::MainScreen;
+        auto findLabel = [&] (const juce::String& prefix)
         {
+            std::function<juce::Label* (juce::Component&)> walk = [&] (juce::Component& c) -> juce::Label*
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (auto* l = dynamic_cast<juce::Label*> (ch); l != nullptr && l->isVisible() && l->getText().startsWith (prefix))
+                        return l;
+                    if (auto* r = walk (*ch))
+                        return r;
+                }
+                return nullptr;
+            };
+            return walk (*ed);
+        };
+
+        beginTest ("HOME: the first page, the whole window; the rail, SAVE and A/B wait in Advanced Mixing; the shared header buttons stay");
+        {
+            expectEquals (ed->uiPageForTest(), 6);
             expectEquals (ed->uiRailIndexForTest(), 0);
-            expect (main.isVisible() && main.getParentComponent() != nullptr && main.getX() > 100, "inside the frame, beside the rail");
-            expect (kid.getParentComponent() == nullptr, "Kid is not attached while START shows");
-            const char* names[] = { "TUNE", "CLEAN", "TONE", "PUNCH", "SPACE", "MIX", "OUTPUT" };
-            for (int i = 0; i < glitchkid::ui::MainScreen::numDials; ++i)
+            expect (main.isVisible() && main.getBounds() == juce::Rectangle<int> (0, 0, 1120, 680), "the whole window");
+            expect (kid.getParentComponent() == nullptr, "Kid is not attached while HOME shows");
+            const char* names[] = { "CORRECTION", "INTENSITY", "AIR", "CEILING", "TONE", "PUNCH", "SPACE", "PRESENCE", "MIX", "OUTPUT" };
+            for (int i = 0; i < MS::numDials; ++i)
                 expectEquals (main.dialNameForTest (i), juce::String (names[i]));
-            for (auto* b : { "START", "SOUNDS", "CLEAN", "TUNE", "TONE", "DYNAMICS", "SPACE", "CREATIVE", "BEAT", "REFERENCE", "MASTER", "ORIGINAL", "PROCESSED", "UNDO", "SAVE", "Choose a sound", "Ask Kid" })
+            for (auto* b : { "ORIGINAL", "PROCESSED", "UNDO", "Choose a sound", "Ask Kid", "ADVANCED MIXING", "Mandala" })
                 expect (visibleButton (*ed, b), b);
-            shot ("main_idle");
+            for (auto* b : { "HOME", "SOUNDS", "CLEAN", "TUNE", "DYNAMICS", "MASTER", "SAVE", "SET A" })
+                expect (! visibleButton (*ed, b), juce::String (b) + " stays in Advanced Mixing");
+            for (int m = 0; m < MS::numModules; ++m)
+                expect (main.moduleSwitchForTest (m).isVisible() && main.moduleSwitchForTest (m).getButtonText() == "OFF", "every module starts off");
+            shot ("home_idle");
         }
 
-        beginTest ("every dial moves its real parameters, and follows them when they move elsewhere");
+        beginTest ("the module switches and every dial move their real parameters, and follow them when they move elsewhere");
         {
-            main.dialForTest (0).setValue (60.0, juce::sendNotificationSync);
-            expect (getParam (p, "tune_on") > 0.5f && std::abs (getParam (p, "tune_strength") - 60.0f) < 0.2f, "TUNE");
-            main.dialForTest (0).setValue (0.0, juce::sendNotificationSync);
-            expect (getParam (p, "tune_on") < 0.5f && main.dialTextForTest (0) == "Off", "TUNE at 0 is off");
-            main.dialForTest (1).setValue (45.0, juce::sendNotificationSync);
-            expect (getParam (p, "clean_on") > 0.5f && std::abs (getParam (p, "clean_amount") - 45.0f) < 0.2f, "CLEAN");
-            main.dialForTest (2).setValue (85.0, juce::sendNotificationSync);
-            expect (getParam (p, "eq_hi_gain") > 1.0f && main.dialTextForTest (2).startsWith ("Brighter"), "TONE drives the TONE macro");
-            main.dialForTest (3).setValue (60.0, juce::sendNotificationSync);
+            const char* switchIds[] = { "tune_on", "clean_on", "air_on", "lim_on" };
+            for (int m = 0; m < MS::numModules; ++m)
+            {
+                main.moduleSwitchForTest (m).triggerClick();
+                juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+                expectEquals (getParam (p, switchIds[m]), 1.0f, switchIds[m]);
+                expectEquals (main.moduleSwitchForTest (m).getButtonText(), juce::String ("ON"));
+                th::setParam (p, switchIds[m], 0.0f); // switched off elsewhere (a detailed page, automation)
+                expect (! main.moduleSwitchForTest (m).getToggleState() && main.moduleSwitchForTest (m).getButtonText() == "OFF", "the switch follows");
+            }
+            main.dialForTest (MS::tune).setValue (60.0, juce::sendNotificationSync);
+            expectWithinAbsoluteError (getParam (p, "tune_strength"), 60.0f, 0.2f, "CORRECTION");
+            expectEquals (getParam (p, "tune_on"), 0.0f, "automation-style moves never switch a module on");
+            main.dragForTest (MS::tune, 70.0);
+            expect (getParam (p, "tune_on") > 0.5f && std::abs (getParam (p, "tune_strength") - 70.0f) < 0.2f, "a hand drag on an off module switches it on");
+            main.dragForTest (MS::clean, 45.0);
+            expect (getParam (p, "clean_on") > 0.5f && std::abs (getParam (p, "clean_amount") - 45.0f) < 0.2f, "CLEAN LAB intensity");
+            main.dragForTest (MS::air, 35.0);
+            expect (getParam (p, "air_on") > 0.5f && std::abs (getParam (p, "air_air") - 35.0f) < 0.2f, "AIR");
+            main.dragForTest (MS::ceiling, -3.0);
+            expect (getParam (p, "lim_on") > 0.5f && std::abs (getParam (p, "lim_ceiling") + 3.0f) < 0.06f, "CEILING");
+            th::setParam (p, "air_on", 0.0f);
+            th::setParam (p, "air_link", 0.0f); // LINK is on by default
+            main.dragForTest (MS::presence, 55.0);
+            expect (getParam (p, "air_on") > 0.5f && std::abs (getParam (p, "air_presence") - 55.0f) < 0.2f, "PRESENCE is AIR LAB's presence, and switches it on");
+            expectWithinAbsoluteError (getParam (p, "air_air"), 35.0f, 0.2f, "LINK off: AIR stays");
+            th::setParam (p, "air_link", 1.0f);
+            main.dragForTest (MS::presence, 62.0);
+            expectWithinAbsoluteError (getParam (p, "air_air"), 62.0f, 0.2f, "LINK on: a hand move of PRESENCE moves AIR too");
+            main.dialForTest (MS::presence).setValue (20.0, juce::sendNotificationSync);
+            expectWithinAbsoluteError (getParam (p, "air_air"), 62.0f, 0.2f, "LINK follows hand moves only");
+            th::setParam (p, "air_link", 1.0f); // back to the default
+            main.dialForTest (MS::tone).setValue (85.0, juce::sendNotificationSync);
+            expect (getParam (p, "eq_hi_gain") > 1.0f && main.dialTextForTest (MS::tone).startsWith ("Brighter"), "TONE drives the TONE macro");
+            main.dialForTest (MS::punch).setValue (60.0, juce::sendNotificationSync);
             expect (getParam (p, "comp_ratio") > 1.5f, "PUNCH drives the compressor");
-            main.dialForTest (4).setValue (40.0, juce::sendNotificationSync);
+            main.dialForTest (MS::space).setValue (40.0, juce::sendNotificationSync);
             expect (getParam (p, "echo_on") > 0.5f, "SPACE drives echo and width");
-            main.dialForTest (5).setValue (70.0, juce::sendNotificationSync);
+            main.dialForTest (MS::mix).setValue (70.0, juce::sendNotificationSync);
             expectWithinAbsoluteError (getParam (p, "mix"), 70.0f, 0.2f, "MIX");
-            main.dialForTest (6).setValue (-6.0, juce::sendNotificationSync);
+            main.dialForTest (MS::output).setValue (-6.0, juce::sendNotificationSync);
             expectWithinAbsoluteError (getParam (p, "gain"), -6.0f, 0.1f, "OUTPUT");
 
-            setParam (p, "mix", 100.0f);
-            setParam (p, "gain", 0.0f);
-            setParam (p, "clean_amount", 80.0f);
-            setParam (p, "eq_hi_gain", 0.0f);
-            setParam (p, "eq_b2_gain", 0.0f);
+            th::setParam (p, "mix", 100.0f);
+            th::setParam (p, "gain", 0.0f);
+            th::setParam (p, "clean_amount", 80.0f);
+            th::setParam (p, "lim_ceiling", -1.0f);
+            th::setParam (p, "air_presence", 30.0f);
+            th::setParam (p, "eq_hi_gain", 0.0f);
+            th::setParam (p, "eq_b2_gain", 0.0f);
             for (int i = 0; i < 6; ++i) main.tickForTest();
-            expectWithinAbsoluteError ((float) main.dialForTest (5).getValue(), 100.0f, 0.2f, "MIX follows");
-            expectWithinAbsoluteError ((float) main.dialForTest (6).getValue(), 0.0f, 0.1f, "OUTPUT follows");
-            expectWithinAbsoluteError ((float) main.dialForTest (1).getValue(), 80.0f, 0.2f, "CLEAN follows");
-            expectWithinAbsoluteError ((float) main.dialForTest (2).getValue(), 50.0f, 0.6f, "TONE follows (flat)");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::mix).getValue(), 100.0f, 0.2f, "MIX follows");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::output).getValue(), 0.0f, 0.1f, "OUTPUT follows");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::clean).getValue(), 80.0f, 0.2f, "INTENSITY follows");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::ceiling).getValue(), -1.0f, 0.06f, "CEILING follows");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::presence).getValue(), 30.0f, 0.2f, "PRESENCE follows");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::tone).getValue(), 50.0f, 0.6f, "TONE follows (flat)");
+            main.pressForTest ("Use");
+            expect (! main.useKeyShownForTest(), "no key suggestion without a vocal file analysed by Kid");
+            expect (main.moduleStatusForTest (MS::autotune).startsWith ("Listening"), main.moduleStatusForTest (MS::autotune));
+            for (auto* id : { "tune_on", "clean_on", "air_on", "lim_on" })
+                th::setParam (p, id, 0.0f);
         }
 
-        beginTest ("the next step and Kid from START; moving around never changes the sound");
+        beginTest ("ADVANCED MIXING: the detailed pages with the rail; they share every setting with HOME; HOME in the rail comes back");
         {
             const auto before = p.captureSoundState();
+            main.pressForTest ("ADVANCED MIXING");
+            expectEquals (ed->uiRailIndexForTest(), 2, "first time: CLEAN, step 1 of the rail");
+            expect (! main.isShowing() && visibleButton (*ed, "HOME") && visibleButton (*ed, "SAVE") && visibleButton (*ed, "SET A"), "the rail, SAVE and A/B are back");
+            ed->uiSelectRailForTest (5); // DYNAMICS: the limiter's own controls
+            th::setParam (p, "lim_ceiling", -4.0f); // as its ceiling knob would
+            ed->uiSelectRailForTest (0);
+            expect (ed->uiPageForTest() == 6 && main.isVisible() && main.getX() == 0, "HOME");
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::ceiling).getValue(), -4.0f, 0.06f, "a change in Advanced shows on HOME");
+            main.pressForTest ("ADVANCED MIXING");
+            expectEquals (ed->uiRailIndexForTest(), 5, "ADVANCED MIXING reopens the last detailed page");
+            th::setParam (p, "lim_ceiling", -1.0f);
+            juce::MemoryBlock mb;
+            p.getStateInformation (mb);
+            GlitchKidProcessor q;
+            q.setStateInformation (mb.getData(), (int) mb.getSize());
+            expectEquals (q.getUiInt ("uiAdvancedRow", -1), 5, "remembered with the session");
+            expectEquals (q.getUiInt ("uiLevel", -1), 4, "the session reopens on the detailed page it was left on");
+            ed->uiSelectRailForTest (0);
             main.pressForTest ("Choose a sound");
             expectEquals (ed->uiRailIndexForTest(), 1, "Choose a sound opens SOUNDS");
             ed->uiSelectRailForTest (0);
@@ -110,12 +185,128 @@ struct MainScreenTests : public juce::UnitTest
             expect (ed->uiKidViewForTest() && kid.getParentComponent() != nullptr && main.getParentComponent() == nullptr, "Kid takes the window");
             expectEquals (p.getUiInt ("uiMainView", -1), 1, "remembered with the session");
             kid.pressForTest ("Instrument");
-            expect (! ed->uiKidViewForTest() && main.getParentComponent() != nullptr, "back to START");
+            expect (! ed->uiKidViewForTest() && main.getParentComponent() != nullptr && main.getX() == 0, "back to HOME");
             for (int row = 0; row < 11; ++row)
                 ed->uiSelectRailForTest (row);
             ed->uiSelectRailForTest (0);
-            expect (main.isVisible() && main.getParentComponent() != nullptr, "START in the rail comes back to the instrument");
+            expect (main.isVisible() && main.getParentComponent() != nullptr, "HOME in the rail comes back to the instrument");
             expect (same (before, p.captureSoundState()), "navigation never changes the sound");
+        }
+
+        beginTest ("HOME's states come from the real signal and settings: no audio, silence, playing, ORIGINAL, modules, mastering");
+        {
+            for (int i = 0; i < 40; ++i) main.tickForTest();
+            expect (main.headlineForTest().startsWith ("No audio is reaching"), main.headlineForTest());
+            expectEquals (main.beatForTest(), juce::String ("No beat connected"));
+            play (20, 0.0f);
+            for (int i = 0; i < 3; ++i) { play (2, 0.0f); main.tickForTest(); }
+            expect (main.headlineForTest().startsWith ("Silence on the input"), main.headlineForTest());
+            th::setParam (p, "clean_on", 1.0f);
+            th::setParam (p, "lim_on", 1.0f);
+            for (int i = 0; i < 6; ++i) { play (4, 0.4f); main.tickForTest(); }
+            expect (main.headlineForTest() == "Hearing your vocal, processed:  CLEAN LAB, LIMITER", main.headlineForTest());
+            expect (main.moduleStatusForTest (MS::cleanLab).startsWith ("Learning your voice") || main.moduleStatusForTest (MS::cleanLab).startsWith ("Fixing")
+                        || main.moduleStatusForTest (MS::cleanLab).startsWith ("Listening"), main.moduleStatusForTest (MS::cleanLab));
+            expect (main.moduleStatusForTest (MS::airLab) == "Off" && main.moduleStatusForTest (MS::autotune) == "Off");
+
+            th::setParam (p, "clean_on", 0.0f); // CLEAN LAB rightly cuts this 220 Hz tone as low-mid build-up; off, the full level reaches the limiter
+            th::setParam (p, "lim_ceiling", -12.0f); // a loud signal against a low ceiling: the limiter works, and HOME shows its real reduction
+            bool caught = false; // the test tone swells and fades: HOME says so while the limiter really reduces (its own reading, once per tick)
+            for (int i = 0; i < 30; ++i)
+            {
+                play (4, 0.9f);
+                ed->uiTickForTest();
+                main.tickForTest();
+                caught = caught || main.moduleStatusForTest (MS::limiter).startsWith ("Catching peaks: -");
+            }
+            expect (caught, "the limiter's real gain reduction shows on HOME");
+            shot ("home_playing_limiter");
+            th::setParam (p, "lim_ceiling", -1.0f);
+
+            const auto c = main.visualForTest().getCentre();
+            main.holdForTest (c);
+            expectEquals (getParam (p, "bypass"), 1.0f, "press and hold the vocal: ORIGINAL");
+            for (int i = 0; i < 3; ++i) { play (2, 0.4f); main.tickForTest(); }
+            expect (main.headlineForTest().startsWith ("ORIGINAL"), main.headlineForTest());
+            shot ("home_original");
+            main.releaseForTest();
+            expectEquals (getParam (p, "bypass"), 0.0f, "let go: PROCESSED");
+            main.holdForTest ({ 4, 4 });
+            main.releaseForTest();
+            expectEquals (getParam (p, "bypass"), 0.0f, "a press outside the vocal changes nothing");
+            th::setParam (p, "bypass", 1.0f);
+            main.holdForTest (c);
+            main.releaseForTest();
+            expectEquals (getParam (p, "bypass"), 1.0f, "ORIGINAL chosen with the button stays ORIGINAL");
+            th::setParam (p, "bypass", 0.0f);
+            th::setParam (p, "master_on", 1.0f);
+            for (int i = 0; i < 3; ++i) main.tickForTest();
+            expect (main.headlineForTest().startsWith ("Mastering mode is on"), main.headlineForTest());
+            th::setParam (p, "master_on", 0.0f);
+            th::setParam (p, "clean_on", 0.0f);
+            th::setParam (p, "lim_on", 0.0f);
+        }
+
+        beginTest ("the key suggestion is used only when asked; a window closed mid-hold never leaves the track on ORIGINAL");
+        {
+            MS::Hooks h;
+            h.holdOriginal = [&] (bool original) { th::setParam (p, "bypass", original ? 1.0f : 0.0f); };
+            h.fileKey = [] (int& tonic, bool& minor) { tonic = 9; minor = true; return true; }; // as Kid reports a reliable A minor
+            auto home = std::make_unique<MS> (p, std::move (h));
+            home->setSize (1120, 680);
+            th::setParam (p, "tune_key", 0.0f);
+            th::setParam (p, "tune_scale", 0.0f);
+            home->tickForTest(); home->tickForTest(); home->tickForTest();
+            expect (home->useKeyShownForTest(), "a suggestion that differs from the current key offers Use");
+            expect (getParam (p, "tune_key") < 0.5f && getParam (p, "tune_scale") < 0.5f, "showing it changes nothing");
+            home->pressForTest ("Use");
+            expectWithinAbsoluteError (getParam (p, "tune_key"), 9.0f, 0.01f, "A");
+            expectWithinAbsoluteError (getParam (p, "tune_scale"), 2.0f, 0.01f, "Minor");
+            expect (! home->useKeyShownForTest(), "nothing left to suggest");
+            expectEquals (getParam (p, "tune_on"), 0.0f, "using the key never switches AUTOTUNE on");
+            home->holdForTest (home->visualForTest().getCentre());
+            expectEquals (getParam (p, "bypass"), 1.0f);
+            home.reset();
+            expectEquals (getParam (p, "bypass"), 0.0f, "closed while held: back to PROCESSED");
+            th::setParam (p, "tune_key", 0.0f);
+            th::setParam (p, "tune_scale", 0.0f);
+        }
+
+        beginTest ("a preset shows in HOME's bar; a restored session is announced; HOME survives every window size");
+        {
+            auto s = p.captureSoundState();
+            p.applyPreset ("Home Test", s);
+            ed->uiTickForTest();
+            expect (visibleButton (*ed, "PRESET:  Home Test   v") || visibleButton (*ed, "USER:  Home Test   v") || visibleButton (*ed, "PROFILE:  Home Test   v"), "the preset name on HOME");
+            juce::MemoryBlock mb;
+            p.getStateInformation (mb);
+            GlitchKidProcessor q;
+            q.prepareToPlay (48000.0, 480);
+            q.setStateInformation (mb.getData(), (int) mb.getSize());
+            std::unique_ptr<juce::AudioProcessorEditor> e2 (q.createEditor());
+            auto* ed2 = dynamic_cast<GlitchKidEditor*> (e2.get());
+            std::function<juce::Label* (juce::Component&)> walk = [&] (juce::Component& c) -> juce::Label*
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (auto* l = dynamic_cast<juce::Label*> (ch); l != nullptr && l->isVisible() && l->getText().startsWith ("Session restored"))
+                        return l;
+                    if (auto* r = walk (*ch))
+                        return r;
+                }
+                return nullptr;
+            };
+            auto* note = walk (*ed2);
+            expect (note != nullptr && note->getText() == "Session restored: Home Test", note != nullptr ? note->getText() : juce::String ("no note"));
+            expect (ed2->uiPageForTest() == 6 && ed2->uiMainScreenForTest().isVisible(), "the restored session opens on HOME");
+            expect (findLabel ("Session restored") == nullptr, "a fresh instance announces nothing");
+            for (int w : { 784, 1120, 1680 })
+            {
+                ed->setSize (w, w * 680 / 1120);
+                expect (main.getBounds() == juce::Rectangle<int> (0, 0, 1120, 680), "HOME keeps its design size inside the scaled window");
+                shot ("home_" + juce::String (w));
+            }
+            ed->setSize (1120, 680);
         }
 
         beginTest ("the ribbon shows real audio only, and repaints cheaply");

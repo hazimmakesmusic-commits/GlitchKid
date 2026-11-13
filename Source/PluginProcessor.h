@@ -256,6 +256,7 @@ public:
     // Off (the default): bypass is exactly the time-aligned dry signal, as before. Real-time safe (two running averages and a smoothed gain).
     void setLevelMatchedCompare (bool on) { levelMatch.store (on); }
     bool isLevelMatchedCompare() const { return levelMatch.load(); }
+    int getStateRestoreCount() const { return stateRestores.load(); } // how many times the host restored a session into this instance (UI notice only)
     float getCompareGainDb() const { return compareGainDb.load(); } // processed minus dry loudness in dB (0 until something has been measured)
     // Pitch Tune read-outs for the UI: MIDI note numbers (fractional), -1 when no voice is being corrected.
     float getTuneDetectedMidi() const { return shownDetectedMidi.load(); }
@@ -360,6 +361,7 @@ private:
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
     std::atomic<bool> levelMatch { false };
+    std::atomic<int> stateRestores { 0 }; // setStateInformation calls that restored our state (message thread); read by the editor
     std::atomic<float> compareGainDb { 0.0f };
     double compareDryEnergy = 0.0, compareWetEnergy = 0.0; // running mean squares (audio thread only)
     juce::SmoothedValue<float> dryMatchGain { 1.0f };      // linear, applied to the dry signal while bypassed with matching on

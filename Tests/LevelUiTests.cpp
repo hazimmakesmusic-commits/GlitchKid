@@ -220,7 +220,7 @@ struct LevelUiTests : public juce::UnitTest
             const auto presetName = p.getPresetName();
             if (auto* ged = dynamic_cast<GlitchKidEditor*> (ed.get()))
                 ged->uiSelectRailForTest (1); // KID, the first screen, fills the window without the rail: start from a detailed page, where the rail is
-            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "START", "TONE", "START" })
+            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "TONE", "HOME" }) // HOME fills the window (no rail), so it comes last
             {
                 auto* b = findButton (*content, name);
                 expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the rail");

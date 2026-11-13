@@ -642,7 +642,7 @@ struct KidEditorTests : public juce::UnitTest
             }
             kid.pressForTest ("Tune");
             expectEquals (ed->uiRailIndexForTest(), 3, "Advanced: Tune opens the TUNE page");
-            expect (visibleButton (*ed, "START") && visibleButton (*ed, "SAVE"), "the rail and the preset bar are back on the detailed pages");
+            expect (visibleButton (*ed, "HOME") && visibleButton (*ed, "SAVE"), "the rail and the preset bar are back on the detailed pages");
             ed->uiSelectRailForTest (0);
             expect (kid.isVisible() && ! visibleButton (*ed, "SAVE"));
         }
