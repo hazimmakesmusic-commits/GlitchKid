@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en" data-profile="magenta">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GLITCHKID motion lab — 03 Frequency field</title>
+<link rel="stylesheet" href="lab.css">
+<style>
+/* The "hear it" stage draft: the field is the full width of the page; the measurement sits on it in mono; the headline holds the top-left. */
+.stage { position: relative; min-height: 100svh; padding: clamp(80px, 12vh, 120px) 0 110px; display: grid; grid-template-rows: auto 1fr auto; }
+.copy { padding: 0 clamp(16px, 4vw, 56px); display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 18px 40px; }
+.copy h2 { margin: 0; font-family: var(--display); font-weight: 800; font-stretch: 72%; text-transform: uppercase; line-height: .88; letter-spacing: -.02em;
+           font-size: clamp(44px, 6.2vw, 108px); }
+.copy p { margin: 0; color: var(--text-2); max-width: 38ch; }
+.field { position: relative; min-height: 340px; margin: 28px 0 0; }
+.field canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.readout { display: flex; flex-wrap: wrap; gap: 8px 28px; padding: 14px clamp(16px, 4vw, 56px) 0; border-top: 1px solid var(--rule); margin: 0 clamp(16px, 4vw, 56px); padding-left: 0; padding-right: 0; }
+.readout b { font-weight: 500; color: var(--text); }
+.readout .src[data-live="true"] b { color: var(--secondary); }
+.legend { display: inline-flex; align-items: center; gap: 10px; }
+.legend i { display: block; width: 90px; height: 4px; background: linear-gradient(90deg, var(--deep), var(--primary), var(--secondary)); }
+.lab-bar input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; }
+@media (max-width: 720px) { .copy h2 { font-size: 14vw; } .field { min-height: 46svh; } .stage { padding-bottom: 170px; } }
+</style>
+</head>
+<body>
+<section class="stage" aria-label="Frequency field">
+    <p class="stage-label mono"><span>MON · 02</span><i></i><span class="dim">The field listens</span></p>
+    <div class="copy">
+        <h2>Every voice<br>has a shape.</h2>
+        <p>This field is drawn from the audio you give it, measured in your browser: 28 bands from 40 Hz to 16 kHz. Nothing is uploaded. With no audio it rests, and says so.</p>
+    </div>
+    <div class="field"><canvas id="field" role="img" aria-label="Frequency field: the spectrum of the current audio over the last five seconds"></canvas></div>
+    <p class="readout mono dim" aria-live="polite">
+        <span class="src" id="src" data-live="false">Source <b>IDLE · NO AUDIO</b></span>
+        <span>Level <b id="rms">—</b></span>
+        <span>Centroid <b id="cen">—</b></span>
+        <span class="legend">40 Hz <i></i> 16 kHz</span>
+    </p>
+</section>
+<div class="lab-bar">
+    <span class="mono">03 · Frequency field</span>
+    <button id="mic">Use microphone</button>
+    <label class="btn" for="file">Open audio file</label><input id="file" type="file" accept="audio/*">
+    <button id="stop">Stop</button>
+    <span class="chips" role="group" aria-label="Colour profile"></span>
+    <span class="spacer"></span>
+    <span class="mono dim meter" id="meter"></span>
+</div>
+<script type="module">
+import { createField } from "../motion/field.js";
+import { mountLabBar } from "./lab.js";
+
+const src = document.getElementById ("src"), rms = document.getElementById ("rms"), cen = document.getElementById ("cen");
+const field = createField (document.getElementById ("field"), {
+    onReadout: (r) => {
+        src.dataset.live = String (r.rms !== null);
+        src.lastElementChild.textContent = note || r.label;
+        rms.textContent = r.rms === null ? "—" : `${Math.max (-90, r.rms).toFixed (1)} dBFS RMS`;
+        cen.textContent = r.centroid === null ? "—" : r.centroid >= 1000 ? `${(r.centroid / 1000).toFixed (2)} kHz` : `${r.centroid.toFixed (0)} Hz`;
+    },
+});
+let ac = null, stopCurrent = () => {}, note = ""; // note: why we are idle, when a source failed
+const context = () => (ac ??= new AudioContext());
+function stop () { note = ""; stopCurrent(); stopCurrent = () => {}; field.detach(); }
+
+document.getElementById ("mic").onclick = async () => {
+    stop();
+    try { // raw input: no echo cancellation or gain riding, so the field shows the voice as it is. The mic is never routed to the speakers.
+        const stream = await navigator.mediaDevices.getUserMedia ({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        await context().resume();
+        field.attach (context().createMediaStreamSource (stream), "MICROPHONE");
+        stopCurrent = () => stream.getTracks().forEach ((t) => t.stop());
+    } catch (e) { note = "MICROPHONE NOT AVAILABLE · IDLE"; }
+};
+document.getElementById ("file").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (! f) return;
+    stop();
+    try {
+        await context().resume();
+        const buf = await context().decodeAudioData (await f.arrayBuffer());
+        const node = context().createBufferSource();
+        node.buffer = buf; node.loop = true;
+        node.connect (context().destination);
+        node.start();
+        field.attach (node, f.name.toUpperCase().slice (0, 32));
+        stopCurrent = () => node.stop();
+    } catch (err) { note = "COULD NOT DECODE THAT FILE · IDLE"; }
+    e.target.value = "";
+};
+document.getElementById ("stop").onclick = stop;
+mountLabBar (field.stats);
+</script>
+</body>
+</html>

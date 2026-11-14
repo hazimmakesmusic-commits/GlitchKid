@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en" data-profile="magenta">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GLITCHKID motion lab — 02 Chromatic distortion</title>
+<link rel="stylesheet" href="lab.css">
+<style>
+/* The product reveal draft: text holds the left four columns; the instrument takes the right eight and bleeds off the edge. */
+.stage { position: relative; min-height: 100svh; display: grid; grid-template-columns: minmax(260px, 4fr) 8fr; gap: 0 clamp(20px, 3vw, 48px);
+         padding: clamp(80px, 12vh, 120px) 0 110px clamp(16px, 4vw, 56px); align-items: center; }
+.copy h2 { margin: 0 0 22px; font-family: var(--display); font-weight: 800; font-stretch: 72%; text-transform: uppercase; line-height: .88; letter-spacing: -.02em;
+           font-size: clamp(44px, 5.4vw, 92px); }
+.copy p { color: var(--text-2); max-width: 34ch; margin: 0 0 26px; }
+.stages { display: flex; flex-direction: column; border-top: 1px solid var(--rule); }
+.stages button { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 14px 0; background: none; border: 0; border-bottom: 1px solid var(--rule);
+                 color: var(--text-2); font: 600 15px/1.2 var(--body); text-align: left; cursor: pointer; transition: color .14s cubic-bezier(.2,.8,.2,1); }
+.stages button span:last-child { font: 500 11px var(--mono); letter-spacing: .08em; color: var(--text-3); }
+.stages button:hover, .stages button[aria-current="true"] { color: var(--text); }
+.stages button[aria-current="true"] span:first-child::before { content: ""; display: inline-block; width: 18px; height: 2px; margin: 0 10px 4px 0; vertical-align: middle;
+                 background: linear-gradient(90deg, var(--secondary), var(--primary)); }
+.screen { position: relative; aspect-ratio: 1120 / 680; margin: 0 -8vw 0 0; }  /* bleeds off the right edge on purpose */
+.screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.screen figcaption { position: absolute; left: 0; top: calc(100% + 12px); }
+@media (max-width: 860px) {
+    .stage { grid-template-columns: 1fr; padding-right: 16px; align-content: start; }
+    .screen { margin: 28px -16px 36px 0; order: -1; }   /* phones: the instrument first, full bleed; the stage list below it */
+    .copy h2 { font-size: 15vw; }
+    .screen figcaption { top: calc(100% + 10px); }
+}
+</style>
+</head>
+<body>
+<section class="stage" aria-label="Tuning in the instrument">
+    <p class="stage-label mono"><span>PROC · 01</span><i></i><span class="dim">Tuning in the instrument</span></p>
+    <div class="copy">
+        <h2>The signal<br>becomes the<br>instrument.</h2>
+        <p>Real screens from the current beta build. The distortion is the transition, never the picture.</p>
+        <nav class="stages" aria-label="Screens">
+            <button data-src="home" aria-current="false"><span>Home</span><span>Build My Mix</span></button>
+            <button data-src="advanced-shape" aria-current="false"><span>Shape</span><span>EQ · Comp</span></button>
+            <button data-src="advanced-tune" aria-current="false"><span>Tune</span><span>Key · Scale</span></button>
+            <button data-src="advanced-clean" aria-current="false"><span>Clean</span><span>Clean Lab</span></button>
+        </nav>
+    </div>
+    <figure class="screen">
+        <canvas id="screen" role="img" aria-label="GlitchKid interface"></canvas>
+        <figcaption class="mono dim" id="caption">Signal · resolved</figcaption>
+    </figure>
+</section>
+<div class="lab-bar">
+    <span class="mono">02 · Chromatic distortion</span>
+    <button id="tune">Tune in again</button>
+    <label class="mono dim">Inspect <input id="amount" type="range" min="0" max="1" step="0.01" value="0" aria-label="Distortion amount (inspection)"></label>
+    <span class="chips" role="group" aria-label="Colour profile"></span>
+    <span class="spacer"></span>
+    <span class="mono dim meter" id="meter"></span>
+</div>
+<script type="module">
+import { createChroma } from "../motion/chroma.js";
+import { createSignal } from "../motion/signal.js";
+import { mountLabBar } from "./lab.js";
+
+const load = (src) => new Promise ((ok, bad) => { const i = new Image(); i.onload = () => ok (i); i.onerror = bad; i.src = src; });
+const chroma = createChroma (document.getElementById ("screen"));
+const caption = document.getElementById ("caption"), buttons = [...document.querySelectorAll (".stages button")];
+const shots = Object.fromEntries (await Promise.all (buttons.map (async (b) => [b.dataset.src, await load (`../assets/product/${b.dataset.src}.webp`)])));
+
+// the opening picture: the resolved signal and the wordmark, drawn at the screen's size (where the hero leaves off)
+const intro = document.createElement ("canvas");
+intro.width = 1120; intro.height = 680;
+{
+    const host = document.createElement ("canvas");
+    host.style.cssText = "position:absolute;left:-9999px;width:1120px;height:680px";
+    document.body.append (host);
+    const sig = createSignal (host, { y: 0.58 }); sig.final();
+    await new Promise ((r) => requestAnimationFrame (() => requestAnimationFrame (r))); // the signal draws on its own frame clock
+    sig.stop();
+    const g = intro.getContext ("2d");
+    g.fillStyle = "#07070a"; g.fillRect (0, 0, 1120, 680);
+    g.drawImage (host, 0, 0, 1120, 680);
+    const mark = await load ("../assets/brand/glitchkid-wordmark.svg");
+    const mw = 620, mh = mw * mark.height / mark.width; // sits on the line like a baseline, inside the part of the screen that never bleeds off
+    g.drawImage (mark, 90, 680 * 0.58 - mh - 16, mw, mh);
+    host.remove();
+}
+let current = null;
+async function show (key) {
+    const target = shots[key];
+    buttons.forEach ((b) => b.setAttribute ("aria-current", String (b.dataset.src === key)));
+    await chroma.burst ({ onPeak: () => chroma.setSource (target) });
+    caption.textContent = "Rendered from the current beta build · " + key.replace ("advanced-", "Advanced · ");
+    current = key;
+}
+async function tuneIn () { chroma.setSource (intro); caption.textContent = "Signal · resolved"; await new Promise ((r) => setTimeout (r, 700)); await show ("home"); }
+buttons.forEach ((b) => (b.onclick = () => b.dataset.src !== current && show (b.dataset.src)));
+document.getElementById ("tune").onclick = tuneIn;
+document.getElementById ("amount").oninput = (e) => chroma.setAmount (Number (e.target.value));
+// hover: a small burst (strength 0.28), at most once a second: the picture answers the pointer without becoming unreadable
+let lastHover = 0;
+document.getElementById ("screen").addEventListener ("pointerenter", () => {
+    if (performance.now () - lastHover > 1000 && current) { lastHover = performance.now(); chroma.burst ({ ms: 300, strength: 0.28 }); }
+});
+addEventListener ("resize", () => chroma.render());
+mountLabBar (chroma.stats);
+new IntersectionObserver (([e], io) => { if (e.isIntersecting) { io.disconnect(); tuneIn(); } }, { threshold: 0.3 }).observe (document.getElementById ("screen"));
+</script>
+</body>
+</html>

@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en" data-profile="magenta">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GLITCHKID motion lab — 01 The Signal</title>
+<link rel="stylesheet" href="lab.css">
+<style>
+/* The hero draft: the signal crosses the frame at 46 % height; the wordmark sits on it as on a baseline; the headline hangs below, left-anchored. */
+.hero { position: relative; height: 100svh; min-height: 560px; overflow: hidden; }
+.hero canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mark { position: absolute; left: clamp(16px, 4vw, 56px); bottom: calc(54% + 18px); width: min(44vw, 640px); clip-path: inset(50% 0 50% 0); }
+.ticks.top { top: calc(46% + 22px); }
+.head { position: absolute; left: clamp(16px, 4vw, 56px); top: calc(46% + 44px); right: clamp(16px, 4vw, 56px); }
+.head h1 { margin: 0; font-family: var(--display); font-weight: 800; font-stretch: 72%; text-transform: uppercase; line-height: .86;
+           font-size: clamp(56px, 9.6vw, 168px); letter-spacing: -.02em; }
+.head [data-line] { display: block; overflow: hidden; padding-bottom: .04em; }
+.head [data-line] > span { display: inline-block; transform: translateY(108%); }
+.head .accent { color: transparent; background: linear-gradient(95deg, var(--secondary), var(--primary) 75%); -webkit-background-clip: text; background-clip: text; }
+.lede { position: absolute; left: clamp(16px, 4vw, 56px); bottom: 96px; max-width: 30ch; color: var(--text-2); font-size: 18px; margin: 0; opacity: 0; }
+.ctas { position: absolute; right: clamp(16px, 4vw, 56px); bottom: 92px; display: flex; gap: 10px; opacity: 0; }
+.cta { font: 600 13px/1 var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--text); text-decoration: none; padding: 17px 22px; border: 1px solid #3a3644; }
+.cta.primary { border: 0; background: linear-gradient(100deg, var(--primary), color-mix(in srgb, var(--primary) 60%, var(--deep))); }
+.readout { position: absolute; right: clamp(16px, 4vw, 56px); top: calc(46% - 34px); text-align: right; }
+/* phones: a composition of its own — the signal high, the mark small above it, the headline the dominant block */
+@media (max-width: 720px) {
+    .mark { width: 62vw; bottom: calc(70% + 12px); }
+    .ticks.top { top: calc(30% + 18px); }
+    .head { top: calc(30% + 40px); }
+    .head h1 { font-size: 17.5vw; }
+    .lede { bottom: 262px; font-size: 16px; }
+    .ctas { left: 16px; right: 16px; bottom: 128px; flex-direction: column; }
+    .cta { text-align: center; padding: 16px 10px; }
+    .readout { display: none; } /* the phase readout is lab chrome; on a phone it would sit on the mark */
+}
+</style>
+</head>
+<body>
+<section class="hero" aria-label="The GlitchKid signal">
+    <p class="stage-label mono"><span>IN · 00</span><i></i><span class="dim">Signal in motion</span></p>
+    <canvas id="signal" aria-hidden="true"></canvas>
+    <img class="mark" id="mark" src="../assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID">
+    <p class="readout mono dim" id="readout" aria-hidden="true">Phase 00 · —</p>
+    <div class="ticks top" aria-hidden="true"></div>
+    <div class="head" id="head"><h1><span data-line><span>Your voice.</span></span><span data-line><span class="accent">Reimagined.</span></span></h1></div>
+    <p class="lede" id="lede">Professional vocal production. Less work. More music.</p>
+    <div class="ctas" id="ctas"><a class="cta primary" href="#">Apply for beta</a><a class="cta" href="#">Explore the instrument</a></div>
+</section>
+<div class="lab-bar">
+    <span class="mono">01 · The signal</span>
+    <button id="replay">Replay</button>
+    <input id="scrub" type="range" min="0" max="6.6" step="0.01" value="6.6" aria-label="Scrub the sequence">
+    <span class="chips" role="group" aria-label="Colour profile"></span>
+    <span class="spacer"></span>
+    <span class="mono dim meter" id="meter"></span>
+</div>
+<script type="module">
+import { createSignal, PHASES, DURATION } from "../motion/signal.js";
+import { revealLines, revealMark, revealSoft } from "../motion/kinetic.js";
+import { reducedMotion } from "../motion/core.js";
+import { mountLabBar } from "./lab.js";
+
+const mark = document.getElementById ("mark"), head = document.getElementById ("head"), readout = document.getElementById ("readout");
+const soft = [document.getElementById ("lede"), document.getElementById ("ctas")];
+let revealed = false;
+function revealAll () { // the signal resolves -> the wordmark tunes in on it -> the headline compresses into place -> copy and actions
+    if (revealed) return;
+    revealed = true;
+    revealMark (mark).then (() => {});
+    revealLines (head, { delay: 380 });
+    revealSoft (soft, { delay: 1100 }).then (() => soft.forEach ((e) => (e.style.opacity = 1)));
+}
+const signal = createSignal (document.getElementById ("signal"), {
+    y: matchMedia ("(max-width: 720px)").matches ? 0.30 : 0.46,
+    onPhase: (i) => {
+        readout.textContent = i >= 0 ? `Phase ${String (i + 1).padStart (2, "0")} · ${PHASES[i].name}` : "Resolved · idle";
+        if (i === 7) revealAll();
+    },
+});
+function reset () { // back to the dark: the mark closed, the lines below their masks
+    revealed = false;
+    mark.getAnimations().forEach ((a) => a.cancel());
+    head.querySelectorAll ("[data-line] > span").forEach ((l) => l.getAnimations().forEach ((a) => a.cancel()));
+    soft.forEach ((e) => { e.getAnimations().forEach ((a) => a.cancel()); e.style.opacity = 0; });
+}
+if (reducedMotion()) { // one resolved frame, then the loop stops: nothing redraws a picture that does not change
+    signal.final(); revealAll();
+    requestAnimationFrame (() => requestAnimationFrame (() => { signal.stop(); readout.textContent = "Reduced motion · resolved frame"; }));
+}
+else signal.play();
+
+document.getElementById ("replay").onclick = () => { reset(); signal.play(); };
+document.getElementById ("scrub").oninput = (e) => { const t = Number (e.target.value); signal.seek (t); if (t >= 5.8) revealAll(); else reset(); };
+mountLabBar (signal.stats);
+</script>
+</body>
+</html>

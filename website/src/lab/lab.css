@@ -1,0 +1,44 @@
+/* GLITCHKID motion lab: the shared look of the three prototypes (the same type and colour system as ART_DIRECTION.md). */
+@font-face { font-family: "Archivo"; src: url("../fonts/archivo-var.woff2") format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("../fonts/inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("../fonts/jetbrains-mono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; src: url("../fonts/jetbrains-mono-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+:root { --field: #07070a; --plane: #0d0c11; --rule: #24222b; --text: #f2eff6; --text-2: #b4adbf; --text-3: #6f6979;
+        --primary: #8c4cf7; --secondary: #ff4fb8; --soft: #c4a6ff; --deep: #3b1a7a;
+        --display: "Archivo", "Arial Narrow", sans-serif; --body: "Inter", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
+        color-scheme: dark; }
+[data-profile="viridian"] { --primary: #0d7f5c; --secondary: #2fe0a0; --soft: #a8f2d6; --deep: #0a4f57; }
+[data-profile="sapphire"] { --primary: #2563eb; --secondary: #4fa8ff; --soft: #b5d6ff; --deep: #0b1f4d; }
+[data-profile="amber"] { --primary: #a8501c; --secondary: #ff9a3d; --soft: #ffd4a8; --deep: #5c2810; }
+[data-profile="void"] { --primary: #6a6f7a; --secondary: #c9ced6; --soft: #eef0f3; --deep: #2a2d33; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--field); color: var(--text); font: 400 16px/1.55 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: var(--soft); }
+.mono { font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+.dim { color: var(--text-3); }
+
+/* the lab's own chrome: a measured strip at the bottom, never over the artwork */
+.lab-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+           padding: 12px clamp(16px, 3vw, 32px); background: rgba(7,7,10,.86); backdrop-filter: blur(8px); border-top: 1px solid var(--rule); }
+.lab-bar button, .lab-bar label.btn { font: 500 11.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text); background: transparent;
+           border: 1px solid #3a3644; padding: 9px 12px; cursor: pointer; transition: border-color .14s cubic-bezier(.2,.8,.2,1), color .14s; }
+.lab-bar button:hover, .lab-bar label.btn:hover { border-color: var(--soft); }
+.lab-bar button[aria-pressed="true"] { border-color: var(--secondary); color: var(--secondary); }
+.lab-bar input[type=range] { accent-color: var(--secondary); width: min(320px, 40vw); }
+.lab-bar .spacer { flex: 1; }
+.chips { display: inline-flex; gap: 6px; }
+.chips button { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid transparent; }
+.chips button[aria-pressed="true"] { border-color: var(--text); }
+.chips [data-p="viridian"] { background: linear-gradient(135deg, #2fe0a0, #0d7f5c); }
+.chips [data-p="magenta"] { background: linear-gradient(135deg, #ff4fb8, #8c4cf7); }
+.chips [data-p="sapphire"] { background: linear-gradient(135deg, #4fa8ff, #2563eb); }
+.chips [data-p="amber"] { background: linear-gradient(135deg, #ff9a3d, #a8501c); }
+.chips [data-p="void"] { background: linear-gradient(135deg, #eef0f3, #6a6f7a); }
+.meter { min-width: 150px; text-align: right; }
+:focus-visible { outline: 1px solid var(--soft); outline-offset: 3px; }
+
+/* the graticule: the measured edge of each stage */
+.stage-label { position: absolute; z-index: 5; top: clamp(16px, 3vh, 28px); left: clamp(16px, 4vw, 56px); display: flex; gap: 18px; align-items: center; }
+.stage-label i { display: block; width: 40px; height: 1px; background: var(--text-3); }
+.ticks { position: absolute; left: clamp(16px, 4vw, 56px); right: clamp(16px, 4vw, 56px); height: 7px;
+         background: repeating-linear-gradient(90deg, var(--rule) 0 1px, transparent 1px 8px); }
