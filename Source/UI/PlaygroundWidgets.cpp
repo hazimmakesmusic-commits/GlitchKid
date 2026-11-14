@@ -1,6 +1,7 @@
 #include "PlaygroundWidgets.h"
 #include <BinaryData.h>
 #include "../Presets/FactoryPresets.h"
+#include "Theme.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <complex>
 
@@ -749,6 +750,12 @@ PlaygroundLookAndFeel::PlaygroundLookAndFeel()
     setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff0d0d11));
     setColour (juce::ComboBox::outlineColourId, border.brighter (0.2f));
     setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff1b1921));
+    applyTheme();
+}
+
+void PlaygroundLookAndFeel::applyTheme()
+{
+    setColour (juce::TextButton::buttonOnColourId, violet);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, violet);
 }
 
@@ -847,9 +854,11 @@ void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
             g.setColour ((sel ? panelTop : panelTop.withAlpha (0.55f)).withMultipliedAlpha (down ? 0.8f : 1.0f));
             g.fillRoundedRectangle (r.reduced (0.0f, 1.0f), 5.0f);
         }
-        if (sel)
+        if (sel) // the selected stage: a soft wash of the profile and a gradient bar at its edge
         {
-            g.setColour (violet);
+            g.setGradientFill (juce::ColourGradient (violet.withAlpha (0.16f), r.getX(), r.getY(), violet.withAlpha (0.0f), r.getRight(), r.getY(), false));
+            g.fillRoundedRectangle (r.reduced (0.0f, 1.0f), 5.0f);
+            g.setGradientFill (theme::primaryGradient ({ r.getX(), r.getY() + 5.0f }, { r.getX(), r.getBottom() - 5.0f }));
             g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), r.getY() + 5.0f, 3.0f, r.getHeight() - 10.0f), 1.5f);
         }
         if (b.hasKeyboardFocus (true))
@@ -865,7 +874,14 @@ void PlaygroundLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Butto
     (void) bg;
     fill = down ? fill.darker (0.2f) : highlighted ? fill.brighter (on ? 0.12f : 0.18f) : fill;
     const auto shape = chamferPath (r, 5.0f);
-    g.setColour (fill.withAlpha (alpha));
+    if (on && b.findColour (juce::TextButton::buttonOnColourId) == violet) // the profile's fill: primary into its deep end (white text keeps AA)
+    {
+        const auto top = down ? violet.darker (0.2f) : highlighted ? violet.brighter (0.12f) : violet;
+        g.setGradientFill (juce::ColourGradient (top.withAlpha (alpha), r.getX(), r.getY(), top.interpolatedWith (theme::active().deep, 0.45f).withAlpha (alpha),
+                                                 r.getRight(), r.getBottom(), false));
+    }
+    else
+        g.setColour (fill.withAlpha (alpha));
     g.fillPath (shape);
     if (! on)
     {
@@ -885,7 +901,10 @@ void PlaygroundLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleBut
     const auto sw = juce::Rectangle<float> (34.0f, 18.0f).withCentre ({ 20.0f, (float) b.getHeight() * 0.5f });
     juce::Path track;
     track.addRoundedRectangle (sw, 9.0f);
-    g.setColour ((on ? violet : (highlighted ? panelTop.brighter (0.2f) : panelTop)).withAlpha (alpha));
+    if (on)
+        g.setGradientFill (theme::primaryGradient ({ sw.getRight(), sw.getY() }, { sw.getX(), sw.getBottom() }, alpha));
+    else
+        g.setColour ((highlighted ? panelTop.brighter (0.2f) : panelTop).withAlpha (alpha));
     g.fillPath (track);
     g.setColour ((on ? violet.brighter (0.25f) : border.brighter (highlighted ? 0.3f : 0.0f)).withAlpha (alpha));
     g.strokePath (track, juce::PathStrokeType (1.0f));
@@ -922,7 +941,10 @@ void PlaygroundLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, i
     const auto fill = groove.withRight (juce::jmax (groove.getX(), pos));
     if (fill.getWidth() > 1.0f)
     {
-        g.setColour ((hot ? accent.brighter (0.15f) : accent).withAlpha (alpha));
+        if (accent == violet) // the profile's gradient along the travel
+            g.setGradientFill (theme::primaryGradient ({ groove.getRight(), cy }, { groove.getX(), cy }, alpha));
+        else
+            g.setColour ((hot ? accent.brighter (0.15f) : accent).withAlpha (alpha));
         g.fillPath (chamferPath (fill, 2.0f));
     }
     // the thumb: a flat pill with a thin edge

@@ -3,6 +3,8 @@
 #include "PlaygroundWidgets.h"
 #include "../Macros/MacroEngine.h"
 #include "../Presets/FactoryPresets.h"
+#include "Brand.h"
+#include "Theme.h"
 
 namespace glitchkid::ui
 {
@@ -283,6 +285,8 @@ void MainScreen::refreshText()
     using SS = GlitchKidProcessor::SourceStatus;
     const auto st = proc.getInstrumentalStatus();
     beatText = st == SS::live ? "Beat playing" : st == SS::connectedSilent ? "Beat input connected, silent" : "No beat connected";
+    if (proc.isStutterTempoFromHost()) // the DAW's tempo, as the host reports it (GlitchKid does not detect tempo)
+        beatText += "\nHost tempo " + juce::String (proc.getStutterTempoBpm(), 1) + " BPM";
     static const char* nextLine[6] = { "Play your vocal in your DAW", "Choose a sound", "Press BUILD MY MIX and let the vocal play",
                                        "Refine below and compare, then add your beat (optional)", "Fit to beat, compare with ORIGINAL", "Compare, then SAVE it as a preset" };
     nextText = nextLine[nextStep()];
@@ -338,11 +342,14 @@ void MainScreen::setProfile (int p)
 
 void MainScreen::setBuild (const juce::String& buttonText, const juce::String& statusText, bool listening, bool applied)
 {
-    if (buttonText == buildButton.getButtonText() && statusText == buildStatus && listening == buildListening && applied == buildApplied)
+    if (buttonText == buildButton.getButtonText() && statusText == buildFullText && listening == buildListening && applied == buildApplied)
         return;
+    buildFullText = statusText;
     buildButton.setButtonText (buttonText);
     buildButton.setToggleState (listening, juce::dontSendNotification); // lit while it really listens
-    buildStatus = statusText;
+    // HOME shows the first sentence of the shared status (the state and the real progress); SOUNDS shows all of it
+    const int stop = statusText.indexOf (". ");
+    buildStatus = stop > 0 ? statusText.substring (0, stop + 1) : statusText;
     buildListening = listening;
     buildApplied = applied;
     refreshText();
@@ -480,9 +487,10 @@ void MainScreen::paint (juce::Graphics& g)
     const bool dry = on (GlitchKidProcessor::bypassId);
 
     // the top bar: the name, a hairline under it
-    g.setFont (fontOf (19.0f, true));
-    g.setColour (white);
-    g.drawText ("GLITCHKID", 20, 12, 160, 28, juce::Justification::centredLeft, false);
+    // the GLITCHKID logo: emblem, wordmark and the tagline (vector marks from Assets/Brand)
+    brand::drawEmblem (g, juce::Rectangle<float> (16.0f, 9.0f, 38.0f, 32.0f), juce::Justification::centredLeft);
+    brand::drawWordmark (g, juce::Rectangle<float> (58.0f, 11.0f, 140.0f, 18.0f));
+    brand::drawTagline (g, juce::Rectangle<float> (59.0f, 33.0f, 138.0f, 11.0f), 7.5f);
     g.setColour (hairline);
     g.fillRect (0, 52, getWidth(), 1);
 
@@ -512,26 +520,39 @@ void MainScreen::paint (juce::Graphics& g)
         g.fillEllipse (rc.x - R, rc.y - R, 2.0f * R, 2.0f * R);
     }
     paintRibbon (g);
+    if (! mandala)
+        paintCore (g);
     paintOverlays (g);
     paintJourney (g);
 
-    // the four modules: a name, a switch, one amount, the real status; a hairline between them, no boxes
+    // the four modules: quiet cards; a working module gets the profile's accent corner and a gradient edge
     for (int m = 0; m < numModules; ++m)
     {
         const auto r = modules[(size_t) m];
-        if (m > 0)
+        const auto card = r.toFloat().reduced (5.0f, 2.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff17151e), card.getX(), card.getY(), juce::Colour (0xff0e0d13), card.getX(), card.getBottom(), false));
+        g.fillRoundedRectangle (card, 12.0f);
+        if (active[(size_t) m])
         {
-            g.setColour (hairline);
-            g.fillRect (r.getX(), r.getY() + 8, 1, r.getHeight() - 16);
+            g.setGradientFill (theme::primaryGradient (card.getTopLeft(), card.getBottomRight(), 0.65f));
+            g.drawRoundedRectangle (card.reduced (0.5f), 12.0f, 1.2f);
+            juce::Path corner; // the accent corner: a small wedge of the profile gradient inside the card's top-left curve
+            corner.startNewSubPath (card.getX() + 0.5f, card.getY() + 20.0f);
+            corner.lineTo (card.getX() + 0.5f, card.getY() + 12.0f);
+            corner.quadraticTo (card.getX() + 0.5f, card.getY() + 0.5f, card.getX() + 12.0f, card.getY() + 0.5f);
+            corner.lineTo (card.getX() + 20.0f, card.getY() + 0.5f);
+            corner.closeSubPath();
+            g.setGradientFill (theme::primaryGradient (card.getTopLeft(), card.getTopLeft().translated (20.0f, 20.0f)));
+            g.fillPath (corner);
         }
-        if (active[(size_t) m]) // a lit edge on a working module
+        else
         {
-            g.setGradientFill (juce::ColourGradient (uv, (float) r.getX() + 16.0f, 0.0f, pinkNeon.withAlpha (0.0f), (float) r.getRight() - 16.0f, 0.0f, false));
-            g.fillRect (r.getX() + 16, r.getY(), r.getWidth() - 32, 2);
+            g.setColour (hairline.brighter (0.15f));
+            g.drawRoundedRectangle (card.reduced (0.5f), 12.0f, 1.0f);
         }
         g.setFont (fontOf (14.0f, true));
         g.setColour (active[(size_t) m] ? white : dim);
-        g.drawText (moduleName[m], r.getX() + 16, r.getY() + 10, 150, 24, juce::Justification::centredLeft, false);
+        g.drawText (moduleName[m], r.getX() + 24, r.getY() + 10, 150, 24, juce::Justification::centredLeft, false);
         const auto& d = dials[(size_t) m];
         const auto b = d.slider.getBounds();
         g.setFont (fontOf (11.5f, true));
@@ -566,7 +587,7 @@ void MainScreen::paint (juce::Graphics& g)
     g.fillRect (basics.getX(), basics.getY() - 4, basics.getWidth(), 1);
     g.setFont (fontOf (11.5f, true));
     g.setColour (dim);
-    g.drawText ("SHAPE", basics.getX() + 16, basics.getY() + 6, 120, 14, juce::Justification::centredLeft, false);
+    g.drawText ("SHAPE YOUR VOCAL", basics.getX() + 16, basics.getY() + 6, 200, 14, juce::Justification::centredLeft, false);
     g.drawText ("LEVEL", basics.getX() + 626, basics.getY() + 6, 120, 14, juce::Justification::centredLeft, false);
     g.drawText ("COMPARE", compare.getX(), basics.getY() + 6, 120, 14, juce::Justification::centredLeft, false);
     for (int i = tone; i < numDials; ++i)
@@ -580,6 +601,39 @@ void MainScreen::paint (juce::Graphics& g)
         g.setColour (uvSoft);
         g.drawText (d.text ((float) d.slider.getValue()), b.getX() - 30, b.getBottom() + 2, b.getWidth() + 60, 16, juce::Justification::centred, false);
     }
+}
+
+// The vocal core: the emblem in a ring at the centre of the live view. The ring's light follows the real output level (the same slow average as the
+// bloom, dark with no audio or with MOTION off); with ORIGINAL selected it is grey. Nothing here moves on its own.
+void MainScreen::paintCore (juce::Graphics& g)
+{
+    const bool dry = on (GlitchKidProcessor::bypassId);
+    const auto c = ribbon.toFloat().getCentre();
+    const float R = (float) ribbon.getHeight() * 0.44f;
+    const auto ring = juce::Rectangle<float> (2.0f * R, 2.0f * R).withCentre (c);
+    g.setColour (juce::Colour (0xff09080d).withAlpha (0.86f)); // the core: the waveform passes behind it
+    g.fillEllipse (ring);
+    const float lit = dry ? 0.0f : juce::jlimit (0.0f, 1.0f, bloom * 1.6f);
+    if (lit > 0.01f)
+        for (auto [w, a] : { std::pair { 14.0f, 0.10f }, std::pair { 7.0f, 0.22f } }) // the glow, as strong as the real level
+        {
+            g.setGradientFill (theme::primaryGradient (ring.getTopRight(), ring.getBottomLeft(), a * lit));
+            g.drawEllipse (ring, w);
+        }
+    if (dry)
+        g.setColour (dim.withAlpha (0.6f));
+    else
+        g.setGradientFill (theme::primaryGradient (ring.getTopRight(), ring.getBottomLeft(), 0.55f + 0.45f * lit));
+    g.drawEllipse (ring, 2.0f);
+    g.setColour (hairline.brighter (0.3f));
+    g.drawEllipse (ring.reduced (7.0f), 1.0f);
+    for (int k = 0; k < 4; ++k) // four ticks: the core's compass marks (static)
+    {
+        const float a = (float) k * juce::MathConstants<float>::halfPi;
+        const juce::Point<float> d (std::sin (a), -std::cos (a));
+        g.drawLine ({ c + d * (R + 4.0f), c + d * (R + 10.0f) }, 1.0f);
+    }
+    brand::drawEmblem (g, ring.reduced (R * 0.42f), juce::Justification::centred, dry ? 0.6f : 1.0f);
 }
 
 // The journey: three numbered steps, the one to do next lit; every line is the editor's real state (build) or the real input (beat).
@@ -657,7 +711,7 @@ void MainScreen::paintOverlays (juce::Graphics& g)
     {
         g.setFont (fontOf (14.0f));
         g.setColour (faint);
-        g.drawText (stillTicks > 30 ? "Waiting for audio" : "Play your track to see your vocal", ribbon.withHeight (ribbon.getHeight() / 2 - 10), juce::Justification::centredBottom, false);
+        g.drawText (stillTicks > 30 ? "Waiting for audio" : "Play your track to see your vocal", visual.withTop (visual.getBottom() - 26), juce::Justification::centred, false); // under the core
     }
     if (signalOut && ! holding && ! dry)
     {

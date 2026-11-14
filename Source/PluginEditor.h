@@ -10,6 +10,9 @@
 #include "UI/ReferencePanel.h"
 #include "UI/KidPanel.h"
 #include "UI/MainScreen.h"
+#include "UI/Theme.h"
+#include "UI/ProfilePicker.h"
+#include "UI/Brand.h"
 #include "UI/MasteringScreen.h"
 #include "UI/LabPage.h"
 
@@ -58,7 +61,7 @@ private:
 // REFERENCE); a dot on a rail row shows a stage that is really changing the sound. Any workspace can be opened at any time and moving between them never changes
 // the sound. The header names the workspace and holds the real DRY | PROCESSED switch, UNDO and MOTION; the info line above the preset and A/B bar shows what the control
 // under the pointer does. START is built around a real-time spectrum and waveform of the audio the plug-in actually receives and returns.
-class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer
+class GlitchKidEditor : public juce::AudioProcessorEditor, private juce::Timer, private juce::ChangeListener
 {
 public:
     explicit GlitchKidEditor (GlitchKidProcessor&);
@@ -80,6 +83,7 @@ public:
     void uiShowKidForTest (bool kid) { showMainView (kid); }
     bool uiKidViewForTest() const { return kidView; }
     juce::String uiHelpTextForTest() const { return infoLabel.getText(); }
+    juce::Button& uiThemeButtonForTest() { return themeButton; }
     void uiHoverForTest (juce::Component* c) { updateHelp (c); }
     int uiRailIndexForTest() const { return railIndex(); }
     juce::String uiNextStepForTest() const { return homeNext.getText(); }
@@ -107,6 +111,9 @@ private:
     float scaleFactor = 1.0f;
     void layoutContent();
     void showPage (Page, bool remember);
+    void changeListenerCallback (juce::ChangeBroadcaster*) override; // the colour profile changed (in this window or another GlitchKid)
+    glitchkid::ui::ProfileSwatch themeButton;                       // the colour-profile selector, in the top bar of both workspaces
+    void retintAll (const glitchkid::ui::theme::Profile& from, const glitchkid::ui::theme::Profile& to);
     void showCategory (int, bool remember);
     std::vector<juce::Rectangle<int>> panelRects;
     void timerCallback() override;

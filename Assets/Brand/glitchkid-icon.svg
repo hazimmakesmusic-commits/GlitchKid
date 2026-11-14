@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024.00 1024.00" width="1024" height="1024">
+  <title>GLITCHKID app icon</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17151E"/><stop offset="1" stop-color="#08070B"/></linearGradient>
+    <radialGradient id="glow" cx="1" cy="1" r="0.9"><stop offset="0" stop-color="#8C4CF7" stop-opacity="0.85"/><stop offset="0.45" stop-color="#FF4FB8" stop-opacity="0.25"/><stop offset="1" stop-color="#FF4FB8" stop-opacity="0"/></radialGradient>
+    <linearGradient id="chrome-icon" x1="225" y1="274" x2="369" y2="750" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F7F8FA"/><stop offset="0.38" stop-color="#C3C8D0"/><stop offset="0.5" stop-color="#8A909A"/><stop offset="0.62" stop-color="#DDE1E6"/><stop offset="1" stop-color="#6E747E"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>
+  <rect width="1024" height="1024" rx="224" fill="url(#glow)"/>
+  <rect x="6" y="6" width="1012" height="1012" rx="218" fill="none" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="4"/>
+  <path fill="url(#chrome-icon)" fill-rule="nonzero" d="M234.42,585.10 L281.20,466.31 L385.36,374.94 L494.64,338.40 L763.63,283.57 L508.89,393.22 L410.94,420.63 L352.10,475.45 L314.27,575.96 L344.43,621.64 L472.35,621.64 L508.16,548.55 L590.40,548.55 L523.15,676.47 L294.72,676.47 Z M395.59,484.59 L660.57,484.59 L626.94,548.55 L366.54,548.55 Z M508.16,548.55 L626.94,548.55 L690.54,740.43 L573.22,658.19 Z M644.12,438.90 L789.58,365.81 L660.57,484.59 L560.06,484.59 Z"/>
+</svg>

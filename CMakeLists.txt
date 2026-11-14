@@ -53,7 +53,10 @@ juce_add_plugin(GlitchKid
 juce_add_binary_data(GlitchKidAssets SOURCES
     Assets/Fonts/Inter-Regular.otf
     Assets/Fonts/Inter-Bold.otf
-    Assets/Art/glitch_relic.png) # the Glitch Relic artwork (supplied by the project owner; see Assets/Art/README.md)
+    Assets/Art/glitch_relic.png # the Glitch Relic artwork (supplied by the project owner; see Assets/Art/README.md)
+    Assets/Brand/glitchkid-emblem-white.svg   # the GLITCHKID logo system (tools/brand/gen_brand.py): the plug-in draws these exact outlines
+    Assets/Brand/glitchkid-wordmark-white.svg
+    Assets/Brand/glitchkid-icon.svg)
 
 target_sources(GlitchKid PRIVATE
     Source/DSP/ParametricEq.cpp
@@ -94,6 +97,9 @@ target_sources(GlitchKid PRIVATE
     Source/UI/KidPanel.cpp
     Source/UI/MainScreen.cpp
     Source/UI/NeonKit.cpp
+    Source/UI/Theme.cpp
+    Source/UI/Brand.cpp
+    Source/UI/ProfilePicker.cpp
     Source/UI/MasteringScreen.cpp
     Source/UI/LabPage.cpp
     Source/Analysis/DisplaySpectrum.cpp
@@ -230,6 +236,9 @@ if(GLITCHKID_BUILD_TESTS)
         Source/UI/KidPanel.cpp
         Source/UI/MainScreen.cpp
         Source/UI/NeonKit.cpp
+        Source/UI/Theme.cpp
+        Source/UI/Brand.cpp
+        Source/UI/ProfilePicker.cpp
         Source/UI/MasteringScreen.cpp
         Source/UI/LabPage.cpp
         Source/Analysis/DisplaySpectrum.cpp

@@ -98,7 +98,7 @@ private:
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
     juce::ComboBox genreBox;
     Pill buildButton { "BUILD MY MIX" }, beatButton { "Fit to beat" }, advancedButton { "ADVANCED MIXING" }, mandalaButton { "Mandala" }, useKeyButton { "Use" };
-    juce::String buildStatus, nextText;
+    juce::String buildStatus, buildFullText, nextText;
     bool buildListening = false, buildApplied = false;
     int profile = -1;
 
@@ -131,6 +131,7 @@ private:
     void paintMandala (juce::Graphics&);
     void paintOverlays (juce::Graphics&);
     void paintJourney (juce::Graphics&);
+    void paintCore (juce::Graphics&);
     int nextStep() const; // 0 play, 1 choose a sound, 2 build, 3 refine and compare, 4 beat, 5 save
     void press (juce::Point<int>);
     void release();

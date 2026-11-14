@@ -1,3 +1,4 @@
+#include "../Source/UI/Theme.h"
 #include <juce_audio_utils/juce_audio_utils.h>
 #include "../Source/PluginProcessor.h"
 #include "../Source/DSP/ParametricEq.h"
@@ -325,6 +326,10 @@ static float mulSubProbe (float a, float b, float c) { return a * b - c; }
 int main()
 {
     juce::ScopedJuceInitialiser_GUI init;
+    // the colour-profile preference is the user's: tests read and write a throwaway file, never the real one, and always start on the default profile
+    const auto themeFile = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("GlitchKidTests-Settings.xml");
+    themeFile.deleteFile();
+    glitchkid::ui::theme::setSettingsFile (themeFile);
     // which source and which numeric rules built this executable (a report can be matched to a checkout, and a stale incremental build is easy to spot)
     {
         volatile float a = 0.1f, b = 120.0f, c = 12.0f;

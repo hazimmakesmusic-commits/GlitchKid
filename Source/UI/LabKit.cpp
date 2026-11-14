@@ -364,7 +364,7 @@ void SpectrumView::paint (juce::Graphics& g)
     for (const auto& l : gridLabels)
         g.drawText (l.text, l.box, l.left ? juce::Justification::centredLeft : juce::Justification::centred, false);
 
-    static const juce::Colour colours[3] = { violet, pink, juce::Colour (0xff9b91a5) };
+    const juce::Colour colours[3] = { violet, pink, juce::Colour (0xff9b91a5) }; // the current profile's accents (not cached)
     static const char* names[3] = { "VOCAL INPUT", "OUTPUT", "INSTRUMENTAL INPUT" };
     bool any = false;
     for (int t : { 2, 0, 1 }) // the beat behind, then the vocal, then the output

@@ -1,5 +1,6 @@
 #include "NeonKit.h"
 #include "PlaygroundWidgets.h"
+#include "Theme.h"
 
 namespace glitchkid::ui::nk
 {
@@ -15,13 +16,12 @@ void Pill::paintButton (juce::Graphics& g, bool over, bool down)
     auto r = getLocalBounds().toFloat().reduced (1.0f);
     const float rad = r.getHeight() * 0.5f;
     const bool on = getToggleState();
-    const juce::Colour accent = getProperties()["secondary"] ? pinkNeon : uv;
-    if (on)
+    if (on) // lit: a faint wash and a gradient edge of the current profile
     {
-        g.setColour (accent.withAlpha (0.2f));
+        g.setGradientFill (theme::primaryGradient (r.getTopRight(), r.getBottomLeft(), getProperties()["secondary"] ? 0.22f : 0.16f));
         g.fillRoundedRectangle (r, rad);
-        g.setColour (accent);
-        g.drawRoundedRectangle (r, rad, 1.2f);
+        g.setGradientFill (theme::primaryGradient (r.getTopRight(), r.getBottomLeft()));
+        g.drawRoundedRectangle (r, rad, 1.3f);
     }
     else
     {

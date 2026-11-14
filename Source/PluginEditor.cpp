@@ -155,6 +155,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
       presets (p)
 {
     using namespace glitchkid;
+    glitchkid::ui::theme::apply (glitchkid::ui::theme::loadSaved()); // the user's colour profile, before any component takes its colours
+    lookAndFeel.applyTheme();
     setLookAndFeel (&lookAndFeel);
     motionOn = p.getUiFlag ("uiMotion", true);
     {
@@ -214,6 +216,11 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     content.addMouseListener (this, true); // hover help for every control (the tooltips of the controls are shown in infoLabel)
     style (undoButton, "Put back the sound you had before the last build, profile load or BEAT LOCK change.");
     undoButton.onClick = [this] { backToMine(); };
+    themeButton.onClick = [this]
+    {
+        juce::CallOutBox::launchAsynchronously (std::make_unique<glitchkid::ui::ProfilePicker>(), getLocalArea (&themeButton, themeButton.getLocalBounds()), this);
+    };
+    content.addAndMakeVisible (themeButton);
     undoButton.setEnabled (false);
     label (ioLabel, 11.0f, true, ui::textDim);
     ioLabel.setTooltip ("The real level of the vocal reaching GlitchKid and of the output (digital peaks). CLIP appears when the output really reached full scale.");
@@ -438,7 +445,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     warmthKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
     warmthKnob[0]->addTo (content);
     label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
-    eqNote.setText ("Violet: your EQ. Pink: what CLEAN is applying. Both curves are calculated from real settings. The shaded area is the vocal's real spectrum while audio plays.", juce::dontSendNotification);
+    eqNote.setText ("The solid curve: your EQ. The bright curve: what CLEAN is applying. Both curves are calculated from real settings. The shaded area is the vocal's real spectrum while audio plays.", juce::dontSendNotification);
 
     // AIR LAB strip
     auto airSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
@@ -635,7 +642,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     // ---- BEAT LOCK ----
     {
         addAll ({ &beatHeading, &suggestHeading, &vocalBar, &beatBar, &bandCompare, &beatView });
-        beatView.setTooltip ("Spectrum of the vocal input (violet) and, only while a beat really arrives on the Instrumental input, the beat (grey). Nothing is drawn without a signal.");
+        beatView.setTooltip ("Spectrum of the vocal input (the accent colour) and, only while a beat really arrives on the Instrumental input, the beat (grey). Nothing is drawn without a signal.");
         label (beatStatus, 12.5f, false, ui::textBright, juce::Justification::topLeft);
         label (beatLevels, 11.5f, false, ui::textDim);
         label (beatRouting, 11.0f, false, ui::textDim, juce::Justification::topLeft);
@@ -734,10 +741,33 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     showPage (page, false);
     timerCallback(); // fill the read-outs immediately
     startTimerHz (30);
+    // members built before the profile was applied may hold the default profile's colours
+    if (glitchkid::ui::theme::current() != glitchkid::ui::theme::defaultProfile)
+        retintAll (glitchkid::ui::theme::profile (glitchkid::ui::theme::defaultProfile), glitchkid::ui::theme::active());
+    glitchkid::ui::theme::changes().addChangeListener (this);
+}
+
+void GlitchKidEditor::retintAll (const glitchkid::ui::theme::Profile& from, const glitchkid::ui::theme::Profile& to)
+{
+    glitchkid::ui::theme::retint (*this, from, to);
+    for (juce::Component* c : { (juce::Component*) kidPanel.get(), (juce::Component*) mainScreen.get(), (juce::Component*) masteringScreen.get(),
+                                (juce::Component*) labPage.get(), (juce::Component*) referencePanel.get() }) // the pages not attached right now
+        if (c != nullptr && c->getParentComponent() == nullptr)
+            glitchkid::ui::theme::retint (*c, from, to);
+}
+
+// Visual only: the profile changes colours; no parameter, preset, macro, A/B slot or session value is touched.
+void GlitchKidEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    lookAndFeel.applyTheme();
+    retintAll (glitchkid::ui::theme::previous(), glitchkid::ui::theme::active());
+    sendLookAndFeelChange();
+    repaint();
 }
 
 GlitchKidEditor::~GlitchKidEditor()
 {
+    glitchkid::ui::theme::changes().removeChangeListener (this);
     if (referencePanel != nullptr)
         referencePanel->cancelEverything(); // a running analysis must never outlive the editor
     relicLoader.stop();
@@ -1919,17 +1949,10 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.setColour (ui::border);
     g.fillRect (R - 1.0f, 0.0f, 1.0f, (float) designH);
     {
-        const juce::Rectangle<float> r (16.0f, 10.0f, R - 20.0f, 24.0f);
-        g.setFont (ui::fontOf (18.0f, true));
-        juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 3.0f, juce::Colour (0xff9d8fb8), 0.0f, r.getBottom() - 2.0f, false);
-        chromeFill.addColour (0.46, juce::Colour (0xffd9cbe8));
-        chromeFill.addColour (0.52, juce::Colour (0xff4a3a66)); // a small horizon line in the lettering
-        chromeFill.addColour (0.58, juce::Colour (0xffb9a2e0));
-        g.setGradientFill (chromeFill);
-        g.drawText ("GLITCHKID", r, juce::Justification::centredLeft, false);
-        g.setFont (ui::fontOf (11.0f));
-        g.setColour (ui::textDim);
-        g.drawText ("Vocal Lab", juce::Rectangle<float> (19.0f, 31.0f, 120.0f, 14.0f), juce::Justification::centredLeft, false);
+        // the GLITCHKID logo: the emblem and the wordmark (vector, Assets/Brand), the tagline under them
+        ui::brand::drawEmblem (g, juce::Rectangle<float> (12.0f, 9.0f, 26.0f, 22.0f), juce::Justification::centredLeft);
+        ui::brand::drawWordmark (g, juce::Rectangle<float> (42.0f, 13.0f, R - 52.0f, 13.0f));
+        ui::brand::drawTagline (g, juce::Rectangle<float> (13.0f, 35.0f, R - 26.0f, 10.0f), 7.0f);
         g.setColour (ui::border);
         g.fillRect (12.0f, 52.0f, R - 24.0f, 1.0f);
     }
@@ -2011,7 +2034,7 @@ void GlitchKidEditor::layoutContent()
 
     // Hide every control that is not part of the always-visible rail, header controls and preset bar; the current workspace then shows what it needs.
     // A workspace is written in the old coordinates (top at 102); `oy` lifts it to just under the header (FINAL TOUCH has no tab row any more, so it sits lower).
-    std::vector<juce::Component*> persistent = { &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &infoLabel, &railNote,
+    std::vector<juce::Component*> persistent = { &undoButton, &ioLabel, &motionButton, &dryButton, &processedButton, &infoLabel, &railNote, &themeButton,
                                                  &presetPrevButton, &presetMenuButton, &presetNextButton, &presetSaveButton, &presetDeleteButton, &abSetA, &abSetB,
                                                  &abRecallA, &abRecallB, &abLabel, &presetStatus };
     for (auto& b : navButtons)
@@ -2040,6 +2063,7 @@ void GlitchKidEditor::layoutContent()
     place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });
     place (undoButton, { designW - 16 - 70 - 4 - 46, 12, 46, 28 });
     place (motionButton, { designW - 16 - 70, 12, 70, 28 });
+    place (themeButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 78 - 10 - 28, 12, 28, 28 });
     place (infoLabel, { railW + 20, 526 + barDy, pageW - 40, 32 });
 
     // ---- bottom bar: presets and A/B (always available) ----
@@ -2088,10 +2112,10 @@ void GlitchKidEditor::layoutContent()
             place (*mainScreen, { 0, 0, designW, designH });
             mainScreen->toFront (false);
             const auto cmp = mainScreen->compareArea();
-            for (auto [c, r] : { std::pair<juce::Component*, Rect> (&presetPrevButton, { 180, 12, 28, 28 }), { &presetMenuButton, { 212, 12, 240, 28 } },
-                                 { &presetNextButton, { 456, 12, 28, 28 } }, { &presetSaveButton, { 490, 12, 56, 28 } },
-                                 { &abLabel, { 558, 12, 30, 28 } }, { &abSetA, { 590, 12, 50, 28 } }, { &abSetB, { 644, 12, 50, 28 } },
-                                 { &abRecallA, { 700, 12, 30, 28 } }, { &abRecallB, { 734, 12, 30, 28 } },
+            for (auto [c, r] : { std::pair<juce::Component*, Rect> (&presetPrevButton, { 210, 12, 28, 28 }), { &presetMenuButton, { 242, 12, 206, 28 } },
+                                 { &presetNextButton, { 452, 12, 28, 28 } }, { &presetSaveButton, { 486, 12, 56, 28 } },
+                                 { &abLabel, { 548, 12, 30, 28 } }, { &abSetA, { 580, 12, 48, 28 } }, { &abSetB, { 632, 12, 48, 28 } },
+                                 { &abRecallA, { 686, 12, 30, 28 } }, { &abRecallB, { 720, 12, 30, 28 } }, { &themeButton, { 760, 12, 28, 28 } },
                                  { &infoLabel, { 20, 54, 700, 18 } }, { &presetStatus, { 730, 54, designW - 750, 18 } },
                                  { &undoButton, undoButton.getBounds() }, { &motionButton, motionButton.getBounds() },
                                  { &dryButton, cmp.withHeight (30) }, { &processedButton, cmp.withTrimmedTop (36) } })

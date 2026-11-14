@@ -8,8 +8,11 @@ namespace glitchkid::ui::nk
 {
 // The accents are the shared palette's (PlaygroundWidgets.h): one design system for HOME and Advanced Mixing.
 const juce::Colour bgTop (0xff0b0910), bgBottom (0xff060509), surface (0xff121117), surfaceHi (0xff1b1922), hairline (0xff25222d),
-                   uv (violet), uvSoft (neon), pinkNeon (pink), cyan (0xff5ee6ff) /* sparingly: the input signal only */, white (textBright), dim (0xff8d8798), faint (0xff5d5868),
+                   cyan (0xff5ee6ff) /* sparingly: the input signal only */, white (textBright), dim (0xff8d8798), faint (0xff5d5868),
                    good (0xff62e0a6), warn (0xffffb54c), bad (errorRed);
+inline const juce::Colour& uv = violet;     // the live accents of the current colour profile
+inline const juce::Colour& uvSoft = neon;
+inline const juce::Colour& pinkNeon = pink;
 
 struct Knob : juce::LookAndFeel_V4
 {
