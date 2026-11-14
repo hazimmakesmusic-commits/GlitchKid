@@ -19,8 +19,9 @@ void drawGlow (juce::Graphics&, const juce::Path&, juce::Colour, float radius);
 // Palette (design tokens). Near-black window, raised panels and secondary surfaces in two graphite steps, off-white text and a softer secondary text, violet for
 // selection and the main action, magenta sparingly for real processing activity and highlights, a neutral purple-grey for borders. Red means clipping or an error.
 // Chrome is reserved for the wordmark and the idle emblem. The other colours are derived shades of these (hover, disabled, depth).
+// ONE palette for both workspaces (HOME's nk:: names are aliases of these): ultraviolet and magenta are the GlitchKid accents.
 const juce::Colour obsidian (0xff101014), panelBottom (0xff1b1921), panelTop (0xff25222d), border (0xff3a3644),
-                   violet (0xffa83bee), neon (0xffc26cf6), pink (0xffe14cbb),
+                   violet (0xff8c4cf7), neon (0xffc4a6ff), pink (0xffff4fb8), // violet keeps white text at AA (4.7:1) on a violet fill
                    textDim (0xffa7a0b2), textBright (0xfff0ecf5), disabled (0xff5a5463), errorRed (0xffff5c6c),
                    chrome (0xffe8ddf2), chromeDark (0xff4a4152);
 
@@ -31,7 +32,8 @@ juce::String displayCase (const juce::String&, bool sentence = false); // senten
 // Inter (SIL Open Font License, bundled in Assets/Fonts and compiled in, so it is the same on every machine). Falls back to the system font if loading fails.
 juce::Font fontOf (float height, bool bold = false);
 
-// The GlitchKid dial: a thin violet value arc over a track around a flat cap with a pointer. `start`/`end` are JUCE rotary angles; pos is 0..1.
+// The GlitchKid dial, the same on HOME and in Advanced Mixing: a neon value arc that sweeps from ultraviolet to `accent` (to magenta when the accent is the
+// ultraviolet itself), a soft halo, a dark machined cap lit from above and a white pointer. `start`/`end` are JUCE rotary angles; pos is 0..1; alpha < 1 = disabled.
 void drawDial (juce::Graphics&, juce::Rectangle<float> dial, float start, float end, float pos, juce::Colour accent, float alpha, bool hover, bool focus);
 
 // One starting profile: name and a few words. Selected = violet frame; live (the profile currently loaded) = a small lime dot.

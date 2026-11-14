@@ -7,9 +7,10 @@
 
 namespace glitchkid::ui
 {
-// HOME: the GlitchKid vocal instrument. It fills the whole window (the editor's rail, info line, SAVE / DELETE and A/B stay in ADVANCED MIXING); the
-// editor lays its own preset selector, UNDO, MOTION and ORIGINAL / PROCESSED buttons on top of it, so they are the same buttons as on every page.
-//   top     - the preset, Choose a sound, Ask Kid, ADVANCED MIXING (opens the detailed pages);
+// HOME: the GlitchKid vocal instrument. It fills the whole window (the editor's rail, info line, DELETE and the stage pages stay in ADVANCED MIXING); the
+// editor lays its own preset selector, SAVE, A/B, UNDO, MOTION and ORIGINAL / PROCESSED buttons on top of it, so they are the same buttons as everywhere.
+//   top     - the preset, SAVE, A/B, ADVANCED MIXING (opens the detailed pages);
+//   journey - the work in order: SOUND (a starting profile), BUILD MY MIX (the editor's real build), BEAT (the real instrumental input) and the NEXT step;
 //   visual  - the live vocal: input and output levels from the plug-in's own display taps, the limiter ceiling, the pitch read-out; press and hold it to
 //             hear the ORIGINAL (the Bypass parameter, the same as the header's button). Nothing is drawn that is not measured or set;
 //   modules - AUTOTUNE, CLEAN LAB, AIR LAB, LIMITER: an on/off switch and one main amount each, bound to their existing parameters, with their real status;
@@ -21,7 +22,8 @@ class MainScreen : public juce::Component, private juce::Timer
 public:
     struct Hooks
     {
-        std::function<void()> openSounds, openKid, openAdvanced;
+        std::function<void()> openAdvanced, openBeat, buildMix; // buildMix: the same action as BUILD MY MIX on SOUNDS
+        std::function<void (int)> chooseProfile;                // -1 = no profile (a clean start)
         std::function<void (bool)> holdOriginal;            // press and hold the visual: true = ORIGINAL, false = back to PROCESSED
         std::function<bool (int& tonic, bool& minor)> fileKey; // a reliable key from a vocal file analysed by Kid, if any
     };
@@ -38,6 +40,8 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
 
     void setLimiterReduction (float db) { limGrDb = db; } // from the editor, which consumes the processor's limiter reading once per tick
+    void setProfile (int profile);                        // the browsed starting profile (shared with SOUNDS), -1 = none
+    void setBuild (const juce::String& buttonText, const juce::String& statusText, bool listening, bool applied); // the editor's real build state
     juce::Rectangle<int> topBar() const { return { 0, 0, getWidth(), 52 }; }
     juce::Rectangle<int> compareArea() const { return compare; } // where the editor puts ORIGINAL / PROCESSED
 
@@ -55,6 +59,10 @@ public:
     bool mandalaForTest() const { return mandala; }
     void pressForTest (const juce::String& buttonText);
     void holdForTest (juce::Point<int> at) { press (at); }
+    juce::ComboBox& genreForTest() { return genreBox; }
+    juce::String buildTextForTest() const { return buildButton.getButtonText(); }
+    juce::String nextForTest() const { return nextText; }
+    juce::String buildStatusForTest() const { return buildStatus; }
     void releaseForTest() { release(); }
     void dragForTest (int dial, double v) // a hand gesture: drag start, the move, drag end
     {
@@ -88,7 +96,11 @@ private:
     std::array<std::unique_ptr<juce::ButtonParameterAttachment>, numModules> switchAtt;
     juce::ComboBox keyBox, scaleBox;
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
-    Pill soundsButton { "Choose a sound" }, kidButton { "Ask Kid" }, advancedButton { "ADVANCED MIXING" }, mandalaButton { "Mandala" }, useKeyButton { "Use" };
+    juce::ComboBox genreBox;
+    Pill buildButton { "BUILD MY MIX" }, beatButton { "Fit to beat" }, advancedButton { "ADVANCED MIXING" }, mandalaButton { "Mandala" }, useKeyButton { "Use" };
+    juce::String buildStatus, nextText;
+    bool buildListening = false, buildApplied = false;
+    int profile = -1;
 
     std::array<float, 240> envIn {}, envOut {}; // level history, newest first (0..1 on a 60 dB scale)
     std::vector<float> scratch;
@@ -105,7 +117,7 @@ private:
     juce::String headline, beatText, pitchText, keyText;
     std::array<juce::String, numModules> status;
     std::array<bool, numModules> active {};
-    juce::Rectangle<int> visual, ribbon, modulesArea, basics, compare; // visual: the whole live area; ribbon: the drawing inside it
+    juce::Rectangle<int> journey, visual, ribbon, modulesArea, basics, compare; // visual: the whole live area; ribbon: the drawing inside it
     std::array<juce::Rectangle<int>, numModules> modules;
 
     void setupDials();
@@ -118,6 +130,8 @@ private:
     void paintRibbon (juce::Graphics&);
     void paintMandala (juce::Graphics&);
     void paintOverlays (juce::Graphics&);
+    void paintJourney (juce::Graphics&);
+    int nextStep() const; // 0 play, 1 choose a sound, 2 build, 3 refine and compare, 4 beat, 5 save
     void press (juce::Point<int>);
     void release();
 };

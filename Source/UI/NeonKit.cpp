@@ -3,49 +3,11 @@
 
 namespace glitchkid::ui::nk
 {
-// ---- the dial: a tactile dark body with a neon value ring ----
+// ---- the dial: the shared GlitchKid dial (PlaygroundWidgets) ----
 void Knob::drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float start, float end, juce::Slider& s)
 {
-    const float size = (float) juce::jmin (w, h), r = size * 0.5f - 7.0f;
-    const juce::Point<float> c ((float) x + (float) w * 0.5f, (float) y + (float) h * 0.5f);
-    const bool hot = s.isMouseOverOrDragging() || s.hasKeyboardFocus (false);
-    const float angle = start + pos * (end - start);
-
-    juce::Path track;
-    track.addCentredArc (c.x, c.y, r, r, 0.0f, start, end, true);
-    g.setColour (hairline);
-    g.strokePath (track, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    if (pos > 0.002f)
-    {
-        juce::Path arc;
-        arc.addCentredArc (c.x, c.y, r, r, 0.0f, start, angle, true);
-        // the arc sweeps from ultraviolet at its start to magenta at the value
-        const juce::Point<float> p0 (c.x + std::sin (start) * r, c.y - std::cos (start) * r), p1 (c.x + std::sin (angle) * r, c.y - std::cos (angle) * r);
-        const auto tip = uv.interpolatedWith (pinkNeon, juce::jlimit (0.0f, 1.0f, pos * 1.2f));
-        for (auto [width, alpha] : { std::pair { 12.0f, 0.10f }, std::pair { 7.0f, 0.20f } }) // a soft neon halo
-        {
-            g.setGradientFill (juce::ColourGradient (uv.withAlpha (alpha * (hot ? 1.6f : 1.0f)), p0, tip.withAlpha (alpha * (hot ? 1.6f : 1.0f)), p1, false));
-            g.strokePath (arc, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        }
-        g.setGradientFill (juce::ColourGradient (hot ? uvSoft : uv, p0, hot ? tip.brighter (0.3f) : tip, p1, false));
-        g.strokePath (arc, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    // the body: a dark machined cap, lit from above
-    const float br = r * 0.74f;
-    const auto body = juce::Rectangle<float> (2.0f * br, 2.0f * br).withCentre (c);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.fillEllipse (body.translated (0.0f, 3.0f).expanded (1.0f));
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2e2a38), c.x, body.getY(), juce::Colour (0xff111016), c.x, body.getBottom(), false));
-    g.fillEllipse (body);
-    g.setColour (juce::Colours::white.withAlpha (0.09f));
-    g.drawEllipse (body.reduced (0.5f), 1.0f);
-    const auto cap = body.reduced (br * 0.22f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1820), c.x, cap.getY(), juce::Colour (0xff23202b), c.x, cap.getBottom(), false));
-    g.fillEllipse (cap);
-    // the pointer
-    const juce::Point<float> a (c.x + std::sin (angle) * br * 0.38f, c.y - std::cos (angle) * br * 0.38f), b (c.x + std::sin (angle) * br * 0.84f, c.y - std::cos (angle) * br * 0.84f);
-    g.setColour (s.isEnabled() ? white : faint);
-    g.drawLine ({ a, b }, 2.4f);
+    drawDial (g, juce::Rectangle<float> ((float) x, (float) y, (float) w, (float) h), start, end, pos, pinkNeon, s.isEnabled() ? 1.0f : 0.4f,
+              s.isMouseOverOrDragging(), s.hasKeyboardFocus (false));
 }
 
 void Pill::paintButton (juce::Graphics& g, bool over, bool down)

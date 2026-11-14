@@ -82,9 +82,11 @@ struct MainScreenTests : public juce::UnitTest
             const char* names[] = { "CORRECTION", "INTENSITY", "AIR", "CEILING", "TONE", "PUNCH", "SPACE", "PRESENCE", "MIX", "OUTPUT" };
             for (int i = 0; i < MS::numDials; ++i)
                 expectEquals (main.dialNameForTest (i), juce::String (names[i]));
-            for (auto* b : { "ORIGINAL", "PROCESSED", "UNDO", "Choose a sound", "Ask Kid", "ADVANCED MIXING", "Mandala" })
+            for (auto* b : { "ORIGINAL", "PROCESSED", "UNDO", "SAVE", "SET A", "SET B", "A", "B", "BUILD MY MIX", "Fit to beat", "ADVANCED MIXING", "Mandala" })
                 expect (visibleButton (*ed, b), b);
-            for (auto* b : { "HOME", "SOUNDS", "CLEAN", "TUNE", "DYNAMICS", "MASTER", "SAVE", "SET A" })
+            for (auto* b : { "Ask Kid", "Choose a sound" })
+                expect (! visibleButton (*ed, b), juce::String (b) + " is not on HOME (Kid is deferred; the sound selector replaces the shortcut)");
+            for (auto* b : { "HOME", "SOUNDS", "CLEAN", "TUNE", "FINISH", "MASTER", "DELETE" })
                 expect (! visibleButton (*ed, b), juce::String (b) + " stays in Advanced Mixing");
             for (int m = 0; m < MS::numModules; ++m)
                 expect (main.moduleSwitchForTest (m).isVisible() && main.moduleSwitchForTest (m).getButtonText() == "OFF", "every module starts off");
@@ -161,9 +163,9 @@ struct MainScreenTests : public juce::UnitTest
         {
             const auto before = p.captureSoundState();
             main.pressForTest ("ADVANCED MIXING");
-            expectEquals (ed->uiRailIndexForTest(), 2, "first time: CLEAN, step 1 of the rail");
+            expectEquals (ed->uiRailIndexForTest(), 3, "first time: TUNE, the first stage");
             expect (! main.isShowing() && visibleButton (*ed, "HOME") && visibleButton (*ed, "SAVE") && visibleButton (*ed, "SET A"), "the rail, SAVE and A/B are back");
-            ed->uiSelectRailForTest (5); // DYNAMICS: the limiter's own controls
+            ed->uiSelectRailForTest (5); // FINISH: the limiter's own controls
             th::setParam (p, "lim_ceiling", -4.0f); // as its ceiling knob would
             ed->uiSelectRailForTest (0);
             expect (ed->uiPageForTest() == 6 && main.isVisible() && main.getX() == 0, "HOME");
@@ -178,10 +180,10 @@ struct MainScreenTests : public juce::UnitTest
             expectEquals (q.getUiInt ("uiAdvancedRow", -1), 5, "remembered with the session");
             expectEquals (q.getUiInt ("uiLevel", -1), 4, "the session reopens on the detailed page it was left on");
             ed->uiSelectRailForTest (0);
-            main.pressForTest ("Choose a sound");
-            expectEquals (ed->uiRailIndexForTest(), 1, "Choose a sound opens SOUNDS");
+            main.pressForTest ("Fit to beat");
+            expectEquals (ed->uiRailIndexForTest(), 8, "Fit to beat opens BEAT");
             ed->uiSelectRailForTest (0);
-            main.pressForTest ("Ask Kid");
+            ed->uiShowKidForTest (true); // Kid is no longer on HOME; a session saved with it open still opens it, with its own way back
             expect (ed->uiKidViewForTest() && kid.getParentComponent() != nullptr && main.getParentComponent() == nullptr, "Kid takes the window");
             expectEquals (p.getUiInt ("uiMainView", -1), 1, "remembered with the session");
             kid.pressForTest ("Instrument");
@@ -193,18 +195,109 @@ struct MainScreenTests : public juce::UnitTest
             expect (same (before, p.captureSoundState()), "navigation never changes the sound");
         }
 
+        beginTest ("one engine, two workspaces: HOME and FINISH move the same MIX both ways; the stages in order; an old DYNAMICS session opens FINISH");
+        {
+            auto rotaries = [&]
+            {
+                std::vector<juce::Slider*> out;
+                std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
+                {
+                    for (auto* ch : c.getChildren())
+                    {
+                        if (! ch->isVisible()) continue;
+                        if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) out.push_back (sl);
+                        walk (*ch);
+                    }
+                };
+                walk (*ed);
+                return out;
+            };
+            main.dialForTest (MS::mix).setValue (70.0, juce::sendNotificationSync);
+            ed->uiSelectRailForTest (5); // FINISH
+            auto finish = rotaries();
+            expect (finish.size() == 5 && std::abs (finish[1]->getValue() - 70.0) < 0.2, "FINISH's MIX shows HOME's change");
+            if (finish.size() == 5)
+                finish[1]->setValue (55.0, juce::sendNotificationSync);
+            ed->uiSelectRailForTest (0);
+            for (int i = 0; i < 6; ++i) main.tickForTest();
+            expectWithinAbsoluteError ((float) main.dialForTest (MS::mix).getValue(), 55.0f, 0.2f, "HOME's MIX shows FINISH's change");
+            th::setParam (p, "mix", 100.0f);
+
+            ed->uiSelectRailForTest (3);
+            const int order[] = { 0, 3, 2, 4, 6, 5, 1, 8, 7, 9, 10 }; // HOME, TUNE, CLEAN, SHAPE, SPACE, FINISH, then MORE: SOUNDS, BEAT, CREATIVE, REFERENCE, MASTER
+            for (int i = 0; i + 1 < 11; ++i)
+                expect (ed->uiBarButtonBoundsForTest (order[i]).getY() < ed->uiBarButtonBoundsForTest (order[i + 1]).getY(), "rail order at " + juce::String (i));
+            for (auto* b : { "HOME", "TUNE", "CLEAN", "SHAPE", "SPACE", "FINISH", "SOUNDS", "BEAT", "CREATIVE", "REFERENCE", "MASTER" })
+                expect (visibleButton (*ed, b), b);
+            ed->uiSelectRailForTest (0);
+
+            GlitchKidProcessor old;
+            old.setUiInt ("uiLevel", 4);
+            old.setUiInt ("uiCategory", 2); // saved on DYNAMICS before this redesign
+            std::unique_ptr<juce::AudioProcessorEditor> e3 (old.createEditor());
+            auto* ed3 = dynamic_cast<GlitchKidEditor*> (e3.get());
+            expectEquals (ed3->uiRailIndexForTest(), 5, "opens FINISH, where the limiter and output still are");
+            expect (visibleButton (*ed3, "LIMITER"), "the limiter switch is there");
+        }
+
+        beginTest ("HOME's journey: the sound choice is shared with SOUNDS and changes nothing; BUILD MY MIX really builds; A/B and SAVE are the shared buttons");
+        {
+            const auto before = p.captureSoundState();
+            auto& genre = main.genreForTest();
+            expectEquals (genre.getNumItems(), glitchkid::FactoryPresets::count + 1, "no profile + the eight starting sounds");
+            genre.setSelectedId (4, juce::sendNotificationSync); // the third profile
+            expectEquals (p.getUiInt ("uiProfile", -9), 2, "the same choice as SOUNDS, kept in the session");
+            expect (same (before, p.captureSoundState()), "choosing a sound changes nothing");
+            ed->uiSelectRailForTest (1);
+            ed->uiSelectRailForTest (0);
+            expectEquals (genre.getSelectedId(), 4, "HOME and SOUNDS agree");
+            expect (main.nextForTest().isNotEmpty(), "a next step is always named");
+
+            main.pressForTest ("BUILD MY MIX");
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
+            expect (p.getAnalyzer().isListening() || main.buildStatusForTest().startsWith ("Waiting for audio"), "BUILD MY MIX starts the real analysis: " + main.buildStatusForTest());
+            for (int k = 0; k < 10; ++k) { play (100, 0.5f); juce::MessageManager::getInstance()->runDispatchLoopUntil (40); }
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
+            expect (p.getPresetName().startsWith ("Built: "), "a mix was built from HOME: " + p.getPresetName());
+            expect (p.getPresetName().containsIgnoreCase (glitchkid::FactoryPresets::info (2).name), "from the chosen sound");
+            expectEquals (main.buildTextForTest(), juce::String ("BUILD AGAIN"));
+            shot ("home_built");
+            ed->uiUndoForTest();
+            expect (same (before, p.captureSoundState()), "UNDO puts the earlier sound back");
+
+            std::function<juce::Button* (juce::Component&, const juce::String&)> find = [&] (juce::Component& c, const juce::String& text) -> juce::Button*
+            {
+                for (auto* ch : c.getChildren())
+                {
+                    if (! ch->isVisible()) continue;
+                    if (auto* b = dynamic_cast<juce::Button*> (ch); b != nullptr && b->getButtonText() == text) return b;
+                    if (auto* r = find (*ch, text)) return r;
+                }
+                return nullptr;
+            };
+            find (*ed, "SET A")->triggerClick(); // asynchronous in JUCE: let it run
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+            th::setParam (p, "gain", -9.0f);
+            find (*ed, "A")->triggerClick();
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+            expectWithinAbsoluteError (getParam (p, "gain"), 0.0f, 0.06f, "A on HOME recalls the snapshot");
+            th::setParam (p, "gain", 0.0f);
+            genre.setSelectedId (1, juce::sendNotificationSync);
+            expectEquals (p.getUiInt ("uiProfile", -9), -1, "no profile: a clean start");
+        }
+
         beginTest ("HOME's states come from the real signal and settings: no audio, silence, playing, ORIGINAL, modules, mastering");
         {
             for (int i = 0; i < 40; ++i) main.tickForTest();
             expect (main.headlineForTest().startsWith ("No audio is reaching"), main.headlineForTest());
             expectEquals (main.beatForTest(), juce::String ("No beat connected"));
-            play (20, 0.0f);
+            play (500, 0.0f); // long enough for any echo tail from earlier audio to die away: until then the output is (really) not silent
             for (int i = 0; i < 3; ++i) { play (2, 0.0f); main.tickForTest(); }
             expect (main.headlineForTest().startsWith ("Silence on the input"), main.headlineForTest());
             th::setParam (p, "clean_on", 1.0f);
             th::setParam (p, "lim_on", 1.0f);
             for (int i = 0; i < 6; ++i) { play (4, 0.4f); main.tickForTest(); }
-            expect (main.headlineForTest() == "Hearing your vocal, processed:  CLEAN LAB, LIMITER", main.headlineForTest());
+            expect (main.headlineForTest() == "Hearing your vocal, processed:  CLEAN LAB, LIMITER", main.headlineForTest() + " | clean_on " + juce::String (getParam (p, "clean_on")) + " lim_on " + juce::String (getParam (p, "lim_on")) + " bypass " + juce::String (getParam (p, "bypass")));
             expect (main.moduleStatusForTest (MS::cleanLab).startsWith ("Learning your voice") || main.moduleStatusForTest (MS::cleanLab).startsWith ("Fixing")
                         || main.moduleStatusForTest (MS::cleanLab).startsWith ("Listening"), main.moduleStatusForTest (MS::cleanLab));
             expect (main.moduleStatusForTest (MS::airLab) == "Off" && main.moduleStatusForTest (MS::autotune) == "Off");

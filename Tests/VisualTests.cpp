@@ -33,8 +33,8 @@ struct VisualTests : public juce::UnitTest
         beginTest ("the palette tokens are the approved ones, and the text colours keep AA contrast on every surface");
         {
             namespace ui = glitchkid::ui;
-            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::panelTop == juce::Colour (0xff25222d) && ui::violet == juce::Colour (0xffa83bee)
-                    && ui::pink == juce::Colour (0xffe14cbb) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2));
+            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::panelTop == juce::Colour (0xff25222d) && ui::violet == juce::Colour (0xff8c4cf7)
+                    && ui::pink == juce::Colour (0xffff4fb8) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2));
             auto ratio = [] (juce::Colour fg, juce::Colour bg) { const float a = luminance (fg) + 0.05f, b = luminance (bg) + 0.05f; return std::max (a, b) / std::min (a, b); };
             for (auto bg : { ui::obsidian, ui::panelBottom, ui::panelTop })
             {

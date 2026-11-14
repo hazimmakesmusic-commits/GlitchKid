@@ -2,6 +2,7 @@
 #include "NeonKit.h"
 #include "PlaygroundWidgets.h"
 #include "../Macros/MacroEngine.h"
+#include "../Presets/FactoryPresets.h"
 
 namespace glitchkid::ui
 {
@@ -69,10 +70,32 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
         addAndMakeVisible (s);
     }
 
-    soundsButton.setTooltip ("The starting sounds, each described, and Build My Mix (fits a starting sound to your vocal). Opens SOUNDS in Advanced Mixing.");
-    soundsButton.onClick = [this] { if (hooks.openSounds) hooks.openSounds(); };
-    kidButton.setTooltip ("Kid, your vocal producer: describe the sound you want and Kid sets these controls for you. Undo goes back.");
-    kidButton.onClick = [this] { if (hooks.openKid) hooks.openKid(); };
+    // the journey: SOUND, BUILD MY MIX, BEAT
+    genreBox.addItem ("No profile: a clean start", 1);
+    for (int i = 0; i < FactoryPresets::count; ++i)
+        genreBox.addItem (FactoryPresets::info (i).name, i + 2);
+    genreBox.setTitle ("Sound");
+    genreBox.setTooltip ("The starting sound Build My Mix fits to your vocal. Choosing one changes nothing yet: press BUILD MY MIX, or load it from the preset menu to hear it as saved.");
+    genreBox.setColour (juce::ComboBox::backgroundColourId, surface);
+    genreBox.setColour (juce::ComboBox::outlineColourId, hairline);
+    genreBox.setColour (juce::ComboBox::textColourId, white);
+    genreBox.onChange = [this]
+    {
+        const int chosen = genreBox.getSelectedId() - 2; // id 1 = no profile (-1)
+        if (chosen != profile && genreBox.getSelectedId() > 0)
+        {
+            profile = chosen;
+            if (hooks.chooseProfile) hooks.chooseProfile (chosen);
+            refreshText();
+            repaint (journey);
+        }
+    };
+    addAndMakeVisible (genreBox);
+    buildButton.setTooltip ("BUILD MY MIX: listens to your vocal for a few seconds (press play in your DAW), then fits the chosen sound to what it heard. UNDO goes back.");
+    buildButton.getProperties().set ("secondary", true);
+    buildButton.onClick = [this] { if (hooks.buildMix) hooks.buildMix(); };
+    beatButton.setTooltip ("Beat Lock in Advanced Mixing: compares your vocal with the beat on the Instrumental input and suggests small, reviewable changes.");
+    beatButton.onClick = [this] { if (hooks.openBeat) hooks.openBeat(); };
     advancedButton.setTooltip ("Every detailed control: CLEAN, TUNE, TONE, DYNAMICS, SPACE, CREATIVE, BEAT, REFERENCE, MASTER, presets and A/B. HOME in its rail comes back here.");
     advancedButton.getProperties().set ("secondary", true);
     advancedButton.setToggleState (true, juce::dontSendNotification); // drawn lit: the way into the detailed pages
@@ -96,7 +119,7 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
         proc.setUiFlag ("uiMandala", mandala);
         repaint (visual);
     };
-    for (auto* b : { &soundsButton, &kidButton, &advancedButton, &mandalaButton, &useKeyButton })
+    for (auto* b : { &buildButton, &beatButton, &advancedButton, &mandalaButton, &useKeyButton })
         addAndMakeVisible (b);
     sync();
     refreshText();
@@ -244,7 +267,7 @@ void MainScreen::refreshText()
     if (proc.isMasteringMode())
         headline = "Mastering mode is on in this GlitchKid: the vocal controls are not in use. Switch it off on MASTER in Advanced Mixing.";
     else if (stillTicks > 30)
-        headline = "No audio is reaching GlitchKid. Press play in your DAW and check that this track feeds it.";
+        headline = "No audio is reaching GlitchKid: press play in your DAW";
     else if (! signalOut)
         headline = "Silence on the input. Play your vocal.";
     else if (dry)
@@ -260,6 +283,9 @@ void MainScreen::refreshText()
     using SS = GlitchKidProcessor::SourceStatus;
     const auto st = proc.getInstrumentalStatus();
     beatText = st == SS::live ? "Beat playing" : st == SS::connectedSilent ? "Beat input connected, silent" : "No beat connected";
+    static const char* nextLine[6] = { "Play your vocal in your DAW", "Choose a sound", "Press BUILD MY MIX and let the vocal play",
+                                       "Refine below and compare, then add your beat (optional)", "Fit to beat, compare with ORIGINAL", "Compare, then SAVE it as a preset" };
+    nextText = nextLine[nextStep()];
 
     // AUTOTUNE: the sung note and where it is pulled (the real detector), and a key Kid estimated from a vocal file
     pitchText = {};
@@ -302,6 +328,38 @@ void MainScreen::refreshText()
     status[limiter] = ! on (P::limOnId) ? "Off: peaks are not caught"
                     : limGrDb > 0.1f    ? "Catching peaks: -" + juce::String (limGrDb, 1) + " dB"
                                         : "Holding below " + juce::String (value (P::limCeilingId), 1) + " dB: nothing to catch";
+}
+
+void MainScreen::setProfile (int p)
+{
+    profile = juce::jlimit (-1, FactoryPresets::count - 1, p);
+    genreBox.setSelectedId (profile + 2, juce::dontSendNotification);
+}
+
+void MainScreen::setBuild (const juce::String& buttonText, const juce::String& statusText, bool listening, bool applied)
+{
+    if (buttonText == buildButton.getButtonText() && statusText == buildStatus && listening == buildListening && applied == buildApplied)
+        return;
+    buildButton.setButtonText (buttonText);
+    buildButton.setToggleState (listening, juce::dontSendNotification); // lit while it really listens
+    buildStatus = statusText;
+    buildListening = listening;
+    buildApplied = applied;
+    refreshText();
+    repaint (journey);
+}
+
+// The next step of the work, from the real state only: is audio arriving, is a sound chosen, is a mix built and still loaded, is a beat connected.
+int MainScreen::nextStep() const
+{
+    using SS = GlitchKidProcessor::SourceStatus;
+    if (stillTicks > 30 || ! signalOut)
+        return buildListening ? 2 : 0;
+    if (! buildApplied)
+        return profile < 0 && ! buildListening ? 1 : 2;
+    if (proc.getInstrumentalStatus() == SS::notConnected)
+        return 3;
+    return proc.isPresetModified() ? 5 : 4;
 }
 
 void MainScreen::visibilityChanged()
@@ -380,14 +438,17 @@ void MainScreen::timerCallback()
 void MainScreen::resized()
 {
     const int W = getWidth();
-    // top bar: the editor's preset selector sits at x 190..530 and UNDO / MOTION at the right edge; these fill the rest
-    soundsButton.setBounds (544, 12, 132, 28);
-    kidButton.setBounds (682, 12, 86, 28);
+    // top bar: the editor's preset selector, SAVE and A/B sit at x 180..760 and UNDO / MOTION at the right edge
     advancedButton.setBounds (W - 16 - 70 - 4 - 46 - 12 - 172, 12, 172, 28);
 
-    visual = { 16, 76, W - 32, 236 }; // under the bar and the editor's help line (y 54..72)
+    // the journey column, then the vocal (under the bar and the editor's help line, y 54..72)
+    journey = { 16, 76, 228, 236 };
+    genreBox.setBounds (journey.getX() + 12, journey.getY() + 30, journey.getWidth() - 24, 28);
+    buildButton.setBounds (journey.getX() + 12, journey.getY() + 92, journey.getWidth() - 24, 32);
+    beatButton.setBounds (journey.getRight() - 12 - 92, journey.getY() + 186, 92, 22);
+    visual = { journey.getRight() + 8, 76, W - 16 - journey.getRight() - 8, 236 };
     ribbon = visual.reduced (56, 40);
-    mandalaButton.setBounds (visual.getCentreX() - 50, visual.getY() + 8, 100, 22);
+    mandalaButton.setBounds (visual.getRight() - 56 - 100, visual.getY() + 8, 100, 22); // top right of the vocal (the beat status is in the journey)
 
     modulesArea = { 24, 320, W - 48, 182 };
     const int mw = modulesArea.getWidth() / numModules;
@@ -452,6 +513,7 @@ void MainScreen::paint (juce::Graphics& g)
     }
     paintRibbon (g);
     paintOverlays (g);
+    paintJourney (g);
 
     // the four modules: a name, a switch, one amount, the real status; a hairline between them, no boxes
     for (int m = 0; m < numModules; ++m)
@@ -520,16 +582,52 @@ void MainScreen::paint (juce::Graphics& g)
     }
 }
 
+// The journey: three numbered steps, the one to do next lit; every line is the editor's real state (build) or the real input (beat).
+void MainScreen::paintJourney (juce::Graphics& g)
+{
+    const auto j = journey.toFloat();
+    g.setColour (surface.withAlpha (0.7f));
+    g.fillRoundedRectangle (j, 10.0f);
+    g.setColour (hairline);
+    g.drawRoundedRectangle (j.reduced (0.5f), 10.0f, 1.0f);
+    const int next = nextStep();
+    auto step = [&] (int n, const char* name, int y, bool lit)
+    {
+        const auto badge = juce::Rectangle<float> ((float) journey.getX() + 12.0f, (float) y, 18.0f, 18.0f);
+        g.setColour (lit ? uv : surfaceHi);
+        g.fillEllipse (badge);
+        g.setColour (lit ? white : dim);
+        g.setFont (fontOf (11.0f, true));
+        g.drawText (juce::String (n), badge, juce::Justification::centred, false);
+        g.setFont (fontOf (12.0f, true));
+        g.setColour (lit ? white : dim);
+        g.drawText (name, journey.getX() + 38, y, 160, 18, juce::Justification::centredLeft, false);
+    };
+    const int x = journey.getX() + 12, w = journey.getWidth() - 24;
+    step (1, "SOUND", journey.getY() + 8, next == 1);
+    step (2, "BUILD MY MIX", journey.getY() + 68, next == 2);
+    g.setFont (fontOf (11.5f));
+    g.setColour (buildListening ? white : dim);
+    g.drawFittedText (buildStatus, x, journey.getY() + 128, w, 46, juce::Justification::topLeft, 3, 0.9f);
+    step (3, "BEAT", journey.getY() + 164, next == 4);
+    g.setFont (fontOf (11.5f));
+    g.setColour (beatText.startsWith ("Beat playing") ? good : dim);
+    g.drawFittedText (beatText, x, journey.getY() + 186, w - 98, 22, juce::Justification::centredLeft, 2, 0.85f);
+    // NEXT: one line
+    g.setColour (hairline);
+    g.fillRect (x, journey.getBottom() - 30, w, 1);
+    g.setFont (fontOf (11.5f, true));
+    g.setColour (uvSoft);
+    g.drawFittedText ("NEXT:  " + nextText, x, journey.getBottom() - 26, w, 20, juce::Justification::centredLeft, 1, 0.75f);
+}
+
 // The overlays on the vocal: what reaches GlitchKid, the beat input, the input and output meters, the pitch, the limiter ceiling. All measured or set.
 void MainScreen::paintOverlays (juce::Graphics& g)
 {
     const bool dry = on (GlitchKidProcessor::bypassId);
     g.setFont (fontOf (13.0f, true));
     g.setColour (dry ? warn : signalOut ? white : dim);
-    g.drawFittedText (headline, visual.getX() + 56, visual.getY() + 8, visual.getWidth() / 2 - 120, 22, juce::Justification::centredLeft, 1, 0.8f);
-    g.setFont (fontOf (12.5f));
-    g.setColour (beatText.startsWith ("Beat playing") ? good : dim);
-    g.drawText (beatText, visual.getRight() - 56 - 260, visual.getY() + 8, 260, 22, juce::Justification::centredRight, false);
+    g.drawFittedText (headline, visual.getX() + 56, visual.getY() + 8, visual.getWidth() - 56 - 56 - 112, 22, juce::Justification::centredLeft, 1, 0.8f);
 
     // the meters: input (cyan, as everywhere) at the left, output at the right; -60..0 dBFS
     auto meter = [&g, this] (int x, float db, juce::Colour c, const char* label)

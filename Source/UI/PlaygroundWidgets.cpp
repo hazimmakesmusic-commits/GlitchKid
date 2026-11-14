@@ -85,36 +85,47 @@ void drawDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, floa
     const float d = juce::jmin (dial.getWidth(), dial.getHeight());
     const auto box = juce::Rectangle<float> (d, d).withCentre (dial.getCentre()).reduced (2.0f);
     const auto c = box.getCentre();
-    const float R = box.getWidth() * 0.5f;
+    const float R = box.getWidth() * 0.5f, r = R - 5.0f, thick = juce::jmax (2.5f, R * 0.07f);
     pos = juce::jlimit (0.0f, 1.0f, pos);
+    const float angle = start + pos * (end - start);
+    const bool hot = hover || focus;
 
-    // the track and the value arc: one thin stroke each
-    const float trackR = R * 0.86f, thick = juce::jmax (2.5f, R * 0.10f);
     juce::Path track;
-    track.addCentredArc (c.x, c.y, trackR, trackR, 0.0f, start, end, true);
-    g.setColour (border.withAlpha (alpha));
+    track.addCentredArc (c.x, c.y, r, r, 0.0f, start, end, true);
+    g.setColour (panelTop.brighter (0.05f).withAlpha (alpha));
     g.strokePath (track, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    if (pos > 0.004f)
+    if (pos > 0.002f)
     {
-        juce::Path value;
-        value.addCentredArc (c.x, c.y, trackR, trackR, 0.0f, start, start + (end - start) * pos, true);
-        g.setColour ((hover ? accent.brighter (0.15f) : accent).withAlpha (alpha));
-        g.strokePath (value, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        juce::Path arc;
+        arc.addCentredArc (c.x, c.y, r, r, 0.0f, start, angle, true);
+        const juce::Point<float> p0 (c.x + std::sin (start) * r, c.y - std::cos (start) * r), p1 (c.x + std::sin (angle) * r, c.y - std::cos (angle) * r);
+        const auto far = accent == violet ? pink : accent;
+        const auto tip = violet.interpolatedWith (far, juce::jlimit (0.0f, 1.0f, pos * 1.2f));
+        if (alpha >= 1.0f)
+            for (auto [width, a] : { std::pair { thick * 4.0f, 0.10f }, std::pair { thick * 2.3f, 0.20f } }) // a soft neon halo, brighter under the pointer
+            {
+                const float k = hot ? 1.6f : 1.0f;
+                g.setGradientFill (juce::ColourGradient (violet.withAlpha (a * k), p0, tip.withAlpha (a * k), p1, false));
+                g.strokePath (arc, juce::PathStrokeType (width, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
+        g.setGradientFill (juce::ColourGradient ((hot ? neon : violet).withAlpha (alpha), p0, (hot ? tip.brighter (0.3f) : tip).withAlpha (alpha), p1, false));
+        g.strokePath (arc, juce::PathStrokeType (thick, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
-
-    // the cap: a flat raised disc with a thin edge and a top highlight
-    const float capR = R * 0.62f;
-    g.setGradientFill (juce::ColourGradient (panelTop.brighter (hover ? 0.25f : 0.12f).withAlpha (alpha), c.x, c.y - capR, panelBottom.withAlpha (alpha), c.x, c.y + capR, false));
-    g.fillEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f);
-    g.setColour (border.brighter (0.25f).withAlpha (alpha));
-    g.drawEllipse (c.x - capR, c.y - capR, capR * 2.0f, capR * 2.0f, 1.0f);
-
-    // the indicator: a short line from the middle of the cap to its edge
-    const float a = start + (end - start) * pos;
-    const auto dir = juce::Point<float> (std::sin (a), -std::cos (a));
-    g.setColour (textBright.withAlpha (alpha));
-    g.drawLine (juce::Line<float> (c + dir * (capR * 0.35f), c + dir * (capR * 0.88f)), 2.2f);
-
+    // the body: a dark machined cap, lit from above
+    const float br = r * 0.74f;
+    const auto body = juce::Rectangle<float> (2.0f * br, 2.0f * br).withCentre (c);
+    g.setColour (juce::Colours::black.withAlpha (0.55f * alpha));
+    g.fillEllipse (body.translated (0.0f, 3.0f).expanded (1.0f));
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2e2a38).withAlpha (alpha), c.x, body.getY(), juce::Colour (0xff111016).withAlpha (alpha), c.x, body.getBottom(), false));
+    g.fillEllipse (body);
+    g.setColour (juce::Colours::white.withAlpha ((hot ? 0.16f : 0.09f) * alpha));
+    g.drawEllipse (body.reduced (0.5f), 1.0f);
+    const auto cap = body.reduced (br * 0.22f);
+    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1820), c.x, cap.getY(), juce::Colour (0xff23202b), c.x, cap.getBottom(), false));
+    g.fillEllipse (cap);
+    const juce::Point<float> a (c.x + std::sin (angle) * br * 0.38f, c.y - std::cos (angle) * br * 0.38f), b (c.x + std::sin (angle) * br * 0.84f, c.y - std::cos (angle) * br * 0.84f);
+    g.setColour (alpha >= 1.0f ? textBright : disabled);
+    g.drawLine ({ a, b }, juce::jmax (1.8f, R * 0.055f));
     if (focus)
         focusRing (g, box, R);
 }
@@ -326,10 +337,11 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
 
 void drawPanel (juce::Graphics& g, juce::Rectangle<float> r)
 {
-    g.setGradientFill (juce::ColourGradient (panelBottom.interpolatedWith (violet, 0.06f), r.getX(), r.getY(), panelBottom, r.getX(), r.getBottom(), false));
-    g.fillPath (chamferPath (r, 5.0f));
-    g.setGradientFill (juce::ColourGradient (violet.withAlpha (0.55f), r.getX(), r.getY(), pink.withAlpha (0.40f), r.getRight(), r.getBottom(), false));
-    g.strokePath (chamferPath (r.reduced (0.5f), 5.0f), juce::PathStrokeType (1.0f));
+    // a quiet group: a slightly lifted surface and a hairline edge (light comes from the controls, not the frames)
+    g.setColour (panelBottom.withAlpha (0.55f));
+    g.fillRoundedRectangle (r, 8.0f);
+    g.setColour (border.withAlpha (0.55f));
+    g.drawRoundedRectangle (r.reduced (0.5f), 8.0f, 1.0f);
 }
 
 namespace
@@ -732,8 +744,8 @@ PlaygroundLookAndFeel::PlaygroundLookAndFeel()
     setColour (juce::TextButton::textColourOffId, textBright);
     setColour (juce::TextButton::textColourOnId, chrome);
     setColour (juce::Slider::textBoxTextColourId, textBright);
-    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour (0xff0d0d11));
-    setColour (juce::Slider::textBoxOutlineColourId, border);
+    setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack); // a knob's value is a plain number under it, not a boxed field
+    setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff0d0d11));
     setColour (juce::ComboBox::outlineColourId, border.brighter (0.2f));
     setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff1b1921));
@@ -761,9 +773,20 @@ void PlaygroundLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton&
                 g.drawEllipse (dot.reduced (0.5f), 1.0f);
             }
         }
-        g.setFont (fontOf (13.0f, true));
-        g.setColour (b.getToggleState() ? textBright : textDim.brighter (0.3f));
-        g.drawText (b.getProperties().getWithDefault ("railText", displayCase (b.getButtonText())).toString(), r.withTrimmedLeft (32.0f), juce::Justification::centredLeft, false);
+        const bool small = (bool) b.getProperties().getWithDefault ("railSmall", false), back = (bool) b.getProperties().getWithDefault ("railBack", false);
+        if (back) // HOME: a chevron back to the instrument
+        {
+            juce::Path chev;
+            const float cx = r.getX() + 16.0f, cy = r.getCentreY();
+            chev.startNewSubPath (cx + 2.5f, cy - 5.0f);
+            chev.lineTo (cx - 2.5f, cy);
+            chev.lineTo (cx + 2.5f, cy + 5.0f);
+            g.setColour (neon);
+            g.strokePath (chev, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+        g.setFont (fontOf (small ? 12.0f : 13.5f, ! small));
+        g.setColour (b.getToggleState() ? textBright : back ? neon : small ? textDim : textDim.brighter (0.3f));
+        g.drawText (b.getProperties().getWithDefault ("railText", displayCase (b.getButtonText())).toString(), r.withTrimmedLeft (small ? 28.0f : 32.0f), juce::Justification::centredLeft, false);
         return;
     }
     g.setFont (getTextButtonFont (b, b.getHeight()));
@@ -786,7 +809,10 @@ bool isSentence (const juce::String& t)
 
 void PlaygroundLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& l)
 {
-    g.fillAll (l.findColour (juce::Label::backgroundColourId));
+    // a knob's or slider's value: plain text under or beside it; the field appears only while a value is being typed
+    const bool valueText = dynamic_cast<juce::Slider*> (l.getParentComponent()) != nullptr && ! l.isBeingEdited();
+    if (! valueText)
+        g.fillAll (l.findColour (juce::Label::backgroundColourId));
     if (! l.isBeingEdited())
     {
         const float alpha = l.isEnabled() ? 1.0f : 0.5f;
@@ -801,7 +827,8 @@ void PlaygroundLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& l)
     }
     else if (l.isEnabled())
         g.setColour (l.findColour (juce::Label::outlineColourId));
-    g.drawRect (l.getLocalBounds());
+    if (! valueText)
+        g.drawRect (l.getLocalBounds());
 }
 
 juce::Font PlaygroundLookAndFeel::getTextButtonFont (juce::TextButton&, int h) { return fontOf (juce::jlimit (12.0f, 16.0f, (float) h * 0.4f), true); }

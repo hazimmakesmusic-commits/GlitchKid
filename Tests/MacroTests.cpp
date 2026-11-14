@@ -269,8 +269,8 @@ struct MacroTests : public juce::UnitTest
             expectEquals (glitchkid::ui::EqGraph::responseDb (flat, zero, Q, 1000.0f, fs), 0.0f);
 
             namespace ui = glitchkid::ui;
-            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::violet == juce::Colour (0xffa83bee)
-                    && ui::pink == juce::Colour (0xffe14cbb) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2)
+            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::violet == juce::Colour (0xff8c4cf7)
+                    && ui::pink == juce::Colour (0xffff4fb8) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2)
                     && ui::border == juce::Colour (0xff3a3644), "the approved palette tokens");
         }
 
@@ -423,7 +423,7 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY MIX") && ! visible ("RESET"));
-                expect (visible ("HOME") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (visible ("HOME") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("SHAPE") && visible ("FINISH") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
@@ -545,14 +545,14 @@ struct MacroTests : public juce::UnitTest
 
                 click ("FINAL TOUCH  >");
                 expectEquals (p.getUiInt ("uiLevel", -1), 4);
-                expect (visible ("TUNE") && visible ("TONE") && visible ("DYNAMICS") && visible ("SPACE") && visible ("RESET") && ! visible ("BUILD MY MIX"));
+                expect (visible ("TUNE") && visible ("SHAPE") && visible ("FINISH") && visible ("SPACE") && visible ("RESET") && ! visible ("BUILD MY MIX"));
 
                 click ("TUNE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 0);
                 expect (visible ("HARD"));
-                click ("TONE");
+                click ("SHAPE");
                 expect (! visible ("HARD") && visible ("RESET"), "the footer stays, the category controls change");
-                click ("DYNAMICS");
+                click ("FINISH");
                 expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 click ("SPACE");
                 expectEquals (p.getUiInt ("uiCategory", -1), 3);
@@ -574,10 +574,7 @@ struct MacroTests : public juce::UnitTest
                             }
                         };
                         find (*content);
-                        expect (adv != nullptr, "the advanced controls have their own switch");
-                        if (adv != nullptr)
-                            adv->triggerClick(); // the three section trims are hidden until asked for
-                        juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
+                        expect (adv == nullptr, "no ADVANCED switch: the three section trims are always shown in Advanced Mixing");
                     }
                     juce::ToggleButton* cleanOn = nullptr;
                     std::vector<juce::Slider*> sliders;
@@ -634,9 +631,10 @@ struct MacroTests : public juce::UnitTest
                 openLevel (4);
                 click ("SPACE");
 
-                // TONE starts simple: the bands' knobs and AIR LAB's detail sit behind ADVANCED (shared with TUNE); the switch reveals them
+                // SHAPE shows everything it holds: the selected band's knobs, the five compressor knobs, warmth and AIR LAB's four sliders (no ADVANCED switch:
+                // Advanced Mixing is the detailed view)
                 {
-                    click ("TONE");
+                    click ("SHAPE");
                     int rotaries = 0, airDetail = 0;
                     juce::ToggleButton* adv = nullptr;
                     std::function<void (juce::Component&)> scan = [&] (juce::Component& c)
@@ -656,21 +654,14 @@ struct MacroTests : public juce::UnitTest
                         }
                     };
                     scan (*content);
-                    expectEquals (rotaries, 1, "simple TONE: WARMTH is the only knob");
-                    expectEquals (airDetail, 0, "simple TONE: AIR LAB's detail sliders are hidden");
-                    expect (adv != nullptr && ! adv->getToggleState(), "ADVANCED is shown and off by default");
-                    if (adv != nullptr)
-                        adv->triggerClick();
-                    juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
-                    rotaries = airDetail = 0;
-                    scan (*content);
-                    expect (rotaries > 1 && airDetail == 4, "ADVANCED shows the band knobs and the four AIR LAB sliders");
-                    expect (p.getUiFlag ("uiShapeAdv", false), "the choice is remembered with the session");
+                    expect (rotaries >= 1 + 5 + 2, "band knobs, five compressor knobs and warmth: " + juce::String (rotaries));
+                    expectEquals (airDetail, 4, "AIR LAB's four sliders");
+                    expect (adv == nullptr, "no ADVANCED switch in Advanced Mixing");
                 }
 
                 // detailed knobs are attached to the real (automatable) parameters, in both directions
                 {
-                    click ("TONE");
+                    click ("SHAPE");
                     juce::Slider* knob = nullptr;
                     std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
                     {
@@ -730,7 +721,7 @@ struct MacroTests : public juce::UnitTest
 
                 // AIR LAB: the switch and the sliders are attached to the real parameters, and the chain's TONE stage lights up while it is on
                 {
-                    click ("TONE");
+                    click ("SHAPE");
                     juce::ToggleButton* airOn = nullptr;
                     std::vector<juce::Slider*> airSliders;
                     std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
@@ -773,7 +764,7 @@ struct MacroTests : public juce::UnitTest
 
                 // the TONE high-level slider is a real control: it moves the AIR and PRESENCE gains together and reads back
                 {
-                    click ("TONE");
+                    click ("SHAPE");
                     juce::Slider* tone = nullptr;
                     std::function<void (juce::Component&)> walk = [&] (juce::Component& c)
                     {
@@ -802,7 +793,7 @@ struct MacroTests : public juce::UnitTest
                 // the rail is the navigation: a row opens its workspace (and FINAL TOUCH category) and is selected afterwards
                 {
                     click ("CLEAN");
-                    click ("DYNAMICS");
+                    click ("FINISH");
                     expectEquals (p.getUiInt ("uiLevel", -1), 4);
                     expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 }
@@ -811,7 +802,7 @@ struct MacroTests : public juce::UnitTest
                 expect (visible ("TRY AGAIN"), "SOUNDS shows the build button (TRY AGAIN after the silent attempt)");
                 click ("HOME");
                 expectEquals ((int) levelCards().size(), 0, "HOME is the instrument; the old dashboard's tiles are gone");
-                expect (! visible ("DYNAMICS") && ! visible ("SAVE"), "HOME fills the window: the rail and SAVE stay in Advanced Mixing");
+                expect (! visible ("FINISH") && visible ("SAVE"), "HOME fills the window: the rail stays in Advanced Mixing; SAVE is on HOME's bar");
             }
 
             {

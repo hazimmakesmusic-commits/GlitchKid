@@ -93,7 +93,7 @@ public:
 private:
     // Layout size; the window scales it to fit. The signal rail takes the left railW pixels; a workspace is laid out in the 960-wide area beside it, from y = pageTop.
     // Every control that is not part of the current workspace is hidden.
-    static constexpr int railW = 160, pageW = 960, designW = railW + pageW, designH = 680; // 1120 x 680
+    static constexpr int railW = 136, pageW = 984, designW = railW + pageW, designH = 680; // 1120 x 680 (a slim stage rail, a wide workspace)
     static constexpr int barDy = 80; // the info line and the preset bar sit 80 px lower than in the 600-high layout the workspaces were written for
     static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
     static constexpr int numRail = 11; // the rail: START, SOUNDS, CLEAN, TUNE, TONE, DYNAMICS, SPACE, CREATIVE, BEAT, REFERENCE, MASTER
@@ -224,7 +224,9 @@ private:
     void selectBand (int);
     void applyContentTransform (float dx = 0.0f);
     juce::OwnedArray<ParamKnob> compKnobs; // threshold, ratio, attack, release, makeup
-    juce::OwnedArray<ParamKnob> gainKnob;
+    juce::OwnedArray<ParamKnob> gainKnob, mixKnob; // FINISH: output gain and the wet/dry MIX (the same `mix` parameter as HOME's MIX)
+    glitchkid::ui::LabHeading compHeading { "COMPRESSOR" }, outHeading { "OUTPUT" }; // SHAPE's dynamics, FINISH's level
+    juce::Label punchName { {}, "PUNCH" };
     // OUTPUT LIMITER (DYNAMICS): the last stage of the output path
     juce::OwnedArray<ParamKnob> limKnobs; // ceiling, drive, release
     juce::ToggleButton limOnButton { "LIMITER" };

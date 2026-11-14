@@ -220,7 +220,7 @@ struct LevelUiTests : public juce::UnitTest
             const auto presetName = p.getPresetName();
             if (auto* ged = dynamic_cast<GlitchKidEditor*> (ed.get()))
                 ged->uiSelectRailForTest (1); // KID, the first screen, fills the window without the rail: start from a detailed page, where the rail is
-            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "TONE", "HOME" }) // HOME fills the window (no rail), so it comes last
+            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "SHAPE", "HOME" }) // HOME fills the window (no rail), so it comes last
             {
                 auto* b = findButton (*content, name);
                 expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the rail");
@@ -308,12 +308,15 @@ struct LevelUiTests : public juce::UnitTest
                     }
                 };
                 walk (*content);
-                expectEquals ((int) knobs.size(), 9, "five compressor knobs, output gain, and ceiling, drive and release");
-                if (knobs.size() == 9)
+                expectEquals ((int) knobs.size(), 5, "FINISH: output gain, MIX, and ceiling, drive and release (the compressor moved to SHAPE)");
+                if (knobs.size() == 5)
                 {
-                    knobs[6]->setValue (-6.0, juce::sendNotificationSync); // CEILING
-                    knobs[7]->setValue (3.0, juce::sendNotificationSync);  // DRIVE
-                    knobs[8]->setValue (150.0, juce::sendNotificationSync); // RELEASE
+                    knobs[1]->setValue (80.0, juce::sendNotificationSync); // MIX
+                    expectWithinAbsoluteError (th::getParam (p, "mix"), 80.0f, 0.1f, "FINISH's MIX is the real mix parameter (HOME's MIX)");
+                    th::setParam (p, "mix", 100.0f);
+                    knobs[2]->setValue (-6.0, juce::sendNotificationSync); // CEILING
+                    knobs[3]->setValue (3.0, juce::sendNotificationSync);  // DRIVE
+                    knobs[4]->setValue (150.0, juce::sendNotificationSync); // RELEASE
                     expectWithinAbsoluteError (th::getParam (p, "lim_ceiling"), -6.0f, 0.05f);
                     expectWithinAbsoluteError (th::getParam (p, "lim_drive"), 3.0f, 0.05f);
                     expectEquals (th::getParam (p, "lim_release"), 150.0f);

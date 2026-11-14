@@ -116,24 +116,28 @@ namespace
 // The signal rail, in the order a vocal is worked. page / category are the saved workspace numbers (Page and the FINAL TOUCH category), so a session saved before the
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
+// ADVANCED MIXING: the five stages of a vocal mix first (TUNE, CLEAN, SHAPE, SPACE, FINISH), then the tools under MORE. The indices keep their old meaning
+// (sessions, tests); only the order on screen changed. SHAPE is the old TONE plus the compressor; FINISH the old DYNAMICS without it, plus MIX.
 const RailItem railItems[11] = {
     { "HOME", 6, 0, "Home", "The vocal instrument: AUTOTUNE, CLEAN LAB, AIR LAB, LIMITER and the main dials around your live vocal.",
       "Back to Home: the vocal instrument. Everything you set here is the same setting there." },
     { "SOUNDS", 3, 0, "Sounds", "Choose a starting sound, or build a first mix fitted to your vocal.", "Starting sounds, and Build My Mix (fits a starting sound to your vocal)." },
-    { "CLEAN", 1, 0, "Clean", "Step 1: rumble, mud, harsh resonances and sharp S sounds.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
-    { "TUNE", 4, 0, "Tune", "Step 2: pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
-    { "TONE", 4, 1, "Tone", "Step 3: darker to brighter, EQ, air and warmth.", "A darker-to-brighter control, four EQ gains, air and warmth (saturation)." },
-    { "DYNAMICS", 4, 2, "Dynamics", "Step 3: level and punch, and a limiter that protects the output.", "A softer-to-more-upfront control, the compressor, the output level and the limiter." },
-    { "SPACE", 4, 3, "Space", "Step 4: echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
-    { "CREATIVE", 7, 0, "Creative", "Step 5 (optional): Formant, Harmony, Mutation and Stutter.", "Creative effects: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
-    { "BEAT", 2, 0, "Beat", "Step 6 (optional): how the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat routed to the Instrumental input)." },
-    { "REFERENCE", 5, 0, "Reference", "Step 6 (optional): compare your tone with a song you have the right to use.",
+    { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds, measured on your voice.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
+    { "TUNE", 4, 0, "Tune", "Pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
+    { "SHAPE", 4, 1, "Shape", "Tone and dynamics: the EQ, the compressor, warmth and AIR LAB.", "Darker to brighter, the four EQ bands, the compressor, warmth and AIR LAB." },
+    { "FINISH", 4, 2, "Finish", "Output level, wet/dry mix and the limiter that protects the output.", "Output gain, MIX, the input and output meters and the output limiter." },
+    { "SPACE", 4, 3, "Space", "Echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
+    { "CREATIVE", 7, 0, "Creative", "Formant, Harmony, Mutation and Stutter (optional).", "Creative effects: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
+    { "BEAT", 2, 0, "Beat", "How the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat routed to the Instrumental input)." },
+    { "REFERENCE", 5, 0, "Reference", "Compare your tone with a song you have the right to use.",
       "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." },
     { "MASTER", 8, 0, "Master", "For a finished mix on your master bus (a separate GlitchKid), or a mix file.",
       "The Mastering Lab: a separate chain for a finished stereo mix. Never applied to your vocal." } };
-constexpr int railRowY[11] = { 80, 112, 168, 200, 232, 264, 296, 356, 416, 448, 508 };
-constexpr int railGroupY[5] = { 62, 150, 338, 398, 490 };
-const char* const railGroupName[5] = { "START", "SHAPE THE VOCAL", "CREATIVE", "FIT TO TRACK", "FINISH" };
+// on screen: HOME (back), then MIX: TUNE 3, CLEAN 2, SHAPE 4, SPACE 6, FINISH 5; then MORE: SOUNDS 1, BEAT 8, CREATIVE 7, REFERENCE 9, MASTER 10
+constexpr int railRowY[11] = { 62, 334, 154, 120, 188, 256, 222, 390, 362, 418, 446 };
+constexpr bool railMore[11] = { false, true, false, false, false, false, false, true, true, true, true };
+constexpr int railGroupY[2] = { 102, 312 };
+const char* const railGroupName[2] = { "MIX", "MORE" };
 }
 
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
@@ -198,6 +202,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         navButtons[i].setButtonText (railItems[i].name);
         style (navButtons[i], juce::String (railItems[i].tip) + " Any workspace can be opened at any time; switching never changes your sound.");
         navButtons[i].getProperties().set ("rail", true); // the look-and-feel draws a rail row: a status dot, the name and a lit bar when selected
+        navButtons[i].getProperties().set ("railSmall", railMore[i]); // MORE: the tools, quieter than the five stages
+        navButtons[i].getProperties().set ("railBack", i == 0);       // HOME: a way back, not a stage
         navButtons[i].onClick = [this, i] { selectRail (i); };
     }
     label (railNote, 10.5f, false, ui::textDim, juce::Justification::topLeft);
@@ -388,7 +394,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         refreshAutoMode();
     };
     autoApplyButton.onClick = [this] { showWhatChanged(); };
-    style (loadButton, "Load the selected profile as saved, so you hear it before building (use DRY / PROCESSED to compare). Your previous sound is kept: BACK TO MY SOUND returns to it.");
+    style (loadButton, "Load the selected profile as saved, so you hear it before building (use ORIGINAL / PROCESSED to compare). Your previous sound is kept: BACK TO MY SOUND returns to it.");
     loadButton.onClick = [this] { loadBrowsed(); };
     style (backToMineButton, "Put back the sound you had before you built a mix or loaded a profile.");
     backToMineButton.onClick = [this] { backToMine(); };
@@ -554,6 +560,12 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         k->addTo (content);
     gainKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::gainId, "OUTPUT GAIN", " dB", ui::pink, "The final level of the vocal."));
     gainKnob[0]->addTo (content);
+    mixKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::mixId, "MIX", " %", ui::pink, "Processed against your untouched voice: 100 % = all GlitchKid. The same control as MIX on HOME."));
+    mixKnob[0]->addTo (content);
+    for (auto* h : { &compHeading, &outHeading })
+        content.addAndMakeVisible (*h);
+    label (punchName, 12.0f, true, ui::textDim);
+    punchName.setTooltip ("PUNCH: how firmly the compressor holds your voice (the same control as PUNCH on HOME). The knobs below are its detail.");
     limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limCeilingId, "CEILING", " dB", ui::pink, "The highest level a SAMPLE may reach after the limiter (not a true-peak limit: between samples the reconstructed waveform can be higher)."));
     limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limDriveId, "DRIVE", " dB", ui::violet, "Gain into the limiter. Louder, but more of the signal is limited. It is not compensated afterwards."));
     limKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::limReleaseId, "RELEASE", " ms", ui::violet, "How quickly the gain comes back after a peak. Longer = smoother, shorter = louder but more audible."));
@@ -697,9 +709,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         hooks.back = [this] { showMainView (false); };
         kidPanel = std::make_unique<ui::KidPanel> (p, std::move (hooks)); // like REFERENCE: a child of `content` only while its page is open
         ui::MainScreen::Hooks mh;
-        mh.openSounds = [this] { selectRail (1); };
-        mh.openKid = [this] { showMainView (true); };
-        mh.openAdvanced = [this] { selectRail (juce::jlimit (1, numRail - 1, glitchProcessor.getUiInt ("uiAdvancedRow", 2))); }; // the last detailed page, CLEAN at first
+        mh.openBeat = [this] { selectRail (8); };
+        mh.buildMix = [this] { if (autoAnalyzeButton.onClick) autoAnalyzeButton.onClick(); }; // one build action, shared with SOUNDS
+        mh.chooseProfile = [this] (int profile) { selectProfile (profile); };
+        mh.openAdvanced = [this] { selectRail (juce::jlimit (1, numRail - 1, glitchProcessor.getUiInt ("uiAdvancedRow", 3))); }; // the last detailed page, TUNE (the first stage) at first
         mh.holdOriginal = [this] (bool original) { setBypassFromUi (original); };
         mh.fileKey = [this] (int& tonic, bool& minor)
         {
@@ -709,6 +722,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
             return r.keyReliable;
         };
         mainScreen = std::make_unique<ui::MainScreen> (p, std::move (mh));
+        mainScreen->setProfile (browsedProfile);
         ui::MasteringScreen::Hooks msh;
         masteringScreen = std::make_unique<ui::MasteringScreen> (p, std::move (msh));
         kidView = p.getUiInt ("uiMainView", 0) == 1;
@@ -1007,8 +1021,8 @@ void GlitchKidEditor::refreshState (float peak)
         if (! dry)
         {
             act[0] = fx::isActive (fx::pitchTune, all);
-            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f;
-            act[2] = fx::isActive (fx::compressor, all) || all.get ("lim_on", 0.0f) >= 0.5f;
+            act[1] = fx::isActive (fx::eq, all) || fx::isActive (fx::saturation, all) || all.get ("air_on", 0.0f) >= 0.5f || fx::isActive (fx::compressor, all); // SHAPE
+            act[2] = all.get ("lim_on", 0.0f) >= 0.5f || std::abs (all.get ("gain", 0.0f)) > 0.05f || all.get ("mix", 100.0f) < 99.95f;                               // FINISH
             act[3] = fx::isActive (fx::echo, all) || fx::isActive (fx::dimension, all) || fx::isActive (fx::doubler, all);
         }
         juce::StringArray legacy; // effects the interface no longer offers but an older session may still have switched on
@@ -1018,7 +1032,7 @@ void GlitchKidEditor::refreshState (float peak)
         stageActive = act;
         legacyEffects = legacy.joinIntoString (", ");
         refreshInfoLine();
-        // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, TONE, DYNAMICS and SPACE as in the stages above (nothing is processed while DRY)
+        // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, SHAPE, FINISH and SPACE as in the stages above (nothing is processed while DRY)
         const std::array<bool, numRail> dots = { false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], ! dry && ! legacy.isEmpty(), false, false, false };
         for (int i : { 2, 3, 4, 5, 6, 7 })
             if ((int) navButtons[i].getProperties().getWithDefault ("led", 0) != (dots[(size_t) i] ? 2 : 1))
@@ -1222,7 +1236,7 @@ void GlitchKidEditor::refreshAutoMode()
     else if (buildState == BuildState::built)
     {
         ring = ui::AutoState::ready;
-        text = applied ? "Mix applied. Compare with DRY / PROCESSED, then refine it in FINAL TOUCH." : "Your earlier sound is back. Press BUILD AGAIN to build a mix.";
+        text = applied ? "Mix applied. Compare with ORIGINAL / PROCESSED, then refine it." : "Your earlier sound is back. Press BUILD AGAIN to build a mix.";
     }
     else if (buildState == BuildState::failed)
     {
@@ -1286,6 +1300,9 @@ void GlitchKidEditor::refreshAutoMode()
         resultBody.setText (body, juce::dontSendNotification);
     }
 
+    if (mainScreen != nullptr) // HOME's BUILD MY MIX: the same state and words
+        mainScreen->setBuild (listening ? "BUILD NOW" : buildState == BuildState::failed ? "TRY AGAIN" : buildState == BuildState::built ? "BUILD AGAIN" : "BUILD MY MIX",
+                              text, listening || autoWaiting, buildState == BuildState::built && applied);
     if (text != shownAutoText)
     {
         shownAutoText = text;
@@ -1332,6 +1349,8 @@ void GlitchKidEditor::refreshProfiles()
 void GlitchKidEditor::selectProfile (int profile)
 {
     browsedProfile = profile;
+    if (mainScreen != nullptr)
+        mainScreen->setProfile (profile);
     glitchProcessor.setUiInt ("uiProfile", profile); // kept in the session, so BUILD and FINAL TOUCH (and a reopened window) agree
     refreshProfiles();
     shownCompareText = {};
@@ -1900,8 +1919,8 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     g.setColour (ui::border);
     g.fillRect (R - 1.0f, 0.0f, 1.0f, (float) designH);
     {
-        const juce::Rectangle<float> r (18.0f, 8.0f, 140.0f, 24.0f);
-        g.setFont (ui::fontOf (20.0f, true));
+        const juce::Rectangle<float> r (16.0f, 10.0f, R - 20.0f, 24.0f);
+        g.setFont (ui::fontOf (18.0f, true));
         juce::ColourGradient chromeFill (juce::Colour (0xffffffff), 0.0f, r.getY() + 3.0f, juce::Colour (0xff9d8fb8), 0.0f, r.getBottom() - 2.0f, false);
         chromeFill.addColour (0.46, juce::Colour (0xffd9cbe8));
         chromeFill.addColour (0.52, juce::Colour (0xff4a3a66)); // a small horizon line in the lettering
@@ -1916,10 +1935,12 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     }
     g.setFont (ui::fontOf (10.5f, true));
     g.setColour (ui::textDim);
-    for (int i = 0; i < 5; ++i)
-        g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], 140.0f, 14.0f), juce::Justification::centredLeft, false);
+    for (int i = 0; i < 2; ++i)
+        g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], R - 30.0f, 14.0f), juce::Justification::centredLeft, false);
+    g.setColour (ui::border.withAlpha (0.6f));
+    g.fillRect (14.0f, (float) railGroupY[1] - 10.0f, R - 28.0f, 1.0f);
 
-    // the page's atmosphere: ultraviolet, magenta and a touch of cyan light pools on the near-black, and faint concentric op-art rings. Static: no motion, no data
+    // the page's atmosphere: ultraviolet, magenta and a touch of cyan light pools on the near-black. Static: no motion, no data, no decoration over the controls
     {
         const juce::Rectangle<float> pg (R, 53.0f, W - R, 522.0f + (float) barDy - 53.0f);
         juce::Graphics::ScopedSaveState s (g);
@@ -1930,13 +1951,6 @@ void GlitchKidEditor::paint (juce::Graphics& g)
         g.fillRect (pg);
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xff5ee6ff).withAlpha (0.045f), pg.getCentreX(), pg.getCentreY(), juce::Colour (0xff5ee6ff).withAlpha (0.0f), pg.getCentreX() + 260.0f, pg.getCentreY(), true));
         g.fillRect (pg);
-        const juce::Point<float> o (pg.getRight() - 60.0f, pg.getY() - 40.0f);
-        for (int i = 1; i <= 48; ++i)
-        {
-            const float rr = 22.0f * (float) i;
-            g.setColour ((i % 2 ? ui::violet : ui::pink).withAlpha (0.10f * (1.0f - (float) i / 52.0f)));
-            g.drawEllipse (o.x - rr, o.y - rr, 2.0f * rr, 2.0f * rr, 1.0f);
-        }
     }
 
     // the header: the workspace you are in and what it is for
@@ -1951,12 +1965,18 @@ void GlitchKidEditor::paint (juce::Graphics& g)
         g.fillRect (R, 50.0f, W - R, 5.0f);
         g.setOpacity (1.0f);
         g.fillRect (R, 52.0f, W - R, 1.5f);
+        // ADVANCED MIXING, the stage, and what it is for, on one compact line
+        g.setColour (ui::neon.withAlpha (0.85f));
+        g.setFont (ui::fontOf (10.5f, true));
+        g.drawText ("ADVANCED MIXING", juce::Rectangle<float> (R + 20.0f, 7.0f, 200.0f, 12.0f), juce::Justification::centredLeft, false);
+        const auto titleFont = ui::fontOf (18.0f, true);
         g.setColour (ui::textBright);
-        g.setFont (ui::fontOf (20.0f, true));
-        g.drawText (item.title, juce::Rectangle<float> (R + 20.0f, 6.0f, 360.0f, 26.0f), juce::Justification::centredLeft, false);
+        g.setFont (titleFont);
+        g.drawText (item.title, juce::Rectangle<float> (R + 20.0f, 20.0f, 300.0f, 24.0f), juce::Justification::centredLeft, false);
+        const float tw = juce::GlyphArrangement::getStringWidth (titleFont, item.title);
         g.setColour (ui::textDim);
         g.setFont (ui::fontOf (12.0f));
-        g.drawFittedText (item.job, juce::Rectangle<int> (railW + 20, 31, 640, 16), juce::Justification::centredLeft, 1, 0.9f);
+        g.drawFittedText (item.job, juce::Rectangle<int> (railW + 20 + (int) tw + 14, 24, 600 - (int) tw, 18), juce::Justification::centredLeft, 1, 0.85f);
     }
 
     if (page == Page::build)
@@ -2013,8 +2033,8 @@ void GlitchKidEditor::layoutContent()
 
     // ---- the rail, the header controls, the info line ----
     for (int i = 0; i < numRail; ++i)
-        place (navButtons[i], { 8, railRowY[i], railW - 16, 30 });
-    place (railNote, { 18, 544, railW - 32, 36 });
+        place (navButtons[i], { 8, railRowY[i], railW - 16, railMore[i] ? 26 : 30 });
+    place (railNote, { 14, 486, railW - 24, 48 });
     place (ioLabel, { 18, 508 + barDy, railW - 28, 44 });
     place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 78, 12, 78, 28 });
     place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });
@@ -2068,8 +2088,11 @@ void GlitchKidEditor::layoutContent()
             place (*mainScreen, { 0, 0, designW, designH });
             mainScreen->toFront (false);
             const auto cmp = mainScreen->compareArea();
-            for (auto [c, r] : { std::pair<juce::Component*, Rect> (&presetPrevButton, { 190, 12, 28, 28 }), { &presetMenuButton, { 222, 12, 280, 28 } },
-                                 { &presetNextButton, { 506, 12, 28, 28 } }, { &infoLabel, { 20, 54, 700, 18 } }, { &presetStatus, { 730, 54, designW - 750, 18 } },
+            for (auto [c, r] : { std::pair<juce::Component*, Rect> (&presetPrevButton, { 180, 12, 28, 28 }), { &presetMenuButton, { 212, 12, 240, 28 } },
+                                 { &presetNextButton, { 456, 12, 28, 28 } }, { &presetSaveButton, { 490, 12, 56, 28 } },
+                                 { &abLabel, { 558, 12, 30, 28 } }, { &abSetA, { 590, 12, 50, 28 } }, { &abSetB, { 644, 12, 50, 28 } },
+                                 { &abRecallA, { 700, 12, 30, 28 } }, { &abRecallB, { 734, 12, 30, 28 } },
+                                 { &infoLabel, { 20, 54, 700, 18 } }, { &presetStatus, { 730, 54, designW - 750, 18 } },
                                  { &undoButton, undoButton.getBounds() }, { &motionButton, motionButton.getBounds() },
                                  { &dryButton, cmp.withHeight (30) }, { &processedButton, cmp.withTrimmedTop (36) } })
             {
@@ -2111,7 +2134,6 @@ void GlitchKidEditor::layoutContent()
         show (cleanOnButton, { 24, 106, 130, 28 });
         show (cleanAmountLabel, { 166, 106, 60, 28 });
         show (cleanAmountSlider, { 228, 106, 400, 28 });
-        show (cleanAdvButton, { 640, 106, 110, 28 });
         show (cleanResetButton, { 820, 106, 116, 28 });
         show (cleanHint, { 24, 140, 912, 30 });
         show (*eqGraph, { 24, 176, 590, 250 });
@@ -2128,9 +2150,8 @@ void GlitchKidEditor::layoutContent()
         show (cleanLearn, { 630, 396, 306, 30 });
         show (cleanLevel, { 24, 432, 590, 20 });
         show (eqNote, { 24, 454, 590, 30 });
-        if (cleanAdvanced)
-        {
-            panel ({ 24, 492, 912, 62 });
+        { // the three section trims: always shown (Advanced Mixing is the detailed view)
+            panel ({ 24, 492, 936, 62 });
             juce::Component* trimHeads[3] = { &toneTrimLabel, &resTrimLabel, &essTrimLabel };
             juce::Slider* sliders[3] = { &cleanToneSlider, &cleanResSlider, &cleanEssSlider };
             static const char* names[3] = { "CORRECTIVE EQ", "RESONANCE", "DE-ESSER" };
@@ -2222,126 +2243,117 @@ void GlitchKidEditor::layoutContent()
         show (*referencePanel, { 0, 102, designW, 460 });
     }
 
-    // ---- FINAL TOUCH (one category at a time) ----
+    // ---- the four FINAL TOUCH stages of ADVANCED MIXING (one at a time): TUNE 0, SHAPE 1, FINISH 2, SPACE 3. No page-wide frame: grouping by space and headings ----
     else if (page == Page::finalTouch) // (KID and LAB are self-contained pages, placed above)
     {
-        panel ({ 24, 144, 912, 352 });
-        show (resetButton, { 836, 506, 100, 32 });
-
-        // categories 1..3 start with their high-level slider
-        if (category >= 1 && category <= 3)
+        show (resetButton, { 864, 598, 100, 30 });
+        auto macroRow = [&] (glitchkid::macros::Macro m, const char* low, const char* high, int y)
         {
-            static const glitchkid::macros::Macro categoryMacro[numCategories] = { glitchkid::macros::Macro::tone, glitchkid::macros::Macro::tone, glitchkid::macros::Macro::punch, glitchkid::macros::Macro::space };
-            static const char* lows[numCategories] = { "", "DARKER", "SOFTER", "DRY" };
-            static const char* highs[numCategories] = { "", "BRIGHTER", "MORE UPFRONT", "SPACIOUS" };
-            const auto m = categoryMacro[category];
             macroName.setText (glitchkid::macros::macroName (m), juce::dontSendNotification);
-            macroLow.setText (lows[category], juce::dontSendNotification);
-            macroHigh.setText (highs[category], juce::dontSendNotification);
-            show (macroName, { 36, 154, 90, 30 });
-            show (macroLow, { 130, 154, 76, 30 });
-            show (macroSliders[(int) m], { 214, 154, 540, 30 });
-            show (macroHigh, { 764, 154, 150, 30 });
-        }
+            macroLow.setText (low, juce::dontSendNotification);
+            macroHigh.setText (high, juce::dontSendNotification);
+            show (macroName, { 24, y, 90, 28 });
+            show (macroLow, { 118, y, 76, 28 });
+            show (macroSliders[(int) m], { 198, y, 600, 28 });
+            show (macroHigh, { 808, y, 150, 28 });
+        };
 
         switch (category)
         {
-            case 0: // PITCH & KEY: the note pad (key), the scale, on/off, the tuning style, strength and speed
-                show (keyLabel, { 36, 150, 100, 14 });
+            case 0: // TUNE: the note pad (key), the scale, on/off, the tuning style, strength and speed, the real pitch read-out
+                show (keyLabel, { 24, 112, 100, 14 });
                 for (int i = 0; i < noteKeys.size(); ++i)
-                    show (*noteKeys[i], { 36 + i * 72, 166, 68, 44 });
-                show (scaleCaption, { 36, 216, 100, 14 });
+                    show (*noteKeys[i], { 24 + i * 78, 130, 72, 48 });
+                show (scaleCaption, { 24, 192, 100, 14 });
                 for (int i = 0; i < 6; ++i)
-                    show (scaleChips[i], { 36 + i * 146, 232, 140, 30 });
-                show (tuneOnCaption, { 36, 270, 100, 14 });
-                show (tuneOnButton, { 36, 288, 100, 30 });
-                show (styleCaption, { 156, 270, 200, 14 });
+                    show (scaleChips[i], { 24 + i * 156, 210, 150, 30 });
+                show (tuneOnCaption, { 24, 256, 100, 14 });
+                show (tuneOnButton, { 24, 274, 100, 30 });
+                show (styleCaption, { 150, 256, 200, 14 });
                 for (int i = 0; i < glitchkid::macros::numTuneStyles; ++i)
-                    show (styleButtons[i], { 156 + i * 130, 288, 124, 30 });
-                show (shapeAdvButton, { 700, 506, 120, 32 });
-                if (shapeAdvanced) // strength and speed: the less common settings
-                    for (int i = 0; i < tuneKnobs.size(); ++i)
-                        showK (*tuneKnobs[i], { 40 + i * 150, 336, 140, 150 });
-                {
-                    const int tx = shapeAdvanced ? 340 : 36, tw = shapeAdvanced ? 590 : 894;
-                    show (tuneSummary, { tx, 336, tw, 28 });
-                    show (tuneReadout, { tx, 366, tw, 22 });
-                    show (tuneSubline, { tx, 392, tw, 34 });
-                    show (scopeCaption, { tx, 430, 200, 14 });
-                    show (scope, { tx, 446, tw, 42 });
-                }
+                    show (styleButtons[i], { 150 + i * 132, 274, 126, 30 });
+                for (int i = 0; i < tuneKnobs.size(); ++i)
+                    showK (*tuneKnobs[i], { 24 + i * 150, 330, 140, 150 });
+                show (tuneSummary, { 340, 330, 620, 28 });
+                show (tuneReadout, { 340, 360, 620, 22 });
+                show (tuneSubline, { 340, 386, 620, 34 });
+                show (scopeCaption, { 340, 428, 200, 14 });
+                show (scope, { 340, 446, 620, 60 });
                 break;
 
-            case 1: // TONE: the real EQ response, the four bands, the selected band's knobs, warmth
-                show (*eqGraph, { 36, 192, 590, 204 });
-                show (airOnButton, { 44, 404, 120, 24 });
-                show (airHint, { 176, 404, 446, 24 });
-                showK (*warmthKnob[0], { 646, 376, 120, 112 });
-                show (shapeAdvButton, { 700, 506, 120, 32 });
-                if (shapeAdvanced) // the four bands, AIR LAB detail and its link
-                {
-                    show (airLinkButton, { 176, 404, 76, 24 });
-                    show (airHint, { 262, 404, 360, 24 });
-                    show (airPresenceLabel, { 44, 432, 72, 24 });
-                    show (airPresenceSlider, { 120, 432, 216, 24 });
-                    show (airMixLabel, { 350, 432, 34, 24 });
-                    show (airMixSlider, { 386, 432, 236, 24 });
-                    show (airAirLabel, { 44, 460, 72, 24 });
-                    show (airAirSlider, { 120, 460, 216, 24 });
-                    show (airTrimLabel, { 350, 460, 34, 24 });
-                    show (airTrimSlider, { 386, 460, 236, 24 });
-                    for (int b = 0; b < ui::EqGraph::numBands; ++b)
-                    {
-                        show (bandButtons[b], { 646 + b * 70, 192, 64, 30 });
-                        bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
-                    }
-                    for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
-                        showK (*eqKnobs[eqBand][i], { 646 + i * 92, 236, 88, 130 });
-                    show (eqNote, { 780, 384, 144, 96 });
-                }
-                else
-                    show (eqNote, { 646, 192, 268, 96 });
-                break;
-
-            case 2: // DYNAMICS: the compressor and output gain, then the OUTPUT LIMITER
-                for (int i = 0; i < compKnobs.size(); ++i)
-                    showK (*compKnobs[i], { 36 + i * 126, 190, 120, 142 });
-                show (grMeter, { 680, 192, 22, 138 });
-                show (grLabel, { 672, 334, 38, 14 });
-                showK (*gainKnob[0], { 724, 190, 130, 142 });
-                show (inMeter, { 872, 192, 22, 138 });
-                show (outMeter, { 904, 192, 22, 138 });
-                show (inLabel, { 864, 334, 38, 14 });
-                show (outLabel, { 896, 334, 38, 14 });
-                panel ({ 24, 358, 912, 138 });
-                show (limHeading, { 36, 366, 240, 16 });
-                show (limOnButton, { 36, 392, 110, 28 });
-                for (int i = 0; i < limKnobs.size(); ++i)
-                    showK (*limKnobs[i], { 160 + i * 128, 378, 120, 112 });
-                show (limGrLabel, { 560, 372, 360, 14 });
-                show (limGrBar, { 560, 390, 360, 16 });
-                show (limPeakLabel, { 560, 412, 370, 18 });
-                show (limNote, { 560, 434, 370, 56 });
-                break;
-
-            default: // SPACE
+            case 1: // SHAPE: TONE, the real EQ response and the selected band, AIR LAB; then the compressor (PUNCH), its gain reduction and warmth
             {
-                const int y0 = 196, y1 = 296, y2 = 396;
-                show (echoTitle, { 36, y0, 140, 14 });
-                show (echoOnButton, { 36, y0 + 20, 100, 28 });
-                show (echoSyncButton, { 36, y0 + 52, 100, 28 });
+                macroRow (glitchkid::macros::Macro::tone, "DARKER", "BRIGHTER", 108);
+                show (*eqGraph, { 24, 146, 600, 262 });
+                for (int b = 0; b < ui::EqGraph::numBands; ++b)
+                {
+                    show (bandButtons[b], { 644 + b * 80, 146, 74, 28 });
+                    bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
+                }
+                for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
+                    showK (*eqKnobs[eqBand][i], { 644 + i * 106, 182, 100, 118 });
+                show (eqNote, { 644, 312, 316, 90 });
+                // AIR LAB, beside warmth: the tone tools that work after the compressor
+                show (airOnButton, { 776, 424, 110, 24 });
+                show (airLinkButton, { 892, 424, 70, 24 });
+                juce::Component* airLabels[4] = { &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel };
+                juce::Component* airSliders[4] = { &airPresenceSlider, &airAirSlider, &airMixSlider, &airTrimSlider };
+                for (int i = 0; i < 4; ++i)
+                {
+                    show (*airLabels[i], { 776, 458 + i * 30, 56, 24 });
+                    show (*airSliders[i], { 834, 458 + i * 30, 132, 24 });
+                }
+
+                show (compHeading, { 24, 424, 200, 16 });
+                show (punchName, { 230, 420, 60, 24 });
+                show (macroSliders[(int) glitchkid::macros::Macro::punch], { 292, 420, 330, 24 });
+                for (int i = 0; i < compKnobs.size(); ++i)
+                    showK (*compKnobs[i], { 24 + i * 114, 452, 108, 130 });
+                show (grMeter, { 600, 456, 18, 108 });
+                show (grLabel, { 590, 568, 38, 14 });
+                showK (*warmthKnob[0], { 636, 452, 120, 130 });
+                break;
+            }
+
+            case 2: // FINISH: output gain, MIX and the real levels; the output limiter and its real gain reduction
+                // OUTPUT (left): the level and the wet/dry mix, then the real input and output meters, tall
+                show (outHeading, { 24, 116, 200, 16 });
+                showK (*gainKnob[0], { 24, 150, 170, 196 });
+                showK (*mixKnob[0], { 210, 150, 170, 196 });
+                show (inMeter, { 400, 150, 26, 380 });
+                show (outMeter, { 436, 150, 26, 380 });
+                show (inLabel, { 392, 534, 38, 14 });
+                show (outLabel, { 428, 534, 38, 14 });
+                // OUTPUT LIMITER (right): on/off, its three settings, its real gain reduction and the true output peak
+                show (limHeading, { 500, 116, 240, 16 });
+                show (limOnButton, { 500, 146, 110, 28 });
+                for (int i = 0; i < limKnobs.size(); ++i)
+                    showK (*limKnobs[i], { 500 + i * 154, 190, 148, 150 });
+                show (limGrLabel, { 500, 370, 460, 14 });
+                show (limGrBar, { 500, 390, 460, 22 });
+                show (limPeakLabel, { 500, 424, 460, 18 });
+                show (limNote, { 500, 450, 460, 70 });
+                break;
+
+            default: // SPACE: echo, width and the Doubler, one row each
+            {
+                macroRow (glitchkid::macros::Macro::space, "DRY", "SPACIOUS", 108);
+                const int y0 = 160, y1 = 290, y2 = 420;
+                show (echoTitle, { 24, y0, 140, 14 });
+                show (echoOnButton, { 24, y0 + 22, 100, 28 });
+                show (echoSyncButton, { 24, y0 + 56, 100, 28 });
                 show (echoDivLabel, { 150, y0, 130, 14 });
-                show (echoDivBox, { 150, y0 + 18, 130, 30 });
+                show (echoDivBox, { 150, y0 + 20, 130, 30 });
                 for (int i = 0; i < echoKnobs.size(); ++i)
-                    showK (*echoKnobs[i], { 300 + i * 158, y0, 150, 98 });
-                show (dimTitle, { 36, y1, 200, 14 });
-                show (dimOnButton, { 36, y1 + 20, 100, 28 });
+                    showK (*echoKnobs[i], { 300 + i * 166, y0, 156, 112 });
+                show (dimTitle, { 24, y1, 200, 14 });
+                show (dimOnButton, { 24, y1 + 22, 100, 28 });
                 for (int i = 0; i < dimKnobs.size(); ++i)
-                    showK (*dimKnobs[i], { 300 + i * 158, y1, 150, 98 });
-                show (dblTitle, { 36, y2, 200, 14 });
-                show (dblOnButton, { 36, y2 + 20, 100, 28 });
+                    showK (*dimKnobs[i], { 300 + i * 166, y1, 156, 112 });
+                show (dblTitle, { 24, y2, 200, 14 });
+                show (dblOnButton, { 24, y2 + 22, 100, 28 });
                 for (int i = 0; i < dblKnobs.size(); ++i)
-                    showK (*dblKnobs[i], { 300 + i * 158, y2, 150, 98 });
+                    showK (*dblKnobs[i], { 300 + i * 166, y2, 156, 112 });
                 break;
             }
         }

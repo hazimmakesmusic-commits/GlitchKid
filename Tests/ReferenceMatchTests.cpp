@@ -561,15 +561,17 @@ struct ReferenceUiTests : public juce::UnitTest
             for (int size : { 70, 100, 150 })
             {
                 ed->setSize (1120 * size / 100, 680 * size / 100);
-                for (int i = 0; i < 10; ++i)
+                std::vector<juce::Rectangle<int>> rows; // the rows in screen order (HOME, the five stages, then MORE): indices keep their old meaning
+                for (int i = 0; i < 11; ++i)
+                    rows.push_back (ed->uiBarButtonBoundsForTest (i));
+                std::sort (rows.begin(), rows.end(), [] (auto& x, auto& y) { return x.getY() < y.getY(); });
+                for (size_t i = 0; i + 1 < rows.size(); ++i)
                 {
-                    const auto a = ed->uiBarButtonBoundsForTest (i), next = ed->uiBarButtonBoundsForTest (i + 1);
-                    expect (a.getBottom() <= next.getY(), "rail row " + juce::String (i) + " ends before the next row");
-                    expect (a.getWidth() >= 140 && a.getHeight() >= 28, "rail row wide and tall enough");
+                    expect (rows[i].getBottom() <= rows[i + 1].getY(), "rail row " + juce::String ((int) i) + " ends before the next row");
+                    expect (rows[i].getWidth() >= 110 && rows[i].getHeight() >= 26, "rail row wide and tall enough");
                 }
-                expect (! ed->uiBarButtonBoundsForTest (10).intersects (ed->uiBarButtonBoundsForTest (11)), "the rail never reaches the header controls");
+                expect (rows.back().getBottom() <= 486, "the rail ends above its note (486) and the level read-out");
                 expect (ed->uiBarButtonBoundsForTest (11).getRight() < ed->uiBarButtonBoundsForTest (12).getX(), "DRY ends before MOTION");
-                expect (ed->uiBarButtonBoundsForTest (10).getBottom() <= 544, "the rail ends above its note (544) and the level read-out");
             }
         }
 
