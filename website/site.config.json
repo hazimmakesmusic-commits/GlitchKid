@@ -1,0 +1,12 @@
+{
+  "siteName": "GLITCHKID",
+  "siteUrl": "",
+  "betaFormEndpoint": "",
+  "contactEmail": "",
+  "privacyPolicyUrl": "",
+  "demo": {
+    "original": "audio/demo-original.mp3",
+    "processed": "audio/demo-processed.mp3",
+    "credit": ""
+  }
+}
