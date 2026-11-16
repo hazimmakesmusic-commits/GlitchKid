@@ -36,7 +36,7 @@ struct IntentFrame
     enum class Ask { none, why, changes, analysis, key, help };
     Ask ask = Ask::none;                 // a question: answered from the plan and the analysis, the sound does not change
     juce::String topic;                  // what a "why" question is about: tuning, space, highs, harsh, lows, dynamics, warmth, width, air, ess, clean, effects
-    juce::StringArray heard, notes;      // the words used; honest notes (level and tuning are yours, there is no reverb)
+    juce::StringArray heard, notes;      // the words used; honest notes (level and tuning are yours)
     bool touched (Dim d) const { return std::abs (ops[(size_t) d]) > 1e-6f; }
     bool anyOps() const;
     bool understood() const;             // false: nothing in the sentence was a sound word

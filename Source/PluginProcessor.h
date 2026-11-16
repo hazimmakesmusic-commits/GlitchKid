@@ -2,6 +2,8 @@
 #include "Analysis/DisplayTap.h"
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "DSP/ParametricEq.h"
+#include "DSP/SpaceReverb.h"
+#include "DSP/EqParamIds.h"
 #include "DSP/Compressor.h"
 #include "DSP/Saturation.h"
 #include "DSP/AirLab.h"
@@ -22,7 +24,7 @@
 #include "Mastering/MasteringEngine.h"
 #include "AutoMode/AutoMix.h"
 
-// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> harmony voice (optional, adds latency while on) -> vocal mutation (optional, zero latency) -> vocal doubler (optional, zero latency) -> 4-band EQ -> compressor -> saturation -> glitch stutter -> liquid echo -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
+// Signal path: input -> pitch tune (optional) -> formant shift (optional) -> harmony voice (optional, adds latency while on) -> vocal mutation (optional, zero latency) -> vocal doubler (optional, zero latency) -> EQ LAB (16 bands, static or dynamic) -> CLEAN LAB corrective -> compressor -> CLEAN LAB de-esser -> saturation -> AIR LAB -> glitch stutter -> liquid echo -> SPACE reverb -> dimension -> smoothed gain -> output, with a 20 ms crossfade to the dry
 // input when Bypass is on, and a Mix control blends the processed signal with the same dry path. The saturation oversampler adds a constant 6 samples of latency; the dry
 // path is delayed by the same amount so bypass stays time-aligned. Pitch Tune (off by default) adds its own constant delay (PitchCorrector::latencyFor, about 31 ms)
 // only while it is switched on, and Formant (off at 0 semitones) adds its own (FormantShifter::latencyFor, about 21 ms) only while it is away from 0: for each, the dry
@@ -34,12 +36,13 @@ public:
     static constexpr const char* gainId   = "gain";   // dB
     static constexpr const char* bypassId = "bypass";
 
-    struct EqIds { const char* freq; const char* gain; const char* q; }; // q is null for shelves
-    static constexpr EqIds eqIds[ParametricEq::numBands] = {
-        { "eq_lo_freq", "eq_lo_gain", nullptr },
-        { "eq_b1_freq", "eq_b1_gain", "eq_b1_q" },
-        { "eq_b2_freq", "eq_b2_gain", "eq_b2_q" },
-        { "eq_hi_freq", "eq_hi_gain", nullptr } };
+    // EQ LAB parameter IDs: Source/DSP/EqParamIds.h (shared with the interface and the effect model).
+    using EqIds = glitchkid::EqIds;
+    static constexpr int legacyEqBands = glitchkid::legacyEqBands;
+    static constexpr const EqIds (&eqIds)[ParametricEq::numBands] = glitchkid::eqIds;
+    static const juce::StringArray& eqTypeNames();   // the order of EqType
+    static const juce::StringArray& eqSlopeNames();  // the order of ParametricEq::slopes
+    static const juce::StringArray& eqStereoNames(); // the order of EqPlacement
 
     // Compressor parameter IDs (same rule: never rename).
     static constexpr const char* compThresholdId = "comp_thresh";
@@ -54,14 +57,18 @@ public:
 
     // AIR LAB (presence and air enhancement, after the saturation). Appended last in the layout, so older sessions keep every host automation index.
     static constexpr const char* airOnId       = "air_on";       // off by default: an old session or preset sounds exactly as before
-    static constexpr const char* airPresenceId = "air_presence"; // percent
-    static constexpr const char* airAirId      = "air_air";      // percent
-    static constexpr const char* airLinkId     = "air_link";     // UI behaviour only (PRESENCE and AIR move together); no DSP effect
+    static constexpr const char* airPresenceId = "air_presence"; // percent: MID AIR
+    static constexpr const char* airAirId      = "air_air";      // percent: HIGH AIR
+    static constexpr const char* airLinkId     = "air_link";     // retired: no effect, not automatable (MID AIR and HIGH AIR are always independent)
     static constexpr const char* airMixId      = "air_mix";      // percent of the added content
     static constexpr const char* airTrimId     = "air_trim";     // dB
 
     // CLEAN LAB (rumble / low-mid / resonance cleanup after the user EQ, de-esser after the compressor). Appended after AIR LAB; off by default.
     // OUTPUT LIMITER: appended after CLEAN LAB. Off by default, so an old session or preset sounds and reports latency exactly as before.
+    // SPACE (the reverb): appended after EQ LAB's dynamics. Off by default, so an old session or preset sounds exactly as before.
+    static constexpr const char* spaceIds[17] = { "space_on", "space_algo", "space_char", "space_mix", "space_decay", "space_predelay", "space_size",
+                                                  "space_diffusion", "space_damping", "space_lowcut", "space_highcut", "space_modrate", "space_moddepth",
+                                                  "space_width", "space_early", "space_late", "space_freeze" };
     static constexpr const char* limOnId       = "lim_on";
     static constexpr const char* limCeilingId  = "lim_ceiling";
     static constexpr const char* limDriveId    = "lim_drive";
@@ -147,7 +154,7 @@ public:
     const juce::String getName() const override { return "GlitchKid"; }
     bool acceptsMidi() const override { return false; }
     bool producesMidi() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+    double getTailLengthSeconds() const override; // SPACE's and Liquid Echo's tails, from the current settings
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -234,6 +241,9 @@ public:
     float consumeOutputPeak() { return outputPeak.exchange (0.0f); }
     // The newest audio for the interface's waveform and spectrum views (the vocal input before processing, the output after it, and the Instrumental input).
     const glitchkid::analysis::DisplayTap& getInputTap() const { return inputTap; }
+    // EQ LAB's analyser: the audio just before and just after the EQ (display only)
+    const glitchkid::analysis::DisplayTap& getEqInTap() const { return eqInTap; }
+    const glitchkid::analysis::DisplayTap& getEqOutTap() const { return eqOutTap; }
     const glitchkid::analysis::DisplayTap& getOutputTap() const { return outputTap; }
     // Mastering (UI read-outs; the meters are written by the audio thread and read through atomics)
     bool isMasteringMode() const { return masterParams[0]->load() >= 0.5f; }
@@ -255,6 +265,12 @@ public:
     // output is compared with the dry input; while bypassed with matching on, the dry signal is played at that loudness, so "louder" never wins the comparison.
     // Off (the default): bypass is exactly the time-aligned dry signal, as before. Real-time safe (two running averages and a smoothed gain).
     void setLevelMatchedCompare (bool on) { levelMatch.store (on); }
+    // EQ LAB solo (monitoring only: hear the part of the vocal one band works on). -1 = off. Never stored in the session or a preset.
+    void setEqSolo (int band) { eqSolo.store (band >= 0 && band < ParametricEq::numBands ? band : -1); }
+    int getEqSolo() const { return eqSolo.load(); }
+    float getEqDynamicDb (int band) const { return eq.getDynamicDb (band); } // the dynamic gain change of a band right now (UI)
+    float getAirMidLiftDb() const { return airLab.getMidLiftDb(); }   // what AIR LAB's MID AIR / HIGH AIR are adding right now, at their centres (UI)
+    float getAirHighLiftDb() const { return airLab.getHighLiftDb(); }
     bool isLevelMatchedCompare() const { return levelMatch.load(); }
     int getStateRestoreCount() const { return stateRestores.load(); } // how many times the host restored a session into this instance (UI notice only)
     float getCompareGainDb() const { return compareGainDb.load(); } // processed minus dry loudness in dB (0 until something has been measured)
@@ -281,8 +297,12 @@ private:
 
     std::atomic<float>* gainDb = nullptr;
     std::atomic<float>* bypass = nullptr;
-    struct EqParams { std::atomic<float>* freq; std::atomic<float>* gain; std::atomic<float>* q; };
+    struct EqParams { std::atomic<float>* freq; std::atomic<float>* gain; std::atomic<float>* q; std::atomic<float>* on; std::atomic<float>* type;
+                      std::atomic<float>* slope; std::atomic<float>* stereo;
+                      std::atomic<float>* dyn; std::atomic<float>* thresh; std::atomic<float>* range; std::atomic<float>* attack; std::atomic<float>* release;
+                      std::atomic<float>* dynMode; };
     EqParams eqParams[ParametricEq::numBands] {};
+    EqBandSettings readEqBand (int band) const;
 
     std::atomic<float>* compParams[6] {}; // threshold, ratio, attack, release, knee, makeup
     CompressorSettings readCompressorSettings() const;
@@ -293,7 +313,7 @@ private:
     AirLab airLab;
     CleanLab cleanLab;
     std::atomic<float>* cleanParams[5] {}; // on, amount, tone, res, ess
-    std::atomic<float>* airParams[6] {}; // on, presence, air, link, mix, trim
+    std::atomic<float>* airParams[6] {}; // on, presence (MID AIR), air (HIGH AIR), link (retired, ignored), mix, trim
     GlitchStutter stutter;
     std::atomic<float>* stutterOn = nullptr;
     std::atomic<float>* stutterRate = nullptr;
@@ -303,6 +323,9 @@ private:
     std::atomic<bool> tempoFromHost { false };
     std::atomic<int> shownLoopLength { 0 };
     LiquidEcho echo;
+    SpaceReverb space;
+    std::atomic<float>* spaceParams[17] {};
+    SpaceReverb::Settings readSpaceSettings() const;
     Dimension dimension;
     glitchkid::SoundState presetBaseline;  // message thread only
     bool hasPresetBaseline = false;
@@ -347,7 +370,7 @@ private:
     std::atomic<float>* satDrive = nullptr;
     std::atomic<float>* mixPercent = nullptr;
     juce::AudioBuffer<float> dryBuffer; // preallocated in prepareToPlay, used for the bypass crossfade
-    glitchkid::analysis::DisplayTap inputTap, outputTap, beatTap;
+    glitchkid::analysis::DisplayTap inputTap, outputTap, beatTap, eqInTap, eqOutTap;
     OutputLimiter limiter;
     std::atomic<float>* limParams[4] {};
     glitchkid::master::MasteringEngine mastering;
@@ -361,6 +384,7 @@ private:
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f }, gainReductionPeak { 0.0f }, beatPeak { 0.0f };
     juce::SmoothedValue<float> smoothedGain { 1.0f }; // linear
     std::atomic<bool> levelMatch { false };
+    std::atomic<int> eqSolo { -1 };
     std::atomic<int> stateRestores { 0 }; // setStateInformation calls that restored our state (message thread); read by the editor
     std::atomic<float> compareGainDb { 0.0f };
     double compareDryEnergy = 0.0, compareWetEnergy = 0.0; // running mean squares (audio thread only)

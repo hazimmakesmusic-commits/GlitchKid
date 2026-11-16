@@ -200,17 +200,32 @@ private:
     juce::Label macroName, macroLow, macroHigh;
     void applyMacroSlider (int);
     std::unique_ptr<glitchkid::ui::EqGraph> eqGraph; // the real EQ response (TONE)
-    juce::TextButton bandButtons[glitchkid::ui::EqGraph::numBands]; // LOW, BODY, PRESENCE, AIR
-    juce::OwnedArray<ParamKnob> eqKnobs[glitchkid::ui::EqGraph::numBands]; // each band's frequency, gain and (bells) Q; only the selected band's are shown
+    // EQ LAB's band panel: the selected band (< >), on, solo, type, slope, channels, its frequency, gain and Q, add / duplicate / delete
+    juce::TextButton bandPrev { "<" }, bandNext { ">" }, bandOnButton { "On" }, bandSoloButton { "Solo" }, bandAddButton { "+ Band" }, bandDupButton { "Duplicate" },
+                     bandDelButton { "Delete" };
+    juce::Label bandLabel;
+    juce::ComboBox bandType, bandSlope, bandStereo;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bandTypeAtt, bandSlopeAtt, bandStereoAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bandOnAtt;
+    // the selected band's dynamics: on, above/below, a live read-out of the change, threshold, range, attack, release
+    juce::TextButton bandDynButton { "Dynamic" };
+    juce::ComboBox bandDynMode;
+    juce::Label bandDynNow, bandDynLabels[4];
+    juce::Slider bandDynSliders[4];
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> bandDynAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> bandDynModeAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> bandDynSliderAtt[4];
+    void bindBand();                 // attaches the panel's menus and On to the selected band
+    void setEqSolo (int band);       // monitoring only: the processor, the graph and the Solo button agree
+    juce::OwnedArray<ParamKnob> eqKnobs[glitchkid::ui::EqGraph::numBands]; // each band's frequency, gain and Q; only the selected band's are shown
     juce::OwnedArray<ParamKnob> warmthKnob;
     juce::Label eqNote;
-    // AIR LAB strip (TONE): switch, LINK, PRESENCE and AIR (the two main controls), MIX and OUTPUT TRIM
-    juce::ToggleButton airOnButton { "AIR LAB" }, airLinkButton { "LINK" };
+    // AIR LAB strip (SHAPE): switch, live readout, MID AIR and HIGH AIR (independent), MIX and OUTPUT
+    juce::ToggleButton airOnButton { "AIR LAB" };
     juce::Slider airPresenceSlider, airAirSlider, airMixSlider, airTrimSlider;
-    juce::Label airPresenceLabel { {}, "PRESENCE" }, airAirLabel { {}, "AIR" }, airMixLabel { {}, "MIX" }, airTrimLabel { {}, "TRIM" }, airHint;
+    juce::Label airPresenceLabel { {}, "MID AIR" }, airAirLabel { {}, "HIGH AIR" }, airMixLabel { {}, "MIX" }, airTrimLabel { {}, "OUTPUT" }, airHint, airNow;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> airPresenceAtt, airAirAtt, airMixAtt, airTrimAtt;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> airOnAtt, airLinkAtt;
-    bool airLinkGuard = false;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> airOnAtt;
     // CLEAN (category 5): master switch and amount, a trim and live read-outs per section (everything shown comes from the DSP's own telemetry)
     juce::ToggleButton cleanOnButton { "CLEAN LAB" };
     juce::Slider cleanAmountSlider, cleanToneSlider, cleanResSlider, cleanEssSlider;
@@ -226,7 +241,6 @@ private:
     glitchkid::ui::ReductionBar essBar;
     void refreshClean (bool cleanOn);
 
-    void linkAir (juce::Slider& moved, juce::Slider& other);
     int eqBand = 2;
     void selectBand (int);
     void applyContentTransform (float dx = 0.0f);
@@ -242,6 +256,17 @@ private:
     glitchkid::ui::ReductionBar limGrBar { 12.0f };
     juce::Label limGrLabel { {}, "LIMITER GAIN REDUCTION" }, limPeakLabel, limNote;
     juce::OwnedArray<ParamKnob> echoKnobs; // time, feedback, tone, mix
+    // SPACE: the reverb (the page's first tab) and the echo, width and doubles (the second)
+    juce::TextButton spaceTabReverb { "Reverb" }, spaceTabEcho { "Echo, Width & Doubles" };
+    int spaceTab = 0;
+    glitchkid::ui::LabHeading spaceTitle { "SPACE REVERB" };
+    juce::ToggleButton spaceOnButton { "ON" }, spaceFreezeButton { "FREEZE" };
+    juce::ComboBox spaceAlgoBox, spaceCharBox, spacePresetBox;
+    juce::Label spaceAbout;
+    juce::OwnedArray<ParamKnob> spaceKnobs; // mix, decay, pre-delay, size, diffusion, damping | low cut, high cut, mod rate, mod depth, width, early, late
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> spaceOnAtt, spaceFreezeAtt;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> spaceAlgoAtt, spaceCharAtt;
+    void applySpacePreset (int index);
     juce::OwnedArray<ParamKnob> dimKnobs;  // width, mix
     juce::OwnedArray<ParamKnob> dblKnobs;  // amount, width
     LevelMeter inMeter, outMeter;

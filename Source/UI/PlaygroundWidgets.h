@@ -5,6 +5,8 @@
 #include <functional>
 #include <vector>
 #include "../DSP/CleanLab.h"
+#include "../DSP/ParametricEq.h"
+#include "../Analysis/EqAnalyzer.h"
 
 // The GlitchKid "Vocal Lab" look: original, lightweight vector widgets (no images, no network). Everything here runs on the message thread; nothing touches
 // the audio thread. Animation is driven by the editor's single 30 Hz timer through tick(); with motion off everything jumps to its end state, and nothing
@@ -126,58 +128,78 @@ private:
 // A thin technical panel: dark fill, divider-violet outline and small ultraviolet corner brackets (top-left and bottom-right).
 void drawPanel (juce::Graphics&, juce::Rectangle<float> r);
 
-// The EQ response graph and its four points, built on the real EQ parameters (eq_*): the curve is the combined RBJ biquad response of the four bands, calculated
-// from the current parameter values with the same formulas the DSP uses (a test compares it with the real DSP output). There is no spectrum analyser in
-// GlitchKid, so none is drawn. Dragging a point writes the real frequency and gain parameters (with host change gestures); the mouse wheel changes the
-// selected bell's Q; double-click flattens a band. Changes made elsewhere (knobs, presets, automation, BUILD) move the points and curve via refresh().
+// EQ LAB's graph. The curve is every band's real response (ParametricEq::responseDb: the audio's own coefficients), the shaded area and the line behind it are
+// the real spectrum of the audio entering and leaving the EQ (EqAnalyzer on taps around the EQ: nothing synthetic), and every band that is on has a handle.
+//   drag a handle: frequency and gain (gain types) | wheel on a handle: Q | double-click a handle: flatten | right-click a handle: type, slope, channels,
+//   solo, duplicate, delete | double-click empty space: add a band there | wheel on empty space: zoom the frequency axis | drag empty space: pan |
+//   Delete key: remove the selected band. The strip in the corner sets the dB range, fits the view, and sets the analyser's averaging, resolution and freeze.
+// Every edit writes the real parameters with host gestures; changes made elsewhere (knobs, presets, automation, BUILD) move the handles via refresh().
 class EqGraph : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    static constexpr int numBands = 4; // LOW (shelf), BODY (bell), PRESENCE (bell), AIR (shelf)
+    static constexpr int numBands = ParametricEq::numBands;
     EqGraph (juce::AudioProcessorValueTreeState&, std::function<double()> sampleRate);
+    ~EqGraph() override;
     int getSelectedBand() const { return selected; }
     void setSelectedBand (int);
     void refresh();                         // call from the editor's timer: repaints only if a parameter changed
-    // CLEAN LAB's corrections that are really being applied (rumble high-pass, low-mid bell, up to three resonance bells), drawn as a second, pink curve.
+    // CLEAN LAB's corrections that are really being applied (rumble high-pass, low-mid bell, up to three resonance bells), drawn as a second curve.
     // Nothing is drawn while none is applied. cleanResponseDb() uses the same filter formulas as CleanLab.
     void setCleanApplied (const CleanLab::Applied&);
     static float cleanResponseDb (const CleanLab::Applied&, float atHz, double sampleRate);
-    // The real spectrum of the vocal input, drawn faintly behind the curve: `n` levels (0..1) at log-spaced frequencies from 20 Hz to `topHz`. Pass n = 0 (or call
-    // clearSpectrum) when there is no signal: nothing is drawn.
-    void setSpectrum (const float* levels01, int n, float topHz);
-    void clearSpectrum() { setSpectrum (nullptr, 0, 20000.0f); }
+    // The analyser: the audio just before and just after the EQ (the processor's EQ taps). Call from the editor's visual timer.
+    void analyse (const analysis::DisplayTap& eqIn, const analysis::DisplayTap& eqOut, double sampleRate, float dtSeconds);
     std::function<void (int)> onBandSelected;
+    std::function<void (int)> onSolo;           // a band (or -1): the editor tells the processor; monitoring only
+    std::function<float (int)> dynamicDbOf;     // a band's dynamic gain change right now (the processor's); drawn live
+    void setSoloBand (int b) { soloBand = b; repaint(); }
+    int addBandAt (float hz, float db);         // switches on a free band there (bands 5-16 first); -1 when all 16 are in use
+    int duplicateBand (int band);               // copies a band to a free one, a little higher; -1 when none is free
+    void removeBand (int band);                 // switches it off
     juce::Point<float> pointOf (int band) const;   // component coordinates of a band's handle
-    static float responseDb (const float freq[numBands], const float gain[numBands], const float q[numBands], float atHz, double sampleRate);
+    void setView (float loHz, float hiHz);      // the visible frequency span (clamped to 20 Hz - 20 kHz, at least 2 octaves)
+    juce::Range<float> getView() const { return { viewLo, viewHi }; }
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     float xOf (float hz) const;
     float yOf (float db) const;
     float hzAt (float x) const;
     float dbAt (float y) const;
+    float yOfLevel (float dbfs) const;          // the analyser's scale: -90 .. 0 dBFS over the plot
     int bandNear (juce::Point<float>) const;
-    void readParams (float* f, float* g, float* q) const;
-    void setParam (const char* id, float value);
+    void readAll (EqBandSettings* bands) const; // all 16 EQ LAB bands, as the audio sees them
+    void setParam (const char* id, float value, bool gesture = true);
     void rebuildCurve();
+    void showBandMenu (int band);
+    void updateStrip();
     juce::AudioProcessorValueTreeState& apvts;
     std::function<double()> sampleRate;
     juce::Rectangle<float> plot;
-    juce::Path curve, cleanCurve;
-    std::vector<float> spec;
-    float specTop = 20000.0f;
+    juce::Path curve, selectedCurve, cleanCurve, liveCurve;
+    std::array<float, ParametricEq::numBands> dynNow {};
+    bool haveLive = false;
     CleanLab::Applied clean, shownClean;
     bool haveClean = false;
-    float shownF[numBands] {}, shownG[numBands] {}, shownQ[numBands] {};
-    int selected = 2, dragging = -1, hovered = -1;
-    bool haveCurve = false;
+    EqBandSettings shown[numBands];
+    std::array<float, numBands * 7> shownAll {}; // every band's values when the curve was drawn
+    int selected = 2, dragging = -1, hovered = -1, soloBand = -1;
+    bool haveCurve = false, panning = false;
+    float viewLo = 20.0f, viewHi = 20000.0f, rangeDb = 15.0f, panStartLo = 20.0f, panStartX = 0.0f;
+    juce::Point<float> mouse { -1.0f, -1.0f };
+    analysis::EqAnalyzer specIn, specOut;
+    bool inLive = false, outLive = false;
+    float peakHz = 0.0f, peakDb = -120.0f;
+    juce::TextButton rangeButton, fitButton, avgButton, resButton, freezeButton;
 };
 
 // One look for every control: flat graphite buttons with a thin outline, violet when selected, thin-arc rotary knobs, slim sliders and small switches.

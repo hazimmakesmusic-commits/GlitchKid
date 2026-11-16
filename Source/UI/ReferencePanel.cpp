@@ -1,4 +1,5 @@
 #include "ReferencePanel.h"
+#include "../DSP/EqParamIds.h"
 
 namespace glitchkid::ui
 {
@@ -322,23 +323,19 @@ void ReferencePanel::finishVocal()
 
 float ReferencePanel::eqResponseDb (const SoundState& s, float hz) const
 {
-    const char* ids[4] = { "lo", "b1", "b2", "hi" };
-    float f[4], gn[4], q[4];
-    for (int i = 0; i < 4; ++i)
-    {
-        f[i] = s.get (juce::String ("eq_") + ids[i] + "_freq", 1000.0f);
-        gn[i] = s.get (juce::String ("eq_") + ids[i] + "_gain", 0.0f);
-        q[i] = s.get (juce::String ("eq_") + ids[i] + "_q", 0.8f);
-    }
-    return EqGraph::responseDb (f, gn, q, hz, vocalRate > 8000.0 ? vocalRate : 48000.0);
+    EqBandSettings bands[ParametricEq::numBands];
+    for (int b = 0; b < ParametricEq::numBands; ++b)
+        bands[b] = eqBandFrom (b, [&s] (const char* id, float d) { return s.get (id, d); });
+    return (float) ParametricEq::responseDb (bands, ParametricEq::numBands, hz, vocalRate > 8000.0 ? vocalRate : 48000.0);
 }
 
 juce::uint32 ReferencePanel::eqSignature() const
 {
     const auto s = processor.captureSoundState();
     juce::uint32 h = 2166136261u;
-    for (const char* id : { "eq_lo_freq", "eq_lo_gain", "eq_b1_freq", "eq_b1_gain", "eq_b1_q", "eq_b2_freq", "eq_b2_gain", "eq_b2_q", "eq_hi_freq", "eq_hi_gain" })
-        h = (h ^ (juce::uint32) juce::roundToInt (s.get (id, 0.0f) * 100.0f)) * 16777619u;
+    for (const auto& ids : eqIds) // every EQ LAB band's every value
+        for (const char* id : { ids.freq, ids.gain, ids.q, ids.on, ids.type, ids.slope, ids.stereo })
+            h = (h ^ (juce::uint32) juce::roundToInt (s.get (id, 0.0f) * 100.0f)) * 16777619u;
     return h;
 }
 

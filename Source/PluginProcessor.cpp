@@ -23,13 +23,13 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
         ParameterID { bypassId, 1 }, "Bypass", false));
 
     struct BandInfo { const char* name; float fMin, fMax, fDefault, fCentre; };
-    const BandInfo info[ParametricEq::numBands] = {
-        { "Low Shelf", 20.0f,  500.0f,   100.0f,  100.0f },
-        { "Bell 1",    100.0f, 5000.0f,  400.0f,  700.0f },
-        { "Bell 2",    500.0f, 16000.0f, 3000.0f, 3000.0f },
-        { "High Shelf", 1000.0f, 18000.0f, 8000.0f, 6000.0f } };
+    const BandInfo info[GlitchKidProcessor::legacyEqBands] = {
+        { "EQ 1", 20.0f,  500.0f,   100.0f,  100.0f },   // the original low shelf (its type can now change)
+        { "EQ 2", 100.0f, 5000.0f,  400.0f,  700.0f },   // the original bells
+        { "EQ 3", 500.0f, 16000.0f, 3000.0f, 3000.0f },
+        { "EQ 4", 1000.0f, 18000.0f, 8000.0f, 6000.0f } }; // the original high shelf
 
-    for (int b = 0; b < ParametricEq::numBands; ++b)
+    for (int b = 0; b < GlitchKidProcessor::legacyEqBands; ++b)
     {
         NormalisableRange<float> fr (info[b].fMin, info[b].fMax, 1.0f);
         fr.setSkewForCentre (info[b].fCentre);
@@ -40,7 +40,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
         layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].gain, 1 },
             String (info[b].name) + " Gain", NormalisableRange<float> (-15.0f, 15.0f, 0.1f), 0.0f,
             AudioParameterFloatAttributes().withLabel ("dB")));
-        if (eqIds[b].q != nullptr)
+        if (b == 1 || b == 2) // the bells' Q is original; the shelves' Q was appended with EQ LAB (below)
         {
             NormalisableRange<float> qr (0.3f, 10.0f, 0.01f);
             qr.setSkewForCentre (1.5f);
@@ -154,14 +154,15 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
 
     // AIR LAB: appended after Mix so every existing parameter keeps its host index
     layout.add (std::make_unique<AudioParameterBool> (ParameterID { airOnId, 1 }, "Air Lab On", false));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airPresenceId, 1 }, "Air Lab Presence",
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airPresenceId, 1 }, "Air Lab Mid Air",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airAirId, 1 }, "Air Lab Air",
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airAirId, 1 }, "Air Lab High Air",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 30.0f, AudioParameterFloatAttributes().withLabel ("%")));
-    layout.add (std::make_unique<AudioParameterBool> (ParameterID { airLinkId, 1 }, "Air Lab Link", true));
+    // retired: MID AIR and HIGH AIR are always independent. Kept (not automatable, no effect) so old sessions load and every later parameter keeps its index.
+    layout.add (std::make_unique<AudioParameterBool> (ParameterID { airLinkId, 1 }, "Air Lab Link (retired)", false, AudioParameterBoolAttributes().withAutomatable (false)));
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airMixId, 1 }, "Air Lab Mix",
         NormalisableRange<float> (0.0f, 100.0f, 0.1f), 100.0f, AudioParameterFloatAttributes().withLabel ("%")));
-    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airTrimId, 1 }, "Air Lab Trim",
+    layout.add (std::make_unique<AudioParameterFloat> (ParameterID { airTrimId, 1 }, "Air Lab Output",
         NormalisableRange<float> (-12.0f, 12.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
     // CLEAN LAB: appended after AIR LAB so every existing parameter keeps its host index
@@ -199,7 +200,127 @@ juce::AudioProcessorValueTreeState::ParameterLayout GlitchKidProcessor::createLa
     layout.add (std::make_unique<AudioParameterFloat> (ParameterID { masterOutputId, 1 }, "Master Output",
         NormalisableRange<float> (-12.0f, 0.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
 
+    // EQ LAB: appended after everything else so every existing parameter keeps its host index. Old sessions miss these and get the defaults, which
+    // reproduce the original four bands exactly (low shelf, two bells, high shelf, all on, stereo) with bands 5-16 off.
+    const EqType legacyType[legacyEqBands] = { EqType::lowShelf, EqType::bell, EqType::bell, EqType::highShelf };
+    NormalisableRange<float> qr (0.1f, 30.0f, 0.01f);
+    qr.setSkewForCentre (1.0f);
+    for (int b = 0; b < ParametricEq::numBands; ++b)
+    {
+        const String name = "EQ " + String (b + 1);
+        const bool legacy = b < legacyEqBands;
+        if (b == 0 || b == 3) // the original shelves had a fixed 0.7071 slope; it is now their Q
+        {
+            NormalisableRange<float> sq (0.3f, 10.0f, 0.0f); // continuous: the default must be exactly the old 0.7071
+            sq.setSkewForCentre (1.5f);
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].q, 1 }, name + " Q", sq, 0.7071f));
+        }
+        if (! legacy)
+        {
+            static constexpr float freqs[ParametricEq::numBands - legacyEqBands] = { 60, 120, 200, 300, 500, 800, 1200, 2000, 3000, 5000, 8000, 12000 };
+            NormalisableRange<float> fr (20.0f, 20000.0f, 1.0f);
+            fr.setSkewForCentre (1000.0f);
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].freq, 1 }, name + " Freq", fr, freqs[b - legacyEqBands],
+                AudioParameterFloatAttributes().withLabel ("Hz")));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].gain, 1 }, name + " Gain",
+                NormalisableRange<float> (-30.0f, 30.0f, 0.1f), 0.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].q, 1 }, name + " Q", qr, 1.0f));
+        }
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { eqIds[b].on, 1 }, name + " On", legacy));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { eqIds[b].type, 1 }, name + " Type", eqTypeNames(),
+            (int) (legacy ? legacyType[b] : EqType::bell)));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { eqIds[b].slope, 1 }, name + " Slope", eqSlopeNames(), 1));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { eqIds[b].stereo, 1 }, name + " Channels", eqStereoNames(), 0));
+    }
+
+    // EQ LAB dynamics: appended after the bands so every earlier parameter keeps its host index. Off by default: an older session sounds the same.
+    NormalisableRange<float> att (0.1f, 200.0f, 0.01f), rel (5.0f, 2000.0f, 0.1f);
+    att.setSkewForCentre (10.0f);
+    rel.setSkewForCentre (150.0f);
+    for (int b = 0; b < ParametricEq::numBands; ++b)
+    {
+        const String name = "EQ " + String (b + 1);
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { eqIds[b].dyn, 1 }, name + " Dynamic", false));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].thresh, 1 }, name + " Threshold",
+            NormalisableRange<float> (-60.0f, 0.0f, 0.1f), -30.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].range, 1 }, name + " Range",
+            NormalisableRange<float> (-24.0f, 24.0f, 0.1f), -6.0f, AudioParameterFloatAttributes().withLabel ("dB")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].attack, 1 }, name + " Attack", att, 5.0f,
+            AudioParameterFloatAttributes().withLabel ("ms")));
+        layout.add (std::make_unique<AudioParameterFloat> (ParameterID { eqIds[b].release, 1 }, name + " Release", rel, 120.0f,
+            AudioParameterFloatAttributes().withLabel ("ms")));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { eqIds[b].dynMode, 1 }, name + " Dynamic Mode", StringArray { "Above", "Below" }, 0));
+    }
+
+    // SPACE: appended last, off by default (an older session sounds the same)
+    {
+        StringArray algos, chars;
+        for (int i = 0; i < SpaceReverb::numAlgorithms; ++i) algos.add (SpaceReverb::algorithmName (i));
+        for (int i = 0; i < SpaceReverb::numCharacters; ++i) chars.add (SpaceReverb::characterName (i));
+        auto pct = [] (float def) { return std::make_tuple (NormalisableRange<float> (0.0f, 100.0f, 0.1f), def, "%"); };
+        auto skew = [] (float lo, float hi, float step, float centre) { NormalisableRange<float> r (lo, hi, step); r.setSkewForCentre (centre); return r; };
+        auto addF = [&layout] (const char* id, const char* name, NormalisableRange<float> r, float def, const char* label)
+        {
+            layout.add (std::make_unique<AudioParameterFloat> (ParameterID { id, 1 }, name, r, def, AudioParameterFloatAttributes().withLabel (label)));
+        };
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { spaceIds[0], 1 }, "Space On", false));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { spaceIds[1], 1 }, "Space Algorithm", algos, 3));
+        layout.add (std::make_unique<AudioParameterChoice> (ParameterID { spaceIds[2], 1 }, "Space Character", chars, 1));
+        { auto [r, d, l] = pct (20.0f); addF (spaceIds[3], "Space Mix", r, d, l); }
+        addF (spaceIds[4], "Space Decay", skew (0.2f, 20.0f, 0.01f, 2.0f), 1.8f, "s");
+        addF (spaceIds[5], "Space Pre-Delay", skew (0.0f, 250.0f, 0.1f, 40.0f), 20.0f, "ms");
+        { auto [r, d, l] = pct (50.0f); addF (spaceIds[6], "Space Size", r, d, l); }
+        { auto [r, d, l] = pct (70.0f); addF (spaceIds[7], "Space Diffusion", r, d, l); }
+        { auto [r, d, l] = pct (50.0f); addF (spaceIds[8], "Space Damping", r, d, l); }
+        addF (spaceIds[9], "Space Low Cut", skew (20.0f, 1000.0f, 1.0f, 150.0f), 150.0f, "Hz");
+        addF (spaceIds[10], "Space High Cut", skew (1000.0f, 20000.0f, 1.0f, 6000.0f), 9000.0f, "Hz");
+        addF (spaceIds[11], "Space Mod Rate", skew (0.05f, 5.0f, 0.01f, 0.6f), 0.6f, "Hz");
+        { auto [r, d, l] = pct (30.0f); addF (spaceIds[12], "Space Mod Depth", r, d, l); }
+        addF (spaceIds[13], "Space Width", NormalisableRange<float> (0.0f, 150.0f, 0.1f), 100.0f, "%");
+        { auto [r, d, l] = pct (50.0f); addF (spaceIds[14], "Space Early", r, d, l); }
+        { auto [r, d, l] = pct (80.0f); addF (spaceIds[15], "Space Late", r, d, l); }
+        layout.add (std::make_unique<AudioParameterBool> (ParameterID { spaceIds[16], 1 }, "Space Freeze", false));
+    }
+
     return layout;
+}
+
+const juce::StringArray& GlitchKidProcessor::eqTypeNames()
+{
+    static const juce::StringArray names { "Bell", "Low Shelf", "High Shelf", "Low Cut", "High Cut", "Notch", "Band Pass", "Tilt" };
+    return names;
+}
+
+const juce::StringArray& GlitchKidProcessor::eqSlopeNames()
+{
+    static const juce::StringArray names { "6 dB/oct", "12 dB/oct", "18 dB/oct", "24 dB/oct", "36 dB/oct", "48 dB/oct", "72 dB/oct", "96 dB/oct" };
+    return names;
+}
+
+const juce::StringArray& GlitchKidProcessor::eqStereoNames()
+{
+    static const juce::StringArray names { "Stereo", "Left", "Right", "Mid", "Side" };
+    return names;
+}
+
+EqBandSettings GlitchKidProcessor::readEqBand (int b) const
+{
+    const auto& p = eqParams[b];
+    EqBandSettings s;
+    s.freqHz = p.freq->load();
+    s.gainDb = p.gain->load();
+    s.q = p.q->load();
+    s.on = p.on->load() >= 0.5f;
+    s.type = (EqType) juce::jlimit (0, 7, (int) std::lround (p.type->load()));
+    s.slopeDb = ParametricEq::slopes[juce::jlimit (0, ParametricEq::numSlopes - 1, (int) std::lround (p.slope->load()))];
+    s.placement = (EqPlacement) juce::jlimit (0, 4, (int) std::lround (p.stereo->load()));
+    s.dynamic = p.dyn->load() >= 0.5f;
+    s.threshDb = p.thresh->load();
+    s.rangeDb = p.range->load();
+    s.attackMs = p.attack->load();
+    s.releaseMs = p.release->load();
+    s.below = p.dynMode->load() >= 0.5f;
+    return s;
 }
 
 GlitchKidProcessor::GlitchKidProcessor()
@@ -214,9 +335,12 @@ GlitchKidProcessor::GlitchKidProcessor()
     bypass = apvts.getRawParameterValue (bypassId);
     for (int b = 0; b < ParametricEq::numBands; ++b)
     {
-        eqParams[b].freq = apvts.getRawParameterValue (eqIds[b].freq);
-        eqParams[b].gain = apvts.getRawParameterValue (eqIds[b].gain);
-        eqParams[b].q    = eqIds[b].q != nullptr ? apvts.getRawParameterValue (eqIds[b].q) : nullptr;
+        const auto& id = eqIds[b];
+        eqParams[b] = { apvts.getRawParameterValue (id.freq), apvts.getRawParameterValue (id.gain), apvts.getRawParameterValue (id.q),
+                        apvts.getRawParameterValue (id.on), apvts.getRawParameterValue (id.type), apvts.getRawParameterValue (id.slope),
+                        apvts.getRawParameterValue (id.stereo), apvts.getRawParameterValue (id.dyn), apvts.getRawParameterValue (id.thresh),
+                        apvts.getRawParameterValue (id.range), apvts.getRawParameterValue (id.attack), apvts.getRawParameterValue (id.release),
+                        apvts.getRawParameterValue (id.dynMode) };
     }
     const char* ids[] = { compThresholdId, compRatioId, compAttackId, compReleaseId, compKneeId, compMakeupId };
     for (int i = 0; i < 6; ++i)
@@ -226,6 +350,8 @@ GlitchKidProcessor::GlitchKidProcessor()
     stutterOn = apvts.getRawParameterValue (stutterOnId);
     stutterRate = apvts.getRawParameterValue (stutterRateId);
     stutterMix = apvts.getRawParameterValue (stutterMixId);
+    for (int i = 0; i < 17; ++i)
+        spaceParams[i] = apvts.getRawParameterValue (spaceIds[i]);
     const char* echoIds[] = { echoOnId, echoSyncId, echoTimeId, echoDivId, echoFbId, echoToneId, echoWidthId, echoMixId };
     for (int i = 0; i < 8; ++i)
         echoParams[i] = apvts.getRawParameterValue (echoIds[i]);
@@ -382,6 +508,44 @@ DimensionSettings GlitchKidProcessor::readDimensionSettings() const
     s.depthPct = dimParams[3]->load();
     s.mixPct = dimParams[4]->load();
     return s;
+}
+
+SpaceReverb::Settings GlitchKidProcessor::readSpaceSettings() const
+{
+    SpaceReverb::Settings s;
+    auto v = [this] (int i) { return spaceParams[i]->load(); };
+    s.on = v (0) >= 0.5f;
+    s.algorithm = (int) std::lround (v (1));
+    s.character = (int) std::lround (v (2));
+    s.mix = v (3) * 0.01f;
+    s.decaySeconds = v (4);
+    s.predelayMs = v (5);
+    s.size = v (6) * 0.01f;
+    s.diffusion = v (7) * 0.01f;
+    s.damping = v (8) * 0.01f;
+    s.lowCutHz = v (9);
+    s.highCutHz = v (10);
+    s.modRateHz = v (11);
+    s.modDepth = v (12) * 0.01f;
+    s.width = v (13) * 0.01f;
+    s.early = v (14) * 0.01f;
+    s.late = v (15) * 0.01f;
+    s.freeze = v (16) >= 0.5f;
+    return s;
+}
+
+double GlitchKidProcessor::getTailLengthSeconds() const
+{
+    double tail = 0.0;
+    if (spaceParams[0] != nullptr && spaceParams[0]->load() >= 0.5f)
+        tail = spaceParams[16]->load() >= 0.5f ? 60.0 : spaceParams[5]->load() * 0.001 + spaceParams[4]->load() * 1.2 + 0.2;
+    if (echoParams[0] != nullptr && echoParams[0]->load() >= 0.5f) // repeats fall 60 dB after log(0.001) / log(feedback) of them
+    {
+        const auto e = readEchoSettings();
+        const double delay = LiquidEcho::delaySamplesFor (e, 48000.0) / 48000.0, fb = juce::jlimit (0.01, 0.9, e.feedbackPct * 0.01);
+        tail = juce::jmax (tail, delay * (1.0 + std::log (0.001) / std::log (fb)));
+    }
+    return tail;
 }
 
 EchoSettings GlitchKidProcessor::readEchoSettings() const
@@ -805,6 +969,8 @@ void GlitchKidProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     echo.setSettings (readEchoSettings());
     echo.prepare (sampleRate);
+    space.setSettings (readSpaceSettings());
+    space.prepare (sampleRate);
 
     dimension.setSettings (readDimensionSettings());
     dimension.prepare (sampleRate);
@@ -1078,6 +1244,7 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
         cleanLab.park(); // keeps what it has learned about the voice
         stutter.reset();
         echo.reset();
+        space.reset();
         dimension.reset();
         mutation.reset();
         doubler.reset();
@@ -1186,9 +1353,11 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
     doubler.process (buffer);
 
     for (int b = 0; b < ParametricEq::numBands; ++b)
-        eq.setBand (b, { eqParams[b].freq->load(), eqParams[b].gain->load(),
-                         eqParams[b].q != nullptr ? eqParams[b].q->load() : 0.7071f });
+        eq.setBand (b, readEqBand (b));
+    eq.setSolo (eqSolo.load (std::memory_order_relaxed));
+    eqInTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
     eq.process (buffer);
+    eqOutTap.push (buffer.getReadPointer (0), numChannels > 1 ? buffer.getReadPointer (1) : nullptr, numSamples);
 
     // CLEAN LAB, corrective part: after the user's EQ (its detectors see what the user already shaped, so a manual cut is not repeated) and before the compressor
     cleanLab.setSettings (readCleanSettings());
@@ -1215,6 +1384,10 @@ void GlitchKidProcessor::processChunk (juce::AudioBuffer<float>& buffer)
 
     echo.setSettings (readEchoSettings());
     echo.process (buffer);
+
+    // SPACE: after the echo (its repeats get the room too), before Dimension's width
+    space.setSettings (readSpaceSettings());
+    space.process (buffer);
 
     dimension.setSettings (readDimensionSettings());
     dimension.process (buffer);

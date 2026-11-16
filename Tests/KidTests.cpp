@@ -38,8 +38,8 @@ struct KidTests : public juce::UnitTest
                     ++total;
                     allowed += Director::isAllowed (r->paramID) ? 1 : 0;
                 }
-            expectEquals (total, 76);
-            expectEquals (allowed, 62);
+            expectEquals (total, 291);  // + the 102 EQ LAB band, 96 dynamics and 17 SPACE parameters
+            expectEquals (allowed, 277);
             for (auto* id : { "gain", "mix", "bypass", "lim_on", "lim_ceiling", "lim_drive", "lim_release" })
                 expect (! Director::isAllowed (id), id);
         }
@@ -167,7 +167,8 @@ struct KidTests : public juce::UnitTest
             auto line = say (d, "make it louder");
             expect (d.proposal().empty() && line.contains ("Level stays yours"));
             line = say (d, "add reverb");
-            expect (line.contains ("no reverb") && ! d.proposal().empty(), "reverb is answered honestly and built from Echo and Dimension");
+            expect (! line.contains ("no reverb") && rowsOf (d).count ("space_on") && rowsOf (d)["space_on"].to > 0.5f && rowsOf (d)["space_mix"].to > 0.0f,
+                    "reverb is the real SPACE reverb now");
             auto u = make();
             line = say (u, "purple elephants");
             expect (u.proposal().empty() && line.contains ("didn't catch"));

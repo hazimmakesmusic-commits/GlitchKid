@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "Presets/SpacePresets.h"
 #include "DSP/PitchCorrection/ScaleQuantizer.h"
 #include "AutoMode/SourceRelationship.h"
 #include "UI/EffectModel.h"
@@ -124,9 +125,9 @@ const RailItem railItems[11] = {
     { "SOUNDS", 3, 0, "Sounds", "Choose a starting sound, or build a first mix fitted to your vocal.", "Starting sounds, and Build My Mix (fits a starting sound to your vocal)." },
     { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds, measured on your voice.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },
     { "TUNE", 4, 0, "Tune", "Pull the voice toward the key and scale of your beat.", "Pitch Tune: on/off, key, scale, tuning style, strength and speed." },
-    { "SHAPE", 4, 1, "Shape", "Tone and dynamics: the EQ, the compressor, warmth and AIR LAB.", "Darker to brighter, the four EQ bands, the compressor, warmth and AIR LAB." },
+    { "SHAPE", 4, 1, "Shape", "Tone and dynamics: the EQ, the compressor, warmth and AIR LAB.", "Darker to brighter, EQ LAB (up to 16 bands, static or dynamic), the compressor, warmth and AIR LAB." },
     { "FINISH", 4, 2, "Finish", "Output level, wet/dry mix and the limiter that protects the output.", "Output gain, MIX, the input and output meters and the output limiter." },
-    { "SPACE", 4, 3, "Space", "Echo, width and doubling.", "A dry-to-spacious control, echo, width (Dimension) and the Doubler." },
+    { "SPACE", 4, 3, "Space", "The reverb, echo, width and doubling.", "A dry-to-spacious control, the SPACE reverb, echo, width (Dimension) and the Doubler." },
     { "CREATIVE", 7, 0, "Creative", "Formant, Harmony, Mutation and Stutter (optional).", "Creative effects: Formant, Harmony, Mutation and Stutter, each in its real place in the chain." },
     { "BEAT", 2, 0, "Beat", "How the vocal sits against your instrumental.", "How your vocal sits against your beat (needs the beat routed to the Instrumental input)." },
     { "REFERENCE", 5, 0, "Reference", "Compare your tone with a song you have the right to use.",
@@ -426,26 +427,68 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     eqGraph = std::make_unique<ui::EqGraph> (p.apvts, [&p] { return p.getSampleRate(); });
     content.addAndMakeVisible (*eqGraph);
     eqGraph->onBandSelected = [this] (int b) { selectBand (b); };
-    static const char* bandNames[ui::EqGraph::numBands] = { "LOW", "BODY", "PRESENCE", "AIR" };
-    static const char* bandTips[ui::EqGraph::numBands] = { "Low shelf: more weight or less boom.", "Bell: cut a little if the vocal sounds muddy or boxy.",
-                                                         "Bell: the words come forward.", "High shelf: brightness and breath. Lower it if the S sounds are harsh." };
     for (int b = 0; b < ui::EqGraph::numBands; ++b)
     {
-        bandButtons[b].setButtonText (bandNames[b]);
-        style (bandButtons[b], juce::String (bandTips[b]) + " Select it to edit its frequency, gain and Q.");
-        bandButtons[b].onClick = [this, b] { selectBand (b); };
         const auto& ids = GlitchKidProcessor::eqIds[b];
-        eqKnobs[b].add (new ParamKnob (p.apvts, ids.freq, "FREQ", " Hz", ui::violet, "The band's centre or corner frequency."));
-        eqKnobs[b].add (new ParamKnob (p.apvts, ids.gain, "GAIN", " dB", ui::violet, "Boost or cut at this band."));
-        if (ids.q != nullptr)
-            eqKnobs[b].add (new ParamKnob (p.apvts, ids.q, "Q", "", ui::violet, "How narrow the bell is. Higher = narrower."));
+        eqKnobs[b].add (new ParamKnob (p.apvts, ids.freq, "FREQ", " Hz", ui::violet, "The band's centre, corner or pivot frequency."));
+        eqKnobs[b].add (new ParamKnob (p.apvts, ids.gain, "GAIN", " dB", ui::violet, "Boost or cut (bells, shelves and tilt; cuts, notch and band pass have none)."));
+        eqKnobs[b].add (new ParamKnob (p.apvts, ids.q, "Q", "", ui::violet, "A bell, notch or band pass: how narrow. A shelf or tilt: how steep. A cut: resonance at the corner (0.71 = none)."));
         for (auto* k : eqKnobs[b])
             k->addTo (content);
     }
+    style (bandPrev, "The previous band.");
+    style (bandNext, "The next band.");
+    style (bandOnButton, "Switch this band on or off.");
+    style (bandSoloButton, "Solo: hear only the part of the vocal this band works on. Monitoring only: never saved, never part of the sound.");
+    style (bandAddButton, "Add a band at 1 kHz (or double-click the graph where you want it).");
+    style (bandDupButton, "Copy this band to a free one.");
+    style (bandDelButton, "Switch this band off (or select it in the graph and press Delete).");
+    bandOnButton.setClickingTogglesState (true);
+    bandSoloButton.setClickingTogglesState (true);
+    bandPrev.onClick = [this] { selectBand ((eqBand + ui::EqGraph::numBands - 1) % ui::EqGraph::numBands); };
+    bandNext.onClick = [this] { selectBand ((eqBand + 1) % ui::EqGraph::numBands); };
+    bandSoloButton.onClick = [this] { setEqSolo (bandSoloButton.getToggleState() ? eqBand : -1); };
+    bandAddButton.onClick = [this] { if (eqGraph->addBandAt (1000.0f, 0.0f) < 0) infoLabel.setText ("All 16 bands are in use.", juce::dontSendNotification); };
+    bandDupButton.onClick = [this] { if (eqGraph->duplicateBand (eqBand) < 0) infoLabel.setText ("All 16 bands are in use.", juce::dontSendNotification); };
+    bandDelButton.onClick = [this] { eqGraph->removeBand (eqBand); };
+    label (bandLabel, 13.0f, true, ui::textBright, juce::Justification::centred);
+    for (auto* box : { &bandType, &bandSlope, &bandStereo })
+        content.addAndMakeVisible (*box);
+    choices (bandType, GlitchKidProcessor::eqIds[0].type);
+    choices (bandSlope, GlitchKidProcessor::eqIds[0].slope);
+    choices (bandStereo, GlitchKidProcessor::eqIds[0].stereo);
+    bandType.setTooltip ("The filter type: bell, shelves, cuts (6-96 dB/oct), notch, band pass or tilt.");
+    bandSlope.setTooltip ("A cut's steepness, in dB per octave.");
+    bandStereo.setTooltip ("Which part of the stereo signal the band works on: both channels, left, right, mid (the centre) or side (the edges).");
+    eqGraph->onSolo = [this] (int b) { setEqSolo (b); };
+    eqGraph->dynamicDbOf = [&p] (int b) { return p.getEqDynamicDb (b); };
+    style (bandDynButton, "Dynamic EQ: this band's gain moves with the level of its own frequency region (bells, shelves and tilt).");
+    bandDynButton.setClickingTogglesState (true);
+    content.addAndMakeVisible (bandDynMode);
+    choices (bandDynMode, GlitchKidProcessor::eqIds[0].dynMode);
+    bandDynMode.setTooltip ("Above: acts when the band gets louder than the threshold (a negative range cuts: S sounds, harshness). Below: acts when it falls under "
+                            "the threshold (a positive range lifts quiet detail).");
+    label (bandDynNow, 12.0f, true, ui::pink, juce::Justification::centredRight);
+    bandDynNow.setTooltip ("The change this band is making right now, measured from the audio.");
+    const char* dynNames[4] = { "Thresh", "Range", "Attack", "Release" };
+    const char* dynTips[4] = { "The band level (dBFS) where the dynamics start.", "How far the gain can move: negative cuts, positive lifts.",
+                               "How fast it reacts when the band crosses the threshold.", "How fast it lets go." };
+    for (int i = 0; i < 4; ++i)
+    {
+        label (bandDynLabels[i], 11.0f, false, ui::textDim, juce::Justification::centredLeft);
+        bandDynLabels[i].setText (dynNames[i], juce::dontSendNotification);
+        bandDynSliders[i].setSliderStyle (juce::Slider::LinearHorizontal);
+        bandDynSliders[i].setTextBoxStyle (juce::Slider::TextBoxRight, false, 52, 18);
+        bandDynSliders[i].setTooltip (dynTips[i]);
+        bandDynSliders[i].setComponentID ("eqdyn" + juce::String (i)); // EQ LAB's dynamics (tests tell them apart from AIR LAB's sliders)
+        content.addAndMakeVisible (bandDynSliders[i]);
+    }
+    bindBand();
     warmthKnob.add (new ParamKnob (p.apvts, GlitchKidProcessor::satDriveId, "WARMTH", " dB", ui::violet, "Saturation: a little warmth and grit. 0 = clean."));
     warmthKnob[0]->addTo (content);
     label (eqNote, 11.0f, false, ui::textDim, juce::Justification::topLeft);
-    eqNote.setText ("The solid curve: your EQ. The bright curve: what CLEAN is applying. Both curves are calculated from real settings. The shaded area is the vocal's real spectrum while audio plays.", juce::dontSendNotification);
+    eqNote.setText ("Double-click the graph to add a band; right-click a point for its type, channels, solo, duplicate and delete. The curve is every band's real response; "
+                    "the shaded area and the line are the audio entering and leaving the EQ.", juce::dontSendNotification);
 
     // AIR LAB strip
     auto airSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
@@ -456,10 +499,10 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         sl.setTooltip (tip);
         content.addAndMakeVisible (sl);
     };
-    airSlider (airPresenceSlider, "PRESENCE: lifts the 2.5-5 kHz detail that makes words come forward. Reduced automatically on sibilant S sounds.", 52);
-    airSlider (airAirSlider, "AIR: openness above 9 kHz: a gentle lift plus new harmonics made from the presence band. Reduced automatically on sibilant S sounds.", 52);
+    airSlider (airPresenceSlider, "MID AIR: clarity. Lifts around 3.2 kHz and adds a little density, more on dull moments and less on harsh ones; eases off on S sounds and is not added in the gaps or to noise.", 52);
+    airSlider (airAirSlider, "HIGH AIR: air. Lifts above 8.5 kHz and adds harmonics from the 2.5-5.5 kHz band, more on a dark top and less on a bright one; eases off on S sounds and is not added in the gaps or to noise. Independent of MID AIR.", 52);
     airSlider (airMixSlider, "MIX: how much of the added presence and air is blended in. 0 % = your signal untouched.", 52);
-    airSlider (airTrimSlider, "OUTPUT TRIM: compensates for the loudness change (applies while AIR LAB is on).", 60);
+    airSlider (airTrimSlider, "OUTPUT: compensates for the loudness change (applies while AIR LAB is on).", 60);
     airPresenceSlider.setDoubleClickReturnValue (true, 30.0);
     airAirSlider.setDoubleClickReturnValue (true, 30.0);
     airMixSlider.setDoubleClickReturnValue (true, 100.0);
@@ -473,10 +516,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     airMixSlider.setTextValueSuffix (" %");
     airTrimSlider.setTextValueSuffix (" dB");
     airOnButton.setTooltip ("Switch AIR LAB on or off. Off = your signal passes through untouched (a click-free 20 ms crossfade). Use it to compare.");
-    airLinkButton.setTooltip ("LINK: moving PRESENCE also moves AIR, and the reverse.");
     airOnAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::airOnId, airOnButton);
-    airLinkAtt = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (p.apvts, GlitchKidProcessor::airLinkId, airLinkButton);
-    for (auto* t : { &airOnButton, &airLinkButton })
+    for (auto* t : { &airOnButton })
     {
         t->setColour (juce::ToggleButton::tickColourId, ui::violet);
         content.addAndMakeVisible (*t);
@@ -484,7 +525,9 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* l : { &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel })
         label (*l, 11.0f, true, ui::textDim);
     label (airHint, 11.0f, false, ui::textDim);
-    airHint.setText ("Presence and air that ease off on S sounds. Zero latency.", juce::dontSendNotification);
+    airHint.setText ("MID AIR: clarity and presence. HIGH AIR: brilliance and air. Each adapts to your voice and eases off on S sounds and noise.", juce::dontSendNotification);
+    label (airNow, 11.0f, true, ui::pink, juce::Justification::centredRight);
+    airNow.setTooltip ("What MID AIR and HIGH AIR are adding right now, measured from the audio. Both follow the voice: more on dull moments, less on bright ones, none in the gaps.");
     // ---- CLEAN (category 5) ----
     auto cleanSlider = [this] (juce::Slider& sl, const juce::String& tip, int box)
     {
@@ -556,8 +599,6 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         layoutContent();
     };
     content.addAndMakeVisible (essBar);
-    airPresenceSlider.onValueChange = [this] { linkAir (airPresenceSlider, airAirSlider); };
-    airAirSlider.onValueChange = [this] { linkAir (airAirSlider, airPresenceSlider); };
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compThresholdId, "THRESHOLD", " dB", ui::violet, "The level above which the compressor starts working. Lower = more compression."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compRatioId, "RATIO", ":1", ui::violet, "How firmly the level is held down above the threshold. 1:1 = off."));
     compKnobs.add (new ParamKnob (p.apvts, GlitchKidProcessor::compAttackId, "ATTACK", " ms", ui::violet, "How quickly it reacts. Slower lets the start of words through."));
@@ -613,8 +654,60 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     for (auto* k : dblKnobs)
         k->addTo (content);
     label (echoDivLabel, 11.0f, true, ui::textDim);
-    for (auto* l : { &echoTitle, &dimTitle, &dblTitle })
+    for (auto* l : { &echoTitle, &dimTitle, &dblTitle, &spaceTitle })
         content.addAndMakeVisible (*l);
+
+    // ---- SPACE: the reverb ----
+    {
+        using A = juce::AudioProcessorValueTreeState;
+        const auto* ids = GlitchKidProcessor::spaceIds;
+        style (spaceTabReverb, "SPACE's reverb: eight algorithms, three characters and nine vocal presets.");
+        style (spaceTabEcho, "The echo, the width (Dimension) and the Doubler.");
+        spaceTabReverb.onClick = [this] { spaceTab = 0; layoutContent(); };
+        spaceTabEcho.onClick = [this] { spaceTab = 1; layoutContent(); };
+        for (auto* t : { &spaceOnButton, &spaceFreezeButton })
+        {
+            t->setColour (juce::ToggleButton::tickColourId, ui::violet);
+            content.addAndMakeVisible (*t);
+        }
+        spaceOnButton.setTooltip ("The reverb. Switching it off lets the tail ring out.");
+        spaceFreezeButton.setTooltip ("Freeze: the reverb holds what it has and takes in nothing new. Switch it off to let the tail go.");
+        spaceOnAtt = std::make_unique<A::ButtonAttachment> (p.apvts, ids[0], spaceOnButton);
+        spaceFreezeAtt = std::make_unique<A::ButtonAttachment> (p.apvts, ids[16], spaceFreezeButton);
+        for (auto* box : { &spaceAlgoBox, &spaceCharBox, &spacePresetBox })
+            content.addAndMakeVisible (*box);
+        choices (spaceAlgoBox, ids[1]);
+        choices (spaceCharBox, ids[2]);
+        spaceAlgoAtt = std::make_unique<A::ComboBoxAttachment> (p.apvts, ids[1], spaceAlgoBox);
+        spaceCharAtt = std::make_unique<A::ComboBoxAttachment> (p.apvts, ids[2], spaceCharBox);
+        spaceAlgoBox.setTooltip ("The algorithm: each has its own reflections, density, build-up and movement.");
+        spaceCharBox.setTooltip ("WARM: dark, smooth and slowly moving. CLASSIC: balanced and dense. MODERN: bright, clear and steady.");
+        for (int i = 0; i < glitchkid::space::numPresets; ++i)
+            spacePresetBox.addItem (glitchkid::space::presets[i].name, i + 1);
+        spacePresetBox.setTextWhenNothingSelected ("Load a vocal preset");
+        spacePresetBox.setTooltip ("Nine vocal starting points. Loading one sets every reverb control (it does not touch the rest of your sound).");
+        spacePresetBox.onChange = [this]
+        {
+            const int i = spacePresetBox.getSelectedId() - 1;
+            if (i >= 0)
+                applySpacePreset (i);
+            spacePresetBox.setSelectedId (0, juce::dontSendNotification);
+        };
+        label (spaceAbout, 12.0f, false, ui::textDim, juce::Justification::centredLeft);
+        const char* names[13] = { "MIX", "DECAY", "PRE-DELAY", "SIZE", "DIFFUSION", "DAMPING", "LOW CUT", "HIGH CUT", "MOD RATE", "MOD DEPTH", "WIDTH", "EARLY", "LATE" };
+        const char* units[13] = { " %", " s", " ms", " %", " %", " %", " Hz", " Hz", " Hz", " %", " %", " %", " %" };
+        const char* tips[13] = { "How much reverb: equal-power, so the voice keeps its level.", "How long the tail takes to fall 60 dB (RT60).",
+                                 "A gap before the reverb, so the words stay clear.", "How big the space is: every delay scales together.",
+                                 "How quickly the reflections smear into a smooth tail.", "How much faster the highs die than the lows.",
+                                 "Takes the low end out of the reverb (it stays in your voice).", "Takes the top off the reverb.",
+                                 "How fast the tail moves.", "How much the tail moves: more is lusher, less is steadier.",
+                                 "The reverb's stereo width: 0 is mono, 150 % is extra wide.", "The level of the first reflections.", "The level of the tail." };
+        for (int i = 0; i < 13; ++i)
+        {
+            spaceKnobs.add (new ParamKnob (p.apvts, ids[i + 3], names[i], units[i], ui::violet, tips[i]));
+            spaceKnobs.getLast()->addTo (content);
+        }
+    }
     addAll ({ &echoOnButton, &echoSyncButton, &echoDivBox, &dimOnButton, &dblOnButton });
 
     // ---- HOME / SESSION ----
@@ -768,6 +861,7 @@ void GlitchKidEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 GlitchKidEditor::~GlitchKidEditor()
 {
     glitchkid::ui::theme::changes().removeChangeListener (this);
+    glitchProcessor.setEqSolo (-1); // a solo never outlives the window that shows it
     if (referencePanel != nullptr)
         referencePanel->cancelEverything(); // a running analysis must never outlive the editor
     relicLoader.stop();
@@ -987,21 +1081,60 @@ void GlitchKidEditor::refreshClean (bool cleanOn)
     setText (cleanLevel, "Net level change: " + juce::String (a.levelChangeDb, 1) + " dB (compare at matched loudness)", ui::textDim);
 }
 
-// With LINK on, moving one of the two main controls by hand moves the other to the same value (host automation never triggers it).
-void GlitchKidEditor::linkAir (juce::Slider& moved, juce::Slider& other)
-{
-    if (airLinkGuard || ! airLinkButton.getToggleState() || ! moved.isMouseOverOrDragging())
-        return;
-    airLinkGuard = true;
-    other.setValue (moved.getValue(), juce::sendNotificationSync);
-    airLinkGuard = false;
-}
-
 void GlitchKidEditor::selectBand (int b)
 {
     eqBand = juce::jlimit (0, ui::EqGraph::numBands - 1, b);
     eqGraph->setSelectedBand (eqBand);
+    bindBand();
     layoutContent();
+}
+
+void GlitchKidEditor::applySpacePreset (int index)
+{
+    const auto& pr = glitchkid::space::presets[juce::jlimit (0, glitchkid::space::numPresets - 1, index)];
+    const float v[17] = { 1.0f, (float) pr.algorithm, (float) pr.character, pr.mix, pr.decay, pr.predelay, pr.size, pr.diffusion, pr.damping,
+                          pr.lowCut, pr.highCut, pr.modRate, pr.modDepth, pr.width, pr.early, pr.late, 0.0f };
+    for (int k = 0; k < 17; ++k)
+        if (auto* prm = glitchProcessor.apvts.getParameter (GlitchKidProcessor::spaceIds[k]))
+        {
+            prm->beginChangeGesture();
+            prm->setValueNotifyingHost (prm->convertTo0to1 (v[k]));
+            prm->endChangeGesture();
+        }
+    showStatus (juce::String (pr.name) + ": " + pr.about);
+}
+
+void GlitchKidEditor::bindBand()
+{
+    using A = juce::AudioProcessorValueTreeState;
+    const auto& ids = GlitchKidProcessor::eqIds[eqBand];
+    bandTypeAtt.reset();
+    bandSlopeAtt.reset();
+    bandStereoAtt.reset();
+    bandOnAtt.reset();
+    bandTypeAtt = std::make_unique<A::ComboBoxAttachment> (glitchProcessor.apvts, ids.type, bandType);
+    bandSlopeAtt = std::make_unique<A::ComboBoxAttachment> (glitchProcessor.apvts, ids.slope, bandSlope);
+    bandStereoAtt = std::make_unique<A::ComboBoxAttachment> (glitchProcessor.apvts, ids.stereo, bandStereo);
+    bandOnAtt = std::make_unique<A::ButtonAttachment> (glitchProcessor.apvts, ids.on, bandOnButton);
+    bandDynAtt.reset();
+    bandDynModeAtt.reset();
+    bandDynAtt = std::make_unique<A::ButtonAttachment> (glitchProcessor.apvts, ids.dyn, bandDynButton);
+    bandDynModeAtt = std::make_unique<A::ComboBoxAttachment> (glitchProcessor.apvts, ids.dynMode, bandDynMode);
+    const char* dynIds[4] = { ids.thresh, ids.range, ids.attack, ids.release };
+    for (int i = 0; i < 4; ++i)
+    {
+        bandDynSliderAtt[i].reset();
+        bandDynSliderAtt[i] = std::make_unique<A::SliderAttachment> (glitchProcessor.apvts, dynIds[i], bandDynSliders[i]);
+    }
+    bandLabel.setText ("Band " + juce::String (eqBand + 1), juce::dontSendNotification);
+    bandSoloButton.setToggleState (glitchProcessor.getEqSolo() == eqBand, juce::dontSendNotification);
+}
+
+void GlitchKidEditor::setEqSolo (int b)
+{
+    glitchProcessor.setEqSolo (b);
+    eqGraph->setSoloBand (glitchProcessor.getEqSolo());
+    bandSoloButton.setToggleState (glitchProcessor.getEqSolo() == eqBand && eqBand >= 0, juce::dontSendNotification);
 }
 
 void GlitchKidEditor::applyContentTransform (float dx)
@@ -1189,8 +1322,10 @@ void GlitchKidEditor::runBuild()
             continue;
         }
         auto* prm = glitchProcessor.apvts.getParameter (c.id);
-        resultSummary << (prm != nullptr ? prm->getName (24) : c.id) << ":  " << juce::String (c.from, 1) << " -> " << juce::String (c.to, 1)
-                      << (prm != nullptr && prm->getLabel().isNotEmpty() ? " " + prm->getLabel() : juce::String()) << "\n";
+        const bool named = dynamic_cast<juce::AudioParameterChoice*> (prm) != nullptr || dynamic_cast<juce::AudioParameterBool*> (prm) != nullptr; // "Low Cut", "On"
+        auto text = [prm, named] (float v) { return named ? prm->getText (prm->convertTo0to1 (v), 24) : juce::String (v, 1); };
+        resultSummary << (prm != nullptr ? prm->getName (24) : c.id) << ":  " << text (c.from) << " -> " << text (c.to)
+                      << (prm != nullptr && ! named && prm->getLabel().isNotEmpty() ? " " + prm->getLabel() : juce::String()) << "\n";
         ++shown;
     }
     if (shown == 0)
@@ -1549,15 +1684,10 @@ void GlitchKidEditor::refreshDisplays (float dt)
     if (! (onHome || onBeat || onClean || onTone))
         return;
     const double sr = glitchProcessor.getSampleRate() > 8000.0 ? glitchProcessor.getSampleRate() : 48000.0;
-    specIn.update (glitchProcessor.getInputTap(), sr, dt);
+    if (onHome || onBeat)
+        specIn.update (glitchProcessor.getInputTap(), sr, dt); // CLEAN and SHAPE use EQ LAB's own analyser instead
     if (onClean || onTone)
-    {
-        const float top = (float) juce::jmin (20000.0, 0.45 * sr);
-        if (specIn.hasSignal())
-            eqGraph->setSpectrum (specIn.levels().data(), glitchkid::analysis::DisplaySpectrum::columns, top);
-        else
-            eqGraph->clearSpectrum();
-    }
+        eqGraph->analyse (glitchProcessor.getEqInTap(), glitchProcessor.getEqOutTap(), sr, dt); // the real audio entering and leaving the EQ
     if (onHome)
     {
         specOut.update (glitchProcessor.getOutputTap(), sr, dt);
@@ -1907,12 +2037,50 @@ void GlitchKidEditor::timerCallback()
         const auto preset = glitchProcessor.getPresetName();
         showStatus ("Session restored" + (preset.isNotEmpty() ? ": " + preset : juce::String()));
     }
+    if (airNow.isVisible())
+    {
+        const bool airOn = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::airOnId)->load() >= 0.5f;
+        airNow.setText (airOn ? "M +" + juce::String (glitchProcessor.getAirMidLiftDb(), 1) + "  H +" + juce::String (glitchProcessor.getAirHighLiftDb(), 1) : juce::String(),
+                        juce::dontSendNotification);
+    }
     if (eqGraph->isVisible())
+    {
         eqGraph->refresh();
+        const auto* type = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::eqIds[eqBand].type);
+        const int t = juce::roundToInt (type->load());
+        bandSlope.setEnabled (t == (int) EqType::lowCut || t == (int) EqType::highCut); // only cuts have a slope
+        eqKnobs[eqBand][1]->setEnabled (ParametricEq::isGainType ((EqType) t));         // cuts, notch and band pass have no gain
+        const bool canDyn = ParametricEq::isGainType ((EqType) t);
+        const bool dynOn = canDyn && glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::eqIds[eqBand].dyn)->load() >= 0.5f;
+        bandDynButton.setEnabled (canDyn);
+        bandDynMode.setEnabled (dynOn);
+        for (auto& sl : bandDynSliders)
+            sl.setEnabled (dynOn);
+        bandDynNow.setText (dynOn ? "Now " + juce::String (glitchProcessor.getEqDynamicDb (eqBand), 1) + " dB" : juce::String(), juce::dontSendNotification);
+    }
+    else if (glitchProcessor.getEqSolo() >= 0)
+        setEqSolo (-1); // a solo is only heard while you can see it
 
     const bool synced = glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::echoSyncId)->load() >= 0.5f;
     echoKnobs[0]->setEnabled (! synced);
     echoDivBox.setEnabled (synced);
+    if (spaceAbout.isVisible())
+    {
+        static const char* about[SpaceReverb::numAlgorithms] = {
+            "Room: short, dense reflections. A real room around the voice without a long tail.",
+            "Chamber: a warm, even space with smooth, quickly building density.",
+            "Plate: no early reflections, an instantly dense, polished tail.",
+            "Hall: wide early reflections and a long, gradually building tail.",
+            "Cathedral: big, slow reflections and a very long, deep tail.",
+            "Ambience: almost all early reflections. Space and depth with hardly any tail.",
+            "Modulated Space: a hall whose tail swims and blooms.",
+            "Experimental Space: a long, moving tail with an octave shimmering above it." };
+        const auto v = [this] (int i) { return glitchProcessor.apvts.getRawParameterValue (GlitchKidProcessor::spaceIds[i])->load(); };
+        const juce::String text = juce::String (about[juce::jlimit (0, SpaceReverb::numAlgorithms - 1, juce::roundToInt (v (1)))])
+                                  + (v (0) < 0.5f ? "  (Off)" : v (16) >= 0.5f ? "  Frozen: holding the tail." : "");
+        if (text != spaceAbout.getText())
+            spaceAbout.setText (text, juce::dontSendNotification);
+    }
     echoDivLabel.setAlpha (synced ? 1.0f : 0.4f);
 
     // Pitch Tune read-out: the sung note, how far off it is, and the note it is pulled to (real detector output; nothing while Pitch Tune is off).
@@ -2309,17 +2477,30 @@ void GlitchKidEditor::layoutContent()
             {
                 macroRow (glitchkid::macros::Macro::tone, "DARKER", "BRIGHTER", 108);
                 show (*eqGraph, { 24, 146, 600, 262 });
-                for (int b = 0; b < ui::EqGraph::numBands; ++b)
-                {
-                    show (bandButtons[b], { 644 + b * 80, 146, 74, 28 });
-                    bandButtons[b].setToggleState (b == eqBand, juce::dontSendNotification);
-                }
+                show (bandPrev, { 644, 146, 26, 26 });
+                show (bandLabel, { 672, 146, 98, 26 });
+                show (bandNext, { 772, 146, 26, 26 });
+                show (bandOnButton, { 806, 146, 70, 26 });
+                show (bandSoloButton, { 882, 146, 78, 26 });
+                show (bandType, { 644, 178, 108, 24 });
+                show (bandSlope, { 756, 178, 100, 24 });
+                show (bandStereo, { 860, 178, 100, 24 });
                 for (int i = 0; i < eqKnobs[eqBand].size(); ++i)
-                    showK (*eqKnobs[eqBand][i], { 644 + i * 106, 182, 100, 118 });
-                show (eqNote, { 644, 312, 316, 90 });
+                    showK (*eqKnobs[eqBand][i], { 644 + i * 106, 204, 100, 92 });
+                show (bandAddButton, { 644, 298, 96, 22 });
+                show (bandDupButton, { 744, 298, 104, 22 });
+                show (bandDelButton, { 852, 298, 108, 22 });
+                show (bandDynButton, { 644, 326, 96, 24 });
+                show (bandDynMode, { 744, 326, 104, 24 });
+                show (bandDynNow, { 852, 326, 108, 24 });
+                for (int i = 0; i < 4; ++i)
+                {
+                    show (bandDynLabels[i], { 644 + (i % 2) * 160, 356 + (i / 2) * 26, 46, 22 });
+                    show (bandDynSliders[i], { 690 + (i % 2) * 160, 356 + (i / 2) * 26, 112, 22 });
+                }
                 // AIR LAB, beside warmth: the tone tools that work after the compressor
                 show (airOnButton, { 776, 424, 110, 24 });
-                show (airLinkButton, { 892, 424, 70, 24 });
+                show (airNow, { 868, 424, 98, 24 });
                 juce::Component* airLabels[4] = { &airPresenceLabel, &airAirLabel, &airMixLabel, &airTrimLabel };
                 juce::Component* airSliders[4] = { &airPresenceSlider, &airAirSlider, &airMixSlider, &airTrimSlider };
                 for (int i = 0; i < 4; ++i)
@@ -2359,10 +2540,29 @@ void GlitchKidEditor::layoutContent()
                 show (limNote, { 500, 450, 460, 70 });
                 break;
 
-            default: // SPACE: echo, width and the Doubler, one row each
+            default: // SPACE: the reverb (first tab); echo, width and the Doubler, one row each (second tab)
             {
                 macroRow (glitchkid::macros::Macro::space, "DRY", "SPACIOUS", 108);
-                const int y0 = 160, y1 = 290, y2 = 420;
+                show (spaceTabReverb, { 24, 146, 140, 26 });
+                show (spaceTabEcho, { 170, 146, 200, 26 });
+                spaceTabReverb.setToggleState (spaceTab == 0, juce::dontSendNotification);
+                spaceTabEcho.setToggleState (spaceTab == 1, juce::dontSendNotification);
+                if (spaceTab == 0)
+                {
+                    show (spaceTitle, { 24, 186, 180, 14 });
+                    show (spaceOnButton, { 24, 206, 76, 28 });
+                    show (spaceFreezeButton, { 104, 206, 104, 28 });
+                    show (spaceAlgoBox, { 220, 206, 190, 28 });
+                    show (spaceCharBox, { 418, 206, 120, 28 });
+                    show (spacePresetBox, { 548, 206, 230, 28 });
+                    show (spaceAbout, { 24, 240, 936, 18 });
+                    for (int i = 0; i < 6; ++i)
+                        showK (*spaceKnobs[i], { 24 + i * 156, 266, 150, 112 });
+                    for (int i = 6; i < 13; ++i)
+                        showK (*spaceKnobs[i], { 24 + (i - 6) * 134, 388, 128, 104 });
+                    break;
+                }
+                const int y0 = 186, y1 = 306, y2 = 426;
                 show (echoTitle, { 24, y0, 140, 14 });
                 show (echoOnButton, { 24, y0 + 22, 100, 28 });
                 show (echoSyncButton, { 24, y0 + 56, 100, 28 });

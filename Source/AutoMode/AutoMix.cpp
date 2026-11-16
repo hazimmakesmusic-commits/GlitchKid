@@ -141,7 +141,7 @@ Result compute (const analysis::VocalAnalysis& in, Profile, float intensity, con
     // 4. Saturation: up to 4 dB; none if the take is clipping or peaks within 0.5 dB of full scale; halved if it is already bright.
     put ("sat_drive", hot ? 0.0f : 4.0f * i * (top > brightTop ? 0.5f : 1.0f));
 
-    // 5. Atmosphere (Liquid Echo = the delay, Dimension, Doubler = the width). There is no reverb in GlitchKid. When the 2-5 kHz share
+    // 5. Atmosphere (Liquid Echo = the delay, Dimension, Doubler = the width). (The SPACE reverb is set by Build My Mix's profiles.) When the 2-5 kHz share
     //    looks low (the words may be hard to follow) the amounts are scaled to 60 %. Time/tone/width settings are fixed ASTRO choices.
     const float amb = i * (dull ? 0.6f : 1.0f);
     put ("echo_on", on ? 1.0f : 0.0f);

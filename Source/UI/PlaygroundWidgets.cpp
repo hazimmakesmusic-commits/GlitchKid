@@ -2,6 +2,7 @@
 #include <BinaryData.h>
 #include "../Presets/FactoryPresets.h"
 #include "Theme.h"
+#include "../DSP/EqParamIds.h"
 #include <juce_audio_basics/juce_audio_basics.h>
 #include <complex>
 
@@ -347,16 +348,78 @@ void drawPanel (juce::Graphics& g, juce::Rectangle<float> r)
 
 namespace
 {
-constexpr float eqMinHz = 20.0f, eqMaxHz = 20000.0f, eqRangeDb = 15.0f;
-const char* const eqFreqIds[4] = { "eq_lo_freq", "eq_b1_freq", "eq_b2_freq", "eq_hi_freq" };
-const char* const eqGainIds[4] = { "eq_lo_gain", "eq_b1_gain", "eq_b2_gain", "eq_hi_gain" };
-const char* const eqQIds[4] = { nullptr, "eq_b1_q", "eq_b2_q", nullptr };
-const char* const eqNames[4] = { "LOW", "BODY", "PRESENCE", "AIR" };
+constexpr float eqMinHz = 20.0f, eqMaxHz = 20000.0f;
+const char* const typeNames[8] = { "Bell", "Low Shelf", "High Shelf", "Low Cut", "High Cut", "Notch", "Band Pass", "Tilt" };
+const char* const placeLetters[5] = { "", "L", "R", "M", "S" };
+const float ranges[] = { 6.0f, 12.0f, 15.0f, 24.0f, 30.0f };
+const float averages[] = { 0.1f, 0.35f, 1.2f };
+const char* const averageNames[] = { "Fast", "Medium", "Slow" };
+juce::String hzText (float hz) { return hz >= 1000.0f ? juce::String (hz / 1000.0f, hz < 10000.0f ? 2 : 1) + " kHz" : juce::String (juce::roundToInt (hz)) + " Hz"; }
 }
 
 EqGraph::EqGraph (juce::AudioProcessorValueTreeState& a, std::function<double()> sr) : apvts (a), sampleRate (std::move (sr))
 {
-    setTooltip ("The EQ response, calculated from your four EQ bands. Drag a point to change its frequency and gain, use the mouse wheel to change a bell's Q, double-click a point to flatten it. The curve is calculated from your settings; the shaded area behind it is the vocal's real spectrum while audio plays.");
+    setTooltip ("EQ LAB. The curve is every band's real response; the shaded area is the audio entering the EQ and the line the audio leaving it (real, measured). "
+                "Drag a point: frequency and gain. Wheel on a point: Q. Right-click a point: type, slope, channels, solo, duplicate, delete. "
+                "Double-click empty space: add a band. Wheel on empty space: zoom; drag empty space: move the view. Delete key: remove the selected band.");
+    setWantsKeyboardFocus (true);
+    for (auto* b : { &rangeButton, &fitButton, &avgButton, &resButton, &freezeButton })
+    {
+        addAndMakeVisible (*b);
+        b->setWantsKeyboardFocus (false);
+    }
+    rangeButton.setTooltip ("The graph's dB range (vertical zoom).");
+    fitButton.setTooltip ("Show the whole range, 20 Hz to 20 kHz.");
+    avgButton.setTooltip ("Analyser averaging: how quickly the measured spectrum follows the audio.");
+    resButton.setTooltip ("Analyser resolution (FFT size): higher shows more detail in the lows, but reacts a little slower.");
+    freezeButton.setTooltip ("Freeze the analyser to study the spectrum. The audio keeps playing and the EQ keeps working.");
+    freezeButton.setClickingTogglesState (true);
+    rangeButton.onClick = [this]
+    {
+        int i = 0;
+        while (i < 4 && ! juce::approximatelyEqual (ranges[i], rangeDb)) ++i;
+        rangeDb = ranges[(i + 1) % 5];
+        haveCurve = haveClean = false;
+        updateStrip();
+        repaint();
+    };
+    fitButton.onClick = [this] { setView (eqMinHz, eqMaxHz); };
+    avgButton.onClick = [this]
+    {
+        int i = 0;
+        while (i < 2 && ! juce::approximatelyEqual (averages[i], specOut.getAveragingSeconds())) ++i;
+        for (auto* sp : { &specIn, &specOut })
+            sp->setAveragingSeconds (averages[(i + 1) % 3]);
+        updateStrip();
+    };
+    resButton.onClick = [this]
+    {
+        const int order = specOut.getResolution() >= 13 ? 11 : specOut.getResolution() + 1;
+        for (auto* sp : { &specIn, &specOut })
+            sp->setResolution (order);
+        updateStrip();
+    };
+    freezeButton.onClick = [this]
+    {
+        for (auto* sp : { &specIn, &specOut })
+            sp->setFrozen (freezeButton.getToggleState());
+        updateStrip();
+        repaint();
+    };
+    updateStrip();
+}
+
+EqGraph::~EqGraph() = default;
+
+void EqGraph::updateStrip()
+{
+    rangeButton.setButtonText (juce::String (juce::CharPointer_UTF8 ("\xc2\xb1")) + juce::String ((int) rangeDb) + " dB");
+    fitButton.setButtonText ("Fit");
+    int i = 0;
+    while (i < 2 && ! juce::approximatelyEqual (averages[i], specOut.getAveragingSeconds())) ++i;
+    avgButton.setButtonText (juce::String ("Avg ") + averageNames[i]);
+    resButton.setButtonText ("FFT " + juce::String (1 << specOut.getResolution()));
+    freezeButton.setButtonText (specOut.isFrozen() ? "Frozen" : "Freeze");
 }
 
 void EqGraph::setSelectedBand (int b)
@@ -365,99 +428,78 @@ void EqGraph::setSelectedBand (int b)
     if (b != selected)
     {
         selected = b;
+        haveCurve = false;
         repaint();
     }
 }
 
-void EqGraph::readParams (float* f, float* g, float* q) const
+void EqGraph::readAll (EqBandSettings* bands) const
 {
-    for (int i = 0; i < numBands; ++i)
-    {
-        f[i] = apvts.getRawParameterValue (eqFreqIds[i])->load();
-        g[i] = apvts.getRawParameterValue (eqGainIds[i])->load();
-        q[i] = eqQIds[i] != nullptr ? apvts.getRawParameterValue (eqQIds[i])->load() : 0.7071f; // shelves use a fixed slope
-    }
+    for (int b = 0; b < ParametricEq::numBands; ++b)
+        bands[b] = eqBandFrom (b, [this] (const char* id, float fallback)
+        {
+            const auto* v = apvts.getRawParameterValue (id);
+            return v != nullptr ? v->load() : fallback;
+        });
 }
 
-// RBJ Audio EQ Cookbook, the same formulas as ParametricEq::updateCoefficients; |H(e^jw)| in dB at one frequency, summed over the bands.
-float EqGraph::responseDb (const float freq[numBands], const float gain[numBands], const float q[numBands], float atHz, double fs)
+void EqGraph::setView (float lo, float hi)
 {
-    double total = 0.0;
-    const double w = 2.0 * juce::MathConstants<double>::pi * (double) atHz / fs;
-    const std::complex<double> z1 = std::polar (1.0, -w), z2 = std::polar (1.0, -2.0 * w);
-    for (int i = 0; i < numBands; ++i)
-    {
-        if (std::abs (gain[i]) < 0.05f) // the DSP skips a band within 0.05 dB of flat
-            continue;
-        const double f = juce::jmin ((double) juce::jlimit (10.0f, 20000.0f, freq[i]), 0.45 * fs);
-        const double A = std::pow (10.0, (double) gain[i] / 40.0);
-        const double w0 = 2.0 * juce::MathConstants<double>::pi * f / fs, cosw = std::cos (w0), sinw = std::sin (w0);
-        double b0, b1, b2, a0, a1, a2;
-        if (i == 1 || i == 2)
-        {
-            const double alpha = sinw / (2.0 * (double) juce::jlimit (0.1f, 20.0f, q[i]));
-            b0 = 1 + alpha * A;  b1 = -2 * cosw;  b2 = 1 - alpha * A;
-            a0 = 1 + alpha / A;  a1 = -2 * cosw;  a2 = 1 - alpha / A;
-        }
-        else
-        {
-            const double alpha = sinw / (2.0 * 0.7071), k = 2.0 * std::sqrt (A) * alpha;
-            if (i == 0)
-            {
-                b0 = A * ((A + 1) - (A - 1) * cosw + k);  b1 = 2 * A * ((A - 1) - (A + 1) * cosw);  b2 = A * ((A + 1) - (A - 1) * cosw - k);
-                a0 = (A + 1) + (A - 1) * cosw + k;        a1 = -2 * ((A - 1) + (A + 1) * cosw);     a2 = (A + 1) + (A - 1) * cosw - k;
-            }
-            else
-            {
-                b0 = A * ((A + 1) + (A - 1) * cosw + k);  b1 = -2 * A * ((A - 1) + (A + 1) * cosw); b2 = A * ((A + 1) + (A - 1) * cosw - k);
-                a0 = (A + 1) - (A - 1) * cosw + k;        a1 = 2 * ((A - 1) - (A + 1) * cosw);      a2 = (A + 1) - (A - 1) * cosw - k;
-            }
-        }
-        const auto num = b0 + b1 * z1 + b2 * z2, den = a0 + a1 * z1 + a2 * z2;
-        total += 20.0 * std::log10 (std::abs (num) / std::abs (den));
-    }
-    return (float) total;
+    lo = juce::jlimit (eqMinHz, eqMaxHz / 4.0f, lo);
+    hi = juce::jlimit (lo * 4.0f, eqMaxHz, hi); // at least two octaves
+    if (hi > eqMaxHz)
+        hi = eqMaxHz;
+    viewLo = lo;
+    viewHi = hi;
+    haveCurve = haveClean = false;
+    repaint();
 }
 
-float EqGraph::xOf (float hz) const { return plot.getX() + plot.getWidth() * std::log (juce::jlimit (eqMinHz, eqMaxHz, hz) / eqMinHz) / std::log (eqMaxHz / eqMinHz); }
-float EqGraph::yOf (float db) const { return plot.getCentreY() - juce::jlimit (-eqRangeDb, eqRangeDb, db) / eqRangeDb * plot.getHeight() * 0.5f; }
-float EqGraph::hzAt (float x) const { return eqMinHz * std::exp (juce::jlimit (0.0f, 1.0f, (x - plot.getX()) / plot.getWidth()) * std::log (eqMaxHz / eqMinHz)); }
-float EqGraph::dbAt (float y) const { return juce::jlimit (-eqRangeDb, eqRangeDb, (plot.getCentreY() - y) / (plot.getHeight() * 0.5f) * eqRangeDb); }
+float EqGraph::xOf (float hz) const { return plot.getX() + plot.getWidth() * std::log (juce::jlimit (1.0f, 1.0e5f, hz) / viewLo) / std::log (viewHi / viewLo); }
+float EqGraph::yOf (float db) const { return plot.getCentreY() - juce::jlimit (-rangeDb, rangeDb, db) / rangeDb * plot.getHeight() * 0.5f; }
+float EqGraph::hzAt (float x) const { return viewLo * std::exp ((x - plot.getX()) / plot.getWidth() * std::log (viewHi / viewLo)); }
+float EqGraph::dbAt (float y) const { return juce::jlimit (-rangeDb, rangeDb, (plot.getCentreY() - y) / (plot.getHeight() * 0.5f) * rangeDb); }
+float EqGraph::yOfLevel (float dbfs) const { return plot.getBottom() - plot.getHeight() * juce::jlimit (0.0f, 1.0f, (dbfs + 90.0f) / 90.0f); }
 
 void EqGraph::resized()
 {
     plot = getLocalBounds().toFloat().withTrimmedLeft (34.0f).withTrimmedBottom (20.0f).withTrimmedTop (8.0f).withTrimmedRight (10.0f);
-    haveCurve = false;
+    int x = (int) plot.getX() + 6;
+    const int y = (int) plot.getY() + 4;
+    for (auto [b, w] : { std::pair<juce::TextButton*, int> { &rangeButton, 56 }, { &fitButton, 34 }, { &avgButton, 84 }, { &resButton, 72 }, { &freezeButton, 58 } })
+    {
+        b->setBounds (x, y, w, 18);
+        x += w + 4;
+    }
+    haveCurve = haveClean = false;
 }
 
 juce::Point<float> EqGraph::pointOf (int band) const
 {
-    float f[numBands], g[numBands], q[numBands];
-    readParams (f, g, q);
-    return { xOf (f[band]), yOf (g[band]) };
+    const auto& s = shown[juce::jlimit (0, numBands - 1, band)];
+    return { xOf (s.freqHz), yOf (ParametricEq::isGainType (s.type) ? s.gainDb : 0.0f) };
 }
 
 void EqGraph::rebuildCurve()
 {
-    float f[numBands], g[numBands], q[numBands];
-    readParams (f, g, q);
-    const double fs = sampleRate ? sampleRate() : 48000.0;
+    readAll (shown);
+    const double fs0 = sampleRate ? sampleRate() : 48000.0, fs = fs0 > 1000.0 ? fs0 : 48000.0;
     curve.clear();
+    selectedCurve.clear();
     const int n = juce::jmax (8, (int) plot.getWidth() / 2);
     for (int i = 0; i <= n; ++i)
     {
-        const float x = plot.getX() + plot.getWidth() * (float) i / (float) n;
-        const float y = yOf (responseDb (f, g, q, hzAt (x), fs > 1000.0 ? fs : 48000.0));
-        if (i == 0)
-            curve.startNewSubPath (x, y);
-        else
-            curve.lineTo (x, y);
+        const float x = plot.getX() + plot.getWidth() * (float) i / (float) n, hz = hzAt (x);
+        const float y = yOf ((float) ParametricEq::responseDb (shown, numBands, hz, fs)); // every band, from the audio's own coefficients
+        const float ys = yOf ((float) ParametricEq::bandResponseDb (shown[selected], hz, fs));
+        if (i == 0) { curve.startNewSubPath (x, y); selectedCurve.startNewSubPath (x, ys); }
+        else { curve.lineTo (x, y); selectedCurve.lineTo (x, ys); }
     }
-    for (int i = 0; i < numBands; ++i)
+    for (int b = 0; b < numBands; ++b)
     {
-        shownF[i] = f[i];
-        shownG[i] = g[i];
-        shownQ[i] = q[i];
+        const auto& s = shown[b];
+        const float v[7] = { s.freqHz, s.gainDb, s.q, s.on ? 1.0f : 0.0f, (float) s.type, (float) s.slopeDb, (float) s.placement };
+        std::copy (v, v + 7, shownAll.begin() + b * 7);
     }
     haveCurve = true;
 }
@@ -497,27 +539,29 @@ float EqGraph::cleanResponseDb (const CleanLab::Applied& a, float atHz, double f
     return (float) (20.0 * std::log10 (std::abs (h) + 1.0e-12));
 }
 
-void EqGraph::setSpectrum (const float* levels, int n, float topHz)
-{
-    const bool had = ! spec.empty();
-    if (levels == nullptr || n <= 1)
-    {
-        spec.clear();
-        if (had)
-            repaint();
-        return;
-    }
-    if ((int) spec.size() == n && juce::approximatelyEqual (specTop, topHz) && std::equal (spec.begin(), spec.end(), levels))
-        return; // nothing changed: nothing to redraw
-    spec.assign (levels, levels + n);
-    specTop = topHz;
-    repaint();
-}
-
 void EqGraph::setCleanApplied (const CleanLab::Applied& a)
 {
     clean = a;
     refresh();
+}
+
+void EqGraph::analyse (const analysis::DisplayTap& in, const analysis::DisplayTap& out, double sr, float dt)
+{
+    const bool a = specIn.update (in, sr, dt), b = specOut.update (out, sr, dt);
+    inLive = specIn.hasSignal();
+    outLive = specOut.hasSignal();
+    if (a || b)
+    {
+        float hz = 0.0f, db = -120.0f;
+        if (specOut.peak (viewLo, juce::jmin (viewHi, (float) (0.45 * sr)), hz, db))
+        {
+            peakHz = hz;
+            peakDb = db;
+        }
+        else
+            peakHz = 0.0f;
+        repaint();
+    }
 }
 
 void EqGraph::refresh()
@@ -546,15 +590,56 @@ void EqGraph::refresh()
             repaint();
         }
     }
-    float f[numBands], g[numBands], q[numBands];
-    readParams (f, g, q);
     bool changed = ! haveCurve;
-    for (int i = 0; i < numBands; ++i)
-        changed = changed || ! juce::exactlyEqual (f[i], shownF[i]) || ! juce::exactlyEqual (g[i], shownG[i]) || ! juce::exactlyEqual (q[i], shownQ[i]);
+    if (! changed)
+    {
+        EqBandSettings all[numBands];
+        readAll (all);
+        for (int b = 0; b < numBands && ! changed; ++b)
+        {
+            const auto& s = all[b];
+            const float v[7] = { s.freqHz, s.gainDb, s.q, s.on ? 1.0f : 0.0f, (float) s.type, (float) s.slopeDb, (float) s.placement };
+            for (int k = 0; k < 7; ++k)
+                changed = changed || ! juce::exactlyEqual (v[k], shownAll[(size_t) (b * 7 + k)]);
+        }
+    }
     if (changed)
     {
         rebuildCurve();
         repaint();
+    }
+    // dynamic EQ: the curve as it is right now (each dynamic band's gain plus its live change), only while a change is happening
+    if (dynamicDbOf)
+    {
+        bool moved = changed, any = false;
+        for (int b = 0; b < numBands; ++b)
+        {
+            const float d = shown[b].on && shown[b].dynamic ? dynamicDbOf (b) : 0.0f;
+            moved = moved || std::abs (d - dynNow[(size_t) b]) > 0.05f;
+            any = any || std::abs (d) > 0.05f;
+            dynNow[(size_t) b] = d;
+        }
+        if (moved || any != haveLive)
+        {
+            haveLive = any;
+            liveCurve.clear();
+            if (any)
+            {
+                EqBandSettings live[numBands];
+                std::copy (shown, shown + numBands, live);
+                for (int b = 0; b < numBands; ++b)
+                    live[b].gainDb += dynNow[(size_t) b];
+                const double fs0 = sampleRate ? sampleRate() : 48000.0, fs = fs0 > 1000.0 ? fs0 : 48000.0;
+                const int n = juce::jmax (8, (int) plot.getWidth() / 2);
+                for (int i = 0; i <= n; ++i)
+                {
+                    const float x = plot.getX() + plot.getWidth() * (float) i / (float) n;
+                    const float y = yOf ((float) ParametricEq::responseDb (live, numBands, hzAt (x), fs));
+                    if (i == 0) liveCurve.startNewSubPath (x, y); else liveCurve.lineTo (x, y);
+                }
+            }
+            repaint();
+        }
     }
 }
 
@@ -562,14 +647,18 @@ void EqGraph::paint (juce::Graphics& g)
 {
     if (! haveCurve)
         rebuildCurve();
+    if (! haveClean)
+        refresh();
     g.setColour (well);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 3.0f);
     g.setColour (border);
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 3.0f, 1.0f);
     g.reduceClipRegion (getLocalBounds().reduced (1));
-    // grid and labels
+
+    // grid: dB lines for the chosen range, frequency lines (1-2-5 per decade) inside the view
     g.setFont (fontOf (10.5f));
-    for (float db : { -12.0f, -6.0f, 0.0f, 6.0f, 12.0f })
+    const float step = rangeDb <= 6.0f ? 2.0f : rangeDb <= 15.0f ? 6.0f : 12.0f;
+    for (float db = -std::floor (rangeDb / step) * step; db <= rangeDb + 0.01f; db += step)
     {
         const float y = yOf (db);
         g.setColour (juce::approximatelyEqual (db, 0.0f) ? border.brighter (0.5f) : border.withAlpha (0.8f));
@@ -577,63 +666,146 @@ void EqGraph::paint (juce::Graphics& g)
         g.setColour (textDim);
         g.drawText ((db > 0 ? "+" : "") + juce::String ((int) db), juce::Rectangle<float> (2.0f, y - 7.0f, 28.0f, 14.0f), juce::Justification::centredRight, false);
     }
-    for (float hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
-    {
-        const float x = xOf (hz);
-        g.setColour (border.withAlpha (0.8f));
-        g.fillRect (x, plot.getY(), 1.0f, plot.getHeight());
-        g.setColour (textDim);
-        g.drawText (hz >= 1000.0f ? juce::String (hz / 1000.0f, hz < 10000.0f && ! juce::approximatelyEqual (std::fmod (hz, 1000.0f), 0.0f) ? 1 : 0) + "k" : juce::String ((int) hz),
-                    juce::Rectangle<float> (x - 18.0f, plot.getBottom() + 3.0f, 36.0f, 14.0f), juce::Justification::centred, false);
-    }
-    // the real spectrum of the vocal input (only while a signal arrives)
-    if (spec.size() > 1)
-    {
-        juce::Path sp;
-        sp.startNewSubPath (xOf (20.0f), plot.getBottom());
-        for (size_t i = 0; i < spec.size(); ++i)
+    for (float decade = 10.0f; decade <= 10000.0f; decade *= 10.0f)
+        for (float m : { 1.0f, 2.0f, 5.0f })
         {
-            const float hz = 20.0f * std::pow (specTop / 20.0f, (float) i / (float) (spec.size() - 1));
-            sp.lineTo (xOf (hz), plot.getBottom() - plot.getHeight() * 0.85f * juce::jlimit (0.0f, 1.0f, spec[i]));
+            const float hz = decade * m;
+            if (hz < viewLo || hz > viewHi)
+                continue;
+            const float x = xOf (hz);
+            g.setColour (border.withAlpha (m > 1.0f ? 0.5f : 0.9f));
+            g.fillRect (x, plot.getY(), 1.0f, plot.getHeight());
+            g.setColour (textDim);
+            g.drawText (hz >= 1000.0f ? juce::String ((int) (hz / 1000.0f)) + "k" : juce::String ((int) hz), juce::Rectangle<float> (x - 18.0f, plot.getBottom() + 3.0f, 36.0f, 14.0f),
+                        juce::Justification::centred, false);
         }
-        sp.lineTo (xOf (specTop), plot.getBottom());
-        sp.closeSubPath();
-        g.setColour (violet.withAlpha (0.13f));
-        g.fillPath (sp);
-        g.setColour (violet.withAlpha (0.45f));
-        g.strokePath (sp, juce::PathStrokeType (1.0f));
+
+    // the analyser: what enters the EQ (shaded) and what leaves it (line), measured, per 2-pixel column
+    {
+        juce::Path inP, outP;
+        bool anyIn = false, anyOut = false;
+        inP.startNewSubPath (plot.getX(), plot.getBottom());
+        for (float x = plot.getX(); x <= plot.getRight(); x += 2.0f)
+        {
+            const float f0 = hzAt (x - 1.0f), f1 = hzAt (x + 1.0f);
+            const float li = specIn.levelDb (f0, f1), lo = specOut.levelDb (f0, f1);
+            anyIn = anyIn || li > -90.0f;
+            anyOut = anyOut || lo > -90.0f;
+            inP.lineTo (x, yOfLevel (li));
+            if (x <= plot.getX()) outP.startNewSubPath (x, yOfLevel (lo)); else outP.lineTo (x, yOfLevel (lo));
+        }
+        inP.lineTo (plot.getRight(), plot.getBottom());
+        inP.closeSubPath();
+        if (anyIn)
+        {
+            g.setColour (textDim.withAlpha (0.16f));
+            g.fillPath (inP);
+        }
+        if (anyOut)
+        {
+            g.setColour (pink.withAlpha (0.55f));
+            g.strokePath (outP, juce::PathStrokeType (1.0f));
+        }
+        if (! anyIn && ! anyOut)
+        {
+            g.setColour (textDim.withAlpha (0.8f));
+            g.setFont (fontOf (11.0f));
+            g.drawText ("Analyser: play audio to see the spectrum", juce::Rectangle<float> (plot.getX() + 6.0f, plot.getBottom() - 18.0f, 260.0f, 16.0f),
+                        juce::Justification::centredLeft, false);
+        }
     }
-    // the response: filled toward the 0 dB line, then the curve itself
+
+    // the response: the selected band's own shape, then the sum of every band
     juce::Path fill (curve);
     fill.lineTo (plot.getRight(), plot.getCentreY());
     fill.lineTo (plot.getX(), plot.getCentreY());
     fill.closeSubPath();
     g.setColour (violet.withAlpha (0.16f));
     g.fillPath (fill);
+    if (shown[selected].on)
+    {
+        g.setColour (neon.withAlpha (0.45f));
+        g.strokePath (selectedCurve, juce::PathStrokeType (1.0f));
+    }
     g.setColour (violet.withAlpha (0.28f));
     g.strokePath (curve, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded)); // a restrained glow under the line
     g.setColour (neon);
     g.strokePath (curve, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    if (haveLive) // dynamic EQ, live: the curve right now, and on each moving band a stroke from its set gain to where it is now
+    {
+        g.setColour (pink.withAlpha (0.9f));
+        g.strokePath (liveCurve, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        for (int b = 0; b < numBands; ++b)
+            if (shown[b].on && std::abs (dynNow[(size_t) b]) > 0.05f)
+            {
+                const auto p = pointOf (b);
+                const float y1 = yOf (shown[b].gainDb + dynNow[(size_t) b]);
+                g.fillRect (p.x - 1.5f, juce::jmin (p.y, y1), 3.0f, std::abs (y1 - p.y));
+                g.fillEllipse (p.x - 3.0f, y1 - 3.0f, 6.0f, 6.0f);
+            }
+    }
     // CLEAN LAB's applied corrections (real, from the DSP's own smoothed values), only while any is applied
     if (shownClean.mudDb > 0.05f || shownClean.rumbleAmount > 0.02f || shownClean.resDb[0] > 0.05f || shownClean.resDb[1] > 0.05f || shownClean.resDb[2] > 0.05f)
     {
         g.setColour (pink.withAlpha (0.95f));
         g.strokePath (cleanCurve, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
         g.setFont (fontOf (10.5f, true));
-        g.drawText ("Clean Lab", juce::Rectangle<float> (plot.getRight() - 80.0f, plot.getY() + 2.0f, 78.0f, 13.0f), juce::Justification::centredRight, false);
+        g.drawText ("Clean Lab", juce::Rectangle<float> (plot.getRight() - 80.0f, plot.getY() + 24.0f, 78.0f, 13.0f), juce::Justification::centredRight, false);
     }
-    // the four points
-    for (int i = 0; i < numBands; ++i)
+
+    // one handle per band that is on: its number, its channel letter (L / R / M / S), solo shown as a ring
+    for (int b = 0; b < numBands; ++b)
     {
-        const auto p = juce::Point<float> (xOf (shownF[i]), yOf (shownG[i]));
-        const bool sel = i == selected, hot = i == dragging || i == hovered;
+        const auto& s = shown[b];
+        if (! s.on)
+            continue;
+        const auto p = pointOf (b);
+        const bool sel = b == selected, hot = b == dragging || b == hovered;
         g.setColour (obsidian);
-        g.fillEllipse (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f);
+        g.fillEllipse (p.x - 8.0f, p.y - 8.0f, 16.0f, 16.0f);
         g.setColour (sel ? pink : (hot ? neon : violet));
-        g.drawEllipse (p.x - 7.0f, p.y - 7.0f, 14.0f, 14.0f, sel ? 2.4f : 1.6f);
-        g.setColour (sel ? pink : violet);
-        g.setFont (fontOf (10.5f, true));
-        g.drawText (eqNames[i], juce::Rectangle<float> (p.x - 30.0f, p.y + (shownG[i] > 0.05f ? -22.0f : 9.0f), 60.0f, 13.0f), juce::Justification::centred, false);
+        g.drawEllipse (p.x - 8.0f, p.y - 8.0f, 16.0f, 16.0f, sel ? 2.4f : 1.6f);
+        if (b == soloBand)
+            g.drawEllipse (p.x - 12.0f, p.y - 12.0f, 24.0f, 24.0f, 1.2f);
+        g.setColour (sel ? textBright : textDim);
+        g.setFont (fontOf (9.5f, true));
+        g.drawText (juce::String (b + 1), juce::Rectangle<float> (p.x - 8.0f, p.y - 7.0f, 16.0f, 14.0f), juce::Justification::centred, false);
+        if (s.placement != EqPlacement::stereo)
+            g.drawText (placeLetters[(int) s.placement], juce::Rectangle<float> (p.x - 8.0f, p.y + 9.0f, 16.0f, 11.0f), juce::Justification::centred, false);
+    }
+
+    // read-outs: the band under the pointer (or being dragged), the frequency under the pointer, the loudest peak leaving the EQ
+    g.setFont (fontOf (11.0f));
+    const auto info = juce::Rectangle<float> (plot.getRight() - 300.0f, plot.getY() + 4.0f, 296.0f, 16.0f);
+    const int focusBand = dragging >= 0 ? dragging : hovered;
+    if (focusBand >= 0)
+    {
+        const auto& s = shown[focusBand];
+        juce::String t = "Band " + juce::String (focusBand + 1) + "  " + typeNames[(int) s.type] + "  " + hzText (s.freqHz);
+        if (ParametricEq::isGainType (s.type))
+            t << "  " << juce::String (s.gainDb, 1) << " dB";
+        if (s.type == EqType::lowCut || s.type == EqType::highCut)
+            t << "  " << s.slopeDb << " dB/oct";
+        t << "  Q " << juce::String (s.q, 2);
+        if (s.dynamic && ParametricEq::isGainType (s.type))
+            t << "  dyn " << juce::String (dynNow[(size_t) focusBand], 1) << " dB";
+        g.setColour (textBright);
+        g.drawText (t, info, juce::Justification::centredRight, false);
+    }
+    else if (plot.contains (mouse))
+    {
+        const float hz = hzAt (mouse.x);
+        g.setColour (textDim);
+        g.drawText (hzText (hz) + "  " + analysis::EqAnalyzer::noteName (hz) + "   EQ " + juce::String (dbAt (mouse.y), 1) + " dB", info, juce::Justification::centredRight, false);
+    }
+    if (peakHz > 0.0f && (outLive || specOut.isFrozen()))
+    {
+        const float x = xOf (peakHz), y = yOfLevel (peakDb);
+        g.setColour (pink);
+        g.fillEllipse (x - 2.5f, y - 2.5f, 5.0f, 5.0f);
+        g.setColour (textDim);
+        g.drawText ("Peak " + hzText (peakHz) + " (" + analysis::EqAnalyzer::noteName (peakHz) + ")  " + juce::String (peakDb, 1) + " dBFS",
+                    juce::Rectangle<float> (plot.getRight() - 300.0f, plot.getBottom() - 18.0f, 296.0f, 16.0f), juce::Justification::centredRight, false);
     }
 }
 
@@ -643,8 +815,9 @@ int EqGraph::bandNear (juce::Point<float> p) const
     float bestD = 16.0f * 16.0f;
     for (int i = 0; i < numBands; ++i)
     {
-        const auto c = pointOf (i);
-        const float d = c.getDistanceSquaredFrom (p);
+        if (! shown[i].on)
+            continue;
+        const float d = pointOf (i).getDistanceSquaredFrom (p);
         if (d < bestD)
         {
             bestD = d;
@@ -654,84 +827,236 @@ int EqGraph::bandNear (juce::Point<float> p) const
     return best;
 }
 
-void EqGraph::setParam (const char* id, float value)
+void EqGraph::setParam (const char* id, float value, bool gesture)
 {
     if (auto* prm = apvts.getParameter (id))
+    {
+        if (gesture) prm->beginChangeGesture();
         prm->setValueNotifyingHost (prm->convertTo0to1 (value));
+        if (gesture) prm->endChangeGesture();
+    }
+}
+
+int EqGraph::addBandAt (float hz, float db)
+{
+    EqBandSettings all[numBands];
+    readAll (all);
+    int b = -1;
+    for (int i : { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3 }) // the new bands first; the original four only when they are switched off
+        if (! all[i].on) { b = i; break; }
+    if (b < 0)
+        return -1;
+    const auto& id = eqIds[b];
+    setParam (id.type, (float) EqType::bell);
+    setParam (id.freq, hz);
+    setParam (id.gain, db);
+    setParam (id.q, 1.0f);
+    setParam (id.slope, 1.0f);
+    setParam (id.stereo, 0.0f);
+    setParam (id.on, 1.0f);
+    setSelectedBand (b);
+    if (onBandSelected) onBandSelected (b);
+    refresh();
+    return b;
+}
+
+int EqGraph::duplicateBand (int src)
+{
+    EqBandSettings all[numBands];
+    readAll (all);
+    int b = -1;
+    for (int i : { 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 2, 3 })
+        if (! all[i].on && i != src) { b = i; break; }
+    if (b < 0 || src < 0)
+        return -1;
+    const auto& s = all[src];
+    const auto& id = eqIds[b];
+    setParam (id.type, (float) s.type);
+    setParam (id.freq, s.freqHz * 1.12f);
+    setParam (id.gain, s.gainDb);
+    setParam (id.q, s.q);
+    setParam (id.slope, (float) ParametricEq::slopeIndex (s.slopeDb));
+    setParam (id.stereo, (float) s.placement);
+    setParam (id.on, 1.0f);
+    setSelectedBand (b);
+    if (onBandSelected) onBandSelected (b);
+    refresh();
+    return b;
+}
+
+void EqGraph::removeBand (int b)
+{
+    if (b < 0 || b >= numBands)
+        return;
+    setParam (eqIds[b].on, 0.0f);
+    if (soloBand == b)
+    {
+        soloBand = -1;
+        if (onSolo) onSolo (-1);
+    }
+    refresh();
+}
+
+void EqGraph::showBandMenu (int b)
+{
+    const auto& s = shown[b];
+    juce::PopupMenu m, slopes, channels;
+    m.addSectionHeader ("Band " + juce::String (b + 1));
+    for (int t = 0; t < 8; ++t)
+        m.addItem (100 + t, typeNames[t], true, (int) s.type == t);
+    for (int i = 0; i < ParametricEq::numSlopes; ++i)
+        slopes.addItem (200 + i, juce::String (ParametricEq::slopes[i]) + " dB/oct", true, ParametricEq::slopes[i] == s.slopeDb);
+    const char* chNames[5] = { "Stereo", "Left", "Right", "Mid", "Side" };
+    for (int i = 0; i < 5; ++i)
+        channels.addItem (300 + i, chNames[i], true, (int) s.placement == i);
+    m.addSubMenu ("Slope", slopes, s.type == EqType::lowCut || s.type == EqType::highCut);
+    m.addSubMenu ("Channels", channels);
+    m.addSeparator();
+    m.addItem (400, "Solo (hear this band's part)", true, soloBand == b);
+    m.addItem (401, "Duplicate");
+    m.addItem (402, "Delete");
+    juce::Component::SafePointer<EqGraph> safe (this);
+    m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition(), [safe, b] (int r)
+    {
+        if (safe == nullptr || r == 0)
+            return;
+        auto& self = *safe;
+        const auto& id = eqIds[b];
+        if (r >= 100 && r < 108) self.setParam (id.type, (float) (r - 100));
+        else if (r >= 200 && r < 200 + ParametricEq::numSlopes) self.setParam (id.slope, (float) (r - 200));
+        else if (r >= 300 && r < 305) self.setParam (id.stereo, (float) (r - 300));
+        else if (r == 400)
+        {
+            self.soloBand = self.soloBand == b ? -1 : b;
+            if (self.onSolo) self.onSolo (self.soloBand);
+        }
+        else if (r == 401) self.duplicateBand (b);
+        else if (r == 402) self.removeBand (b);
+        self.refresh();
+        self.repaint();
+    });
 }
 
 void EqGraph::mouseDown (const juce::MouseEvent& e)
 {
-    dragging = bandNear (e.position);
-    if (dragging >= 0)
+    grabKeyboardFocus();
+    const int b = bandNear (e.position);
+    if (e.mods.isPopupMenu())
     {
-        selected = dragging;
-        if (onBandSelected)
-            onBandSelected (selected);
-        for (auto* id : { eqFreqIds[dragging], eqGainIds[dragging] })
+        if (b >= 0)
+        {
+            setSelectedBand (b);
+            if (onBandSelected) onBandSelected (b);
+            showBandMenu (b);
+        }
+        return;
+    }
+    dragging = b;
+    if (b >= 0)
+    {
+        setSelectedBand (b);
+        if (onBandSelected) onBandSelected (b);
+        for (auto* id : { eqIds[b].freq, eqIds[b].gain })
             if (auto* prm = apvts.getParameter (id))
                 prm->beginChangeGesture();
+    }
+    else if (plot.contains (e.position) && (viewLo > eqMinHz * 1.001f || viewHi < eqMaxHz * 0.999f))
+    {
+        panning = true;
+        panStartLo = viewLo;
+        panStartX = e.position.x;
     }
     repaint();
 }
 
 void EqGraph::mouseDrag (const juce::MouseEvent& e)
 {
-    if (dragging < 0)
-        return;
-    setParam (eqFreqIds[dragging], hzAt (e.position.x));
-    setParam (eqGainIds[dragging], dbAt (e.position.y));
-    refresh();
+    if (dragging >= 0)
+    {
+        setParam (eqIds[dragging].freq, hzAt (e.position.x), false);
+        if (ParametricEq::isGainType (shown[dragging].type))
+            setParam (eqIds[dragging].gain, dbAt (e.position.y), false);
+        refresh();
+    }
+    else if (panning)
+    {
+        const float span = std::log (viewHi / viewLo), shift = (e.position.x - panStartX) / plot.getWidth() * span;
+        float lo = panStartLo * std::exp (-shift);
+        lo = juce::jlimit (eqMinHz, eqMaxHz / std::exp (span), lo);
+        setView (lo, lo * std::exp (span));
+    }
 }
 
 void EqGraph::mouseUp (const juce::MouseEvent&)
 {
     if (dragging >= 0)
-        for (auto* id : { eqFreqIds[dragging], eqGainIds[dragging] })
+        for (auto* id : { eqIds[dragging].freq, eqIds[dragging].gain })
             if (auto* prm = apvts.getParameter (id))
                 prm->endChangeGesture();
     dragging = -1;
+    panning = false;
     repaint();
 }
 
 void EqGraph::mouseMove (const juce::MouseEvent& e)
 {
+    mouse = e.position;
     const int h = bandNear (e.position);
     if (h != hovered)
     {
         hovered = h;
         setMouseCursor (h >= 0 ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
-        repaint();
     }
+    repaint();
+}
+
+void EqGraph::mouseExit (const juce::MouseEvent&)
+{
+    mouse = { -1.0f, -1.0f };
+    hovered = -1;
+    repaint();
 }
 
 void EqGraph::mouseDoubleClick (const juce::MouseEvent& e)
 {
     const int b = bandNear (e.position);
-    if (b < 0)
-        return;
-    if (auto* prm = apvts.getParameter (eqGainIds[b]))
+    if (b >= 0)
     {
-        prm->beginChangeGesture();
-        prm->setValueNotifyingHost (prm->convertTo0to1 (0.0f));
-        prm->endChangeGesture();
+        if (ParametricEq::isGainType (shown[b].type))
+            setParam (eqIds[b].gain, 0.0f);
     }
+    else if (plot.contains (e.position))
+        addBandAt (hzAt (e.position.x), dbAt (e.position.y));
     refresh();
 }
 
 void EqGraph::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
-    const int b = bandNear (e.position) >= 0 ? bandNear (e.position) : selected;
-    if (eqQIds[b] == nullptr)
-        return; // shelves have a fixed slope
-    if (auto* prm = apvts.getParameter (eqQIds[b]))
+    const int b = bandNear (e.position);
+    if (b >= 0)
     {
-        const float q = apvts.getRawParameterValue (eqQIds[b])->load() * std::pow (1.12f, w.deltaY > 0.0f ? 1.0f : -1.0f);
-        prm->beginChangeGesture();
-        prm->setValueNotifyingHost (prm->convertTo0to1 (q));
-        prm->endChangeGesture();
+        const float q = apvts.getRawParameterValue (eqIds[b].q)->load() * std::pow (1.12f, w.deltaY > 0.0f ? 1.0f : -1.0f);
+        setParam (eqIds[b].q, q);
+        refresh();
+        return;
     }
-    refresh();
+    if (! plot.contains (e.position) || juce::approximatelyEqual (w.deltaY, 0.0f))
+        return;
+    // zoom the frequency axis around the pointer
+    const float hz = hzAt (e.position.x), frac = (e.position.x - plot.getX()) / plot.getWidth();
+    const float span = juce::jlimit (std::log (4.0f), std::log (eqMaxHz / eqMinHz), std::log (viewHi / viewLo) * (w.deltaY > 0.0f ? 0.85f : 1.0f / 0.85f));
+    const float lo = juce::jlimit (eqMinHz, eqMaxHz / std::exp (span), hz / std::exp (frac * span));
+    setView (lo, lo * std::exp (span));
+}
+
+bool EqGraph::keyPressed (const juce::KeyPress& k)
+{
+    if ((k == juce::KeyPress::deleteKey || k == juce::KeyPress::backspaceKey) && shown[selected].on)
+    {
+        removeBand (selected);
+        return true;
+    }
+    return false;
 }
 
 // ---- PlaygroundLookAndFeel -------------------------------------------------------------------------------------------------------------

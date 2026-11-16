@@ -68,7 +68,7 @@ struct ShellTests : public juce::UnitTest
             ed->uiSelectRailForTest (5);
             expectEquals (p.getUiInt ("uiLevel", -1), 4);
             expectEquals (p.getUiInt ("uiCategory", -1), 2);
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
         }
 
         beginTest ("the rail dots light only for stages that really change the sound; DRY lights none");

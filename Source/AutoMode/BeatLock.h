@@ -7,7 +7,7 @@ namespace glitchkid::automode
 // A PURE function of two real analyses (the lead = this track's input, the instrumental = the plug-in's optional second input bus) and the live sound.
 //
 // What it is NOT: it does not hear a beat that was not routed to the instrumental input (a stereo input that already contains vocal and beat mixed together is
-// measured as "the vocal"), it does not process the instrumental, it does not move your mixer faders (BALANCE is advice only), and it has no reverb to recommend
+// measured as "the vocal"), it does not process the instrumental, it does not move your mixer faders (BALANCE is advice only), and it does not recommend reverb
 // (SPACE moves only the existing echo and width amounts). The numbers are digital levels from five coarse bands, not LUFS and not calibrated spectra.
 // It shares its rules (automode::beatMoves) with BUILD MY MIX, so the two never disagree.
 struct BeatLockItem

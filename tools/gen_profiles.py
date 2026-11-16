@@ -8,53 +8,77 @@ belong to the user (the TUNE screen). Run from the repository root:
 The optional JSON file holds per-profile makeup corrections (dB) measured by the test suite (PROFILELEVEL lines; see tools/calibrate_profiles.py), so each profile
 comes out near the level of the input.
 """
-import json, sys, os
+import json, sys, os, re
 
 DIVS = ["1/2", "1/4", "1/4 dotted", "1/4 triplet", "1/8", "1/8 dotted", "1/8 triplet", "1/16", "1/16 dotted", "1/16 triplet", "1/32"]
 
 # eq: lo=(gain,freq) b1=(freq,gain) b2=(freq,gain) hi=(freq,gain)   comp=(thresh, ratio, attack, release, knee)
 # echo=(division, feedback, tone, width, mix)   dim=(width, detune, depth, mix)   dbl=(amount, width, detune, timing)
+# space=(SPACE vocal preset index in Source/Presets/SpacePresets.h, mix %): 0 Tight Vocal Room, 1 Intimate Vocal, 2 Smooth Plate, 3 Bright Plate,
+#        4 Wide Vocal Hall, 5 Deep Melodic Vocal, 6 Atmospheric Vocal, 7 Long Ambient Tail, 8 Experimental Vocal Space
 PROFILES = [
  dict(name="CLEAN & NATURAL", tagline="Transparent, honest, lightly polished",
       description="A clean, natural vocal: gentle levelling and a touch of air, with no effects on the voice.",
       start="Good for a vocal that already sounds right. Pair with NATURAL tuning or none.",
-      eq=dict(b1=(300, -1.0), b2=(3500, 1.0), hi=(11000, 1.0)), comp=(-18, 2.5, 15, 140, 10), sat=0),
+      eq=dict(b1=(300, -1.0), b2=(3500, 1.0), hi=(11000, 1.0)), comp=(-18, 2.5, 15, 140, 10), sat=0,
+      space=(0, 12)),
  dict(name="MODERN MELODIC RAP", tagline="Glossy, smooth, a little space",
       description="The modern melodic-rap polish: smooth compression, presence and air, a light echo and a touch of width.",
       start="Works for sung or rapped melodies. Try it with LIGHT tuning.",
       eq=dict(lo=(1.0, 100), b1=(350, -1.5), b2=(4000, 2.0), hi=(10000, 2.0)), comp=(-19, 3.0, 10, 110, 8), sat=2.5,
-      echo=(5, 22, 4500, 40, 14), dim=(50, 5, 45, 22), dbl=(20, 70, 6, 14)),
+      echo=(5, 22, 4500, 40, 14), dim=(50, 5, 45, 22), dbl=(20, 70, 6, 14),
+      space=(2, 20)),
  dict(name="HARD-TUNED RAP", tagline="Tight, forward, built for hard tuning",
       description="A tight, forward tone with firm compression and a short echo: it stays out of the way of fast, hard-tuned vocals.",
       start="Set TUNE to HARD and choose your key and scale first: this profile does not switch tuning on.",
       eq=dict(lo=(-1.0, 100), b1=(300, -2.0), b2=(3200, 2.5), hi=(9500, 2.0)), comp=(-21, 4.0, 5, 80, 4), sat=3,
-      echo=(7, 12, 6000, 20, 8), dbl=(15, 60, 4, 10)),
+      echo=(7, 12, 6000, 20, 8), dbl=(15, 60, 4, 10),
+      space=(0, 6)),
  dict(name="DARK & ATMOSPHERIC", tagline="Deep, wide, moody",
       description="A dark, spacious vocal: a rolled-off top, a long dotted echo, width and a soft double.",
       start="Best on a close, dry vocal. Ease ECHO MIX down if the words get blurry.",
       eq=dict(lo=(2.0, 90), b1=(300, -2.5), b2=(2500, -0.5), hi=(6500, -3.5)), comp=(-20, 3.0, 14, 160, 8), sat=3.5,
-      echo=(2, 40, 2200, 75, 28), dim=(65, 8, 55, 35), dbl=(35, 85, 8, 20)),
+      echo=(2, 40, 2200, 75, 28), dim=(65, 8, 55, 35), dbl=(35, 85, 8, 20),
+      space=(6, 24)),
  dict(name="BRIGHT & PRESENT", tagline="Up front, clear words, airy top",
       description="A forward, clear vocal: a lighter low end, strong presence and air, firm compression and almost no ambience.",
-      start="Good for a dull or buried vocal. If it gets harsh, lower HIGH or PRESENCE in MODIFY.",
+      start="Good for a dull or buried vocal. If it gets harsh, lower HIGH AIR or the EQ's top bands on SHAPE.",
       eq=dict(lo=(-1.5, 120), b1=(400, -1.5), b2=(4000, 3.0), hi=(11000, 3.0)), comp=(-20, 3.5, 6, 90, 5), sat=1.5,
-      echo=(7, 10, 7000, 20, 7), dbl=(12, 50, 4, 12)),
+      echo=(7, 10, 7000, 20, 7), dbl=(12, 50, 4, 12),
+      space=(3, 10)),
  dict(name="SMOOTH R&B", tagline="Warm, soft, gently wide",
       description="A warm, soft vocal: slow gentle compression, a warm low end, silky top and a soft quarter-note echo with width.",
       start="Suits sung vocals. Pair with NATURAL or LIGHT tuning.",
       eq=dict(lo=(1.5, 120), b1=(300, -1.0), b2=(3500, 1.0), hi=(9500, 1.5)), comp=(-17, 2.5, 18, 180, 12), sat=1.2,
-      echo=(1, 28, 3500, 45, 18), dim=(45, 5, 40, 22), dbl=(25, 75, 6, 16)),
+      echo=(1, 28, 3500, 45, 18), dim=(45, 5, 40, 22), dbl=(25, 75, 6, 16),
+      space=(4, 18)),
  dict(name="GRITTY RAP", tagline="Raw, dense, in your face",
       description="A dense, gritty vocal: hard, fast compression, real saturation and a doubled edge, with no echo.",
-      start="Best on a loud, dry rap. Lower SATURATION in MODIFY if it feels harsh.",
+      start="Best on a loud, dry rap. Lower WARMTH on SHAPE if it feels harsh.",
       eq=dict(lo=(2.0, 100), b1=(450, -1.0), b2=(2800, 2.5), hi=(8000, 0.5)), comp=(-24, 5.0, 4, 70, 3), sat=7,
-      dbl=(25, 70, 9, 10)),
+      dbl=(25, 70, 9, 10),
+      space=(0, 8)),
  dict(name="SPACIOUS LEAD", tagline="Big, open, a lead that floats",
       description="A big, open lead vocal: balanced tone, a clear eighth-note echo, wide Dimension and a soft double.",
       start="Good for a hook or a sung lead. Keep ECHO MIX moderate in a busy beat.",
       eq=dict(lo=(0.5, 100), b1=(350, -1.5), b2=(3500, 1.5), hi=(9500, 1.5)), comp=(-18, 2.8, 12, 150, 9), sat=1.8,
-      echo=(4, 32, 4000, 60, 24), dim=(70, 6, 60, 38), dbl=(30, 90, 7, 18)),
+      echo=(4, 32, 4000, 60, 24), dim=(70, 6, 60, 38), dbl=(30, 90, 7, 18),
+      space=(5, 22)),
 ]
+
+# SPACE's vocal presets, read from their one source (Source/Presets/SpacePresets.h) so the values are never written twice
+SPACE_IDS = ["space_algo", "space_char", "space_mix", "space_decay", "space_predelay", "space_size", "space_diffusion", "space_damping", "space_lowcut",
+             "space_highcut", "space_modrate", "space_moddepth", "space_width", "space_early", "space_late"]
+def read_space_presets():
+    text = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "Source", "Presets", "SpacePresets.h")).read()
+    out = []
+    for m in re.finditer(r'\{ "([^"]+)",\s*([-\d.f,\s]+?),\s*"[^"]*" \}', text):
+        vals = [float(v.strip().rstrip("f")) for v in m.group(2).split(",") if v.strip()]
+        assert len(vals) == len(SPACE_IDS), m.group(1)
+        out.append((m.group(1), vals))
+    assert len(out) == 9, len(out)
+    return out
+SPACE_PRESETS = read_space_presets()
 
 def f(x):
     s = ("%.4f" % x).rstrip("0").rstrip(".")
@@ -87,6 +111,10 @@ def build(p, corr):
     if p.get("dbl"):
         d = p["dbl"]
         o += [("dbl_on", 1), ("dbl_amount", d[0]), ("dbl_width", d[1]), ("dbl_detune", d[2]), ("dbl_timing", d[3])]
+    if p.get("space"):
+        name, vals = SPACE_PRESETS[p["space"][0]]
+        o.append(("space_on", 1))
+        o += [(k, (p["space"][1] if k == "space_mix" else v)) for k, v in zip(SPACE_IDS, vals)]
     return o
 
 def settings_text(o):
@@ -101,6 +129,9 @@ def settings_text(o):
         parts.append("Dimension width")
     if "dbl_on" in d:
         parts.append("Doubler %d%%" % d["dbl_amount"])
+    if "space_on" in d:
+        name = next(n for n, v in SPACE_PRESETS if v[0] == d["space_algo"] and v[1] == d["space_char"] and v[3] == d["space_decay"])
+        parts.append("%s reverb %d%%" % (name, d["space_mix"]))
     return ", ".join(parts) + ". Pitch Tune is left to you."
 
 def main():

@@ -40,7 +40,7 @@ true sibilance, the room, or what "the ideal mix" is. Band shares from one recor
 
 ## How measurements steer ASTRO MODE (`intensity` i = 0..1; below 0.05 changes nothing)
 
-Only these controls are written: Pitch Tune on/strength/speed, EQ (all four bands), compressor (all six), saturation, Liquid Echo (on, sync, division, feedback, tone, width, mix),
+Only these controls are written: Pitch Tune on/strength/speed, EQ (the original four bands), compressor (all six), saturation, Liquid Echo (on, sync, division, feedback, tone, width, mix),
 Dimension (all five), Doubler (all five). **Never touched:** Gain, Mix, Bypass, key, scale, FORMANT, Mutation, Harmony, Stutter, Alter Ego. Every value is clamped to the real parameter range and snapped to its step.
 
 * **Pitch Tune** on when i >= 0.15; strength `60 + 25i`; speed `30 - 18i` ms. Not analysis-driven.
@@ -52,7 +52,7 @@ Dimension (all five), Doubler (all five). **Never touched:** Gain, Mix, Bypass, 
   makeup = half the estimated gain reduction at the P90 level (<= 6 dB).
   **Guards:** level < -40 dB -> at most 2:1 and no makeup; dynamic range < 6 dB **and** crest < 9 dB (already compressed) -> 1.5:1 and no makeup.
 * **Saturation** `4i` dB; 0 when clipped samples >= 3, near-clipped >= 10 or peak > -0.5 dB; halved when the > 5 kHz share > 0.12.
-* **Atmosphere** (no reverb exists; delay + width stand in): Echo 1/4 dotted, feedback `40a`, mix `28a`, tone 2.5 kHz, width 70 %; Dimension mix `35a`; Doubler amount `35a`, width 80 %.
+* **Atmosphere** (ASTRO uses delay + width; the SPACE reverb is set by BUILD MY MIX's profiles, see `docs/PROCESSING_SYSTEMS.md`): Echo 1/4 dotted, feedback `40a`, mix `28a`, tone 2.5 kHz, width 70 %; Dimension mix `35a`; Doubler amount `35a`, width 80 %.
   `a = i`, or `0.6i` when the 2-5 kHz share < 0.06 (words may be hard to hear).
 
 **Fallbacks.** A missing/non-finite metric is replaced by a typical-vocal value and noted (missing dynamics -> compressor fixed at -18 dB, 2.5:1, no makeup; broken band shares -> no tonal decisions).
@@ -79,4 +79,4 @@ They show the measurements and rules behave as documented. They do **not** show 
 ## Before a real-world listening test
 
 Mac build + FL Studio: analyse several real dry vocals (male/female, quiet/loud, dark/bright), compare APPLY at 40/60/80 % with SET A, and note any rule that misfires.
-Not yet done: reverb-like atmosphere (needs a reverb DSP), pitch/key-aware settings, further profiles.
+Not yet done in ASTRO: the SPACE reverb (BUILD MY MIX uses it), pitch/key-aware settings, further profiles.

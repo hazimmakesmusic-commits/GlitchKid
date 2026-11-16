@@ -165,7 +165,7 @@ struct PitchTuneTests : public juce::UnitTest
                                      "eq_lo_freq", "eq_b1_q", "comp_thresh", "comp_makeup" };
             for (auto* id : oldIds)
                 expect (getParam (p, id) > -998.0f, id);
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
         }
 
         beginTest ("Off: the output is the input delayed by exactly 6 samples (no Pitch Tune cost, bit-exact)");

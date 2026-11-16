@@ -1,4 +1,5 @@
 #include "EffectModel.h"
+#include "../DSP/EqParamIds.h"
 #include <cmath>
 
 namespace glitchkid::fx
@@ -11,7 +12,7 @@ const Info table[numEffects] = {
     { "HARMONY",     "Adds ONE extra voice at a fixed interval above or below. Not key-aware. Adds about 31 ms of latency while on.", "harm_on" },
     { "MUTATION",    "Bends the voice into robotic, hollow or alien shifts. No added latency.", "mut_on" },
     { "DOUBLER",     "A synthetic double: two drifting, delayed, softened copies for width. No added latency.", "dbl_on" },
-    { "EQ",          "Four-band equaliser: low shelf, two bells and a high shelf. Always in the chain, flat by default.", nullptr },
+    { "EQ",          "EQ LAB: up to 16 bands (bells, shelves, cuts up to 96 dB/oct, notch, band pass, tilt), each on stereo, left, right, mid or side. Always in the chain, flat by default.", nullptr },
     { "COMPRESSOR",  "Evens out the level. Always in the chain, at 1:1 (no effect) by default.", nullptr },
     { "SATURATION",  "Adds warmth and grit. Always in the chain, at 0 dB drive (no effect) by default.", nullptr },
     { "STUTTER",     "Glitchy, tempo-synced repeats of the vocal.", "stutter_on" },
@@ -36,8 +37,8 @@ bool isActive (int effect, const SoundState& s)
     switch (effect)
     {
         case formant:    return std::fabs (s.get ("formant_shift", 0.0f)) >= 0.05f;
-        case eq:         for (const char* id : { "eq_lo_gain", "eq_b1_gain", "eq_b2_gain", "eq_hi_gain" })
-                             if (std::fabs (s.get (id, 0.0f)) > 0.05f)
+        case eq:         for (int b = 0; b < ParametricEq::numBands; ++b)
+                             if (ParametricEq::needsWork (eqBandFrom (b, [&s] (const char* id, float d) { return s.get (id, d); })))
                                  return true;
                          return false;
         case compressor: return s.get ("comp_ratio", 1.0f) > 1.05f;

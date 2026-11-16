@@ -50,7 +50,7 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     static const char* switchTip[numModules] = {
         "AUTOTUNE on or off (Pitch Tune). While on it adds about 31 ms of latency, which your DAW compensates.",
         "CLEAN LAB on or off: rumble, low-mid build-up, harsh resonances and sharp S sounds, measured on your voice.",
-        "AIR LAB on or off: presence and air that ease off on S sounds.",
+        "AIR LAB on or off: MID AIR (clarity) and HIGH AIR (air), each following the voice and easing off on S sounds and noise.",
         "LIMITER on or off: catches peaks above the ceiling at the very end of the chain." };
     for (int m = 0; m < numModules; ++m)
     {
@@ -169,12 +169,12 @@ void MainScreen::setupDials()
     const Spec spec[numDials] = {
         { "CORRECTION", "How strongly AUTOTUNE pulls each note to the key and scale (Pitch Tune strength). Dragging it switches AUTOTUNE on.", P::tuneStrengthId, P::tuneOnId },
         { "INTENSITY", "How much CLEAN LAB corrects. Dragging it switches CLEAN LAB on.", P::cleanAmountId, P::cleanOnId },
-        { "AIR", "AIR LAB's air: open high end that eases off on S sounds. Dragging it switches AIR LAB on.", P::airAirId, P::airOnId },
+        { "HIGH AIR", "AIR LAB's HIGH AIR: brilliance and air that adapt to your voice and ease off on S sounds. Dragging it switches AIR LAB on.", P::airAirId, P::airOnId },
         { "CEILING", "The highest level the LIMITER lets through. Dragging it switches the LIMITER on.", P::limCeilingId, P::limOnId },
         { "TONE", "Darker to brighter: the air (8 kHz) and presence (3 kHz) EQ bands together. The middle is flat.", nullptr, nullptr },
         { "PUNCH", "How firmly the compressor holds your voice: steadier, more upfront.", nullptr, nullptr },
-        { "SPACE", "Echo, width and doubles together. GlitchKid has no reverb: space is delay and width.", nullptr, nullptr },
-        { "PRESENCE", "AIR LAB's presence: forward, clear mids that ease off on S sounds. Dragging it switches AIR LAB on.", P::airPresenceId, P::airOnId },
+        { "SPACE", "The SPACE reverb, echo, width and doubles together.", nullptr, nullptr },
+        { "MID AIR", "AIR LAB's MID AIR: clarity and presence that adapt to your voice and ease off on harsh moments. Dragging it switches AIR LAB on.", P::airPresenceId, P::airOnId },
         { "MIX", "Processed against your untouched voice.", P::mixId, nullptr },
         { "OUTPUT", "Output level after GlitchKid (before the limiter).", P::gainId, nullptr } };
 
@@ -225,14 +225,6 @@ void MainScreen::setupDials()
         d.slider.textFromValueFunction = [this, i] (double v) { return dials[(size_t) i].text ((float) v); }; // what a screen reader announces
         addAndMakeVisible (d.slider);
     }
-    // AIR LAB's LINK (a UI preference, as on the AIR LAB page): moving PRESENCE by hand moves AIR to the same value, and the reverse
-    for (auto [a, b] : { std::pair { presence, air }, std::pair { air, presence } })
-        dials[(size_t) a].slider.onValueChange = [this, a = a, b = b]
-        {
-            auto& moved = dials[(size_t) a].slider;
-            if (dials[(size_t) a].dragging && on (GlitchKidProcessor::airLinkId) && ! dials[(size_t) b].dragging)
-                dials[(size_t) b].slider.setValue (moved.getValue(), juce::sendNotificationSync);
-        };
 }
 
 void MainScreen::pressForTest (const juce::String& text)
@@ -328,7 +320,7 @@ void MainScreen::refreshText()
                          : parts.isEmpty()        ? "Listening: nothing to fix right now"
                                                   : "Fixing " + parts.joinIntoString (", ");
     }
-    status[airLab] = ! on (P::airOnId) ? "Off" : "Presence " + juce::String (juce::roundToInt (value (P::airPresenceId))) + " %,  air " + juce::String (juce::roundToInt (value (P::airAirId))) + " %,  easing off on S sounds";
+    status[airLab] = ! on (P::airOnId) ? "Off" : "Mid air " + juce::String (juce::roundToInt (value (P::airPresenceId))) + " %,  high air " + juce::String (juce::roundToInt (value (P::airAirId))) + " %";
     status[limiter] = ! on (P::limOnId) ? "Off: peaks are not caught"
                     : limGrDb > 0.1f    ? "Catching peaks: -" + juce::String (limGrDb, 1) + " dB"
                                         : "Holding below " + juce::String (value (P::limCeilingId), 1) + " dB: nothing to catch";

@@ -124,7 +124,7 @@ struct ProfileTests : public juce::UnitTest
             GlitchKidProcessor p;
             auto dir = tempDir();
             PresetController c (p, glitchkid::PresetStore (dir));
-            const std::set<juce::String> allowedGroups { "eq_", "comp_", "sat_", "echo_", "dim_", "dbl_" };
+            const std::set<juce::String> allowedGroups { "eq_", "comp_", "sat_", "echo_", "dim_", "dbl_", "space_" };
             for (int i = 0; i < fp::count; ++i)
             {
                 juce::String why;

@@ -73,7 +73,7 @@ struct MacroTests : public juce::UnitTest
             GlitchKidProcessor p;
             const auto base = p.captureSoundState();
             const std::map<int, std::set<juce::String>> allowed = {
-                { 0, { "echo_on", "dim_on", "dbl_on", "echo_mix", "echo_fb", "echo_width", "dim_mix", "dbl_amount" } },
+                { 0, { "echo_on", "dim_on", "dbl_on", "echo_mix", "echo_fb", "echo_width", "dim_mix", "dbl_amount", "space_on", "space_mix", "space_decay" } },
                 { 1, { "comp_ratio", "comp_thresh", "comp_attack", "comp_release", "comp_knee", "comp_makeup" } },
                 { 2, { "eq_hi_gain", "eq_b2_gain" } } };
             for (int m = 0; m < glitchkid::macros::numMacros; ++m)
@@ -239,12 +239,16 @@ struct MacroTests : public juce::UnitTest
         {
             const double fs = 48000.0;
             const float F[4] = { 100.0f, 400.0f, 3000.0f, 8000.0f }, G[4] = { 5.0f, -4.0f, 6.0f, -5.0f }, Q[4] = { 0.7071f, 2.0f, 1.2f, 0.7071f };
+            const EqType T[4] = { EqType::lowShelf, EqType::bell, EqType::bell, EqType::highShelf };
+            EqBandSettings bands[4];
+            for (int b = 0; b < 4; ++b)
+                bands[b] = { F[b], G[b], Q[b], T[b] };
             for (float hz : { 60.0f, 150.0f, 400.0f, 1000.0f, 3000.0f, 6000.0f, 10000.0f })
             {
                 ParametricEq eq;
                 eq.prepare (fs);
                 for (int b = 0; b < 4; ++b)
-                    eq.setBand (b, { F[b], G[b], Q[b] });
+                    eq.setBand (b, bands[b]);
                 const int n = (int) fs * 2;
                 double inE = 0.0, outE = 0.0;
                 for (int pos = 0; pos < n; pos += 480)
@@ -262,11 +266,13 @@ struct MacroTests : public juce::UnitTest
                         }
                 }
                 const float measured = (float) (10.0 * std::log10 (outE / inE));
-                const float calculated = glitchkid::ui::EqGraph::responseDb (F, G, Q, hz, fs);
+                const float calculated = (float) ParametricEq::responseDb (bands, 4, hz, fs);
                 expectWithinAbsoluteError (calculated, measured, 0.15f, "response at " + juce::String (hz) + " Hz: graph " + juce::String (calculated) + " dB, DSP " + juce::String (measured) + " dB");
             }
-            const float flat[4] = { 100.0f, 400.0f, 3000.0f, 8000.0f }, zero[4] = { 0, 0, 0, 0 };
-            expectEquals (glitchkid::ui::EqGraph::responseDb (flat, zero, Q, 1000.0f, fs), 0.0f);
+            EqBandSettings flatBands[4];
+            for (int b = 0; b < 4; ++b)
+                flatBands[b] = { F[b], 0.0f, Q[b], T[b] };
+            expectEquals ((float) ParametricEq::responseDb (flatBands, 4, 1000.0, fs), 0.0f);
 
             namespace ui = glitchkid::ui;
             expect (ui::obsidian == juce::Colour (0xff080d0d) && ui::panelBottom == juce::Colour (0xff111a18) && ui::violet == juce::Colour (0xff08776f)
@@ -646,7 +652,8 @@ struct MacroTests : public juce::UnitTest
                             if (auto* sl = dynamic_cast<juce::Slider*> (ch))
                             {
                                 if (sl->getSliderStyle() == juce::Slider::RotaryHorizontalVerticalDrag) ++rotaries;
-                                if (sl->getSliderStyle() == juce::Slider::LinearHorizontal && sl->getTextBoxPosition() == juce::Slider::TextBoxRight) ++airDetail;
+                                if (sl->getSliderStyle() == juce::Slider::LinearHorizontal && sl->getTextBoxPosition() == juce::Slider::TextBoxRight
+                                    && ! sl->getComponentID().startsWith ("eqdyn")) ++airDetail; // EQ LAB's dynamics sliders are not AIR LAB's
                             }
                             if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->getButtonText() == "ADVANCED")
                                 adv = tb;
@@ -731,7 +738,8 @@ struct MacroTests : public juce::UnitTest
                             if (auto* tb = dynamic_cast<juce::ToggleButton*> (ch); tb != nullptr && tb->isVisible() && tb->getButtonText() == "AIR LAB")
                                 airOn = tb;
                             if (auto* sl = dynamic_cast<juce::Slider*> (ch); sl != nullptr && sl->isVisible() && sl->getSliderStyle() == juce::Slider::LinearHorizontal
-                                                                                 && sl->getTextBoxPosition() == juce::Slider::TextBoxRight)
+                                                                                 && sl->getTextBoxPosition() == juce::Slider::TextBoxRight
+                                                                                 && ! sl->getComponentID().startsWith ("eqdyn"))
                                 airSliders.push_back (sl);
                             walk (*ch);
                         }

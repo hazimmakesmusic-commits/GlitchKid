@@ -160,7 +160,7 @@ namespace
 struct Topic { const char* name; const char* pattern; const char* ids; };
 const Topic topics[] = {
     { "tuning", "tun|pitch|autotune|auto-tune|key|scale|robotic", "tune_" },
-    { "space", "reverb|echo|delay|space|atmospher|ambien|wet|dry", "echo_ dim_" },
+    { "space", "reverb|echo|delay|space|atmospher|ambien|wet|dry", "echo_ dim_ space_" },
     { "harsh", "harsh|high mids|high-mids|upper mids|upper-mids|presence|sharp|bite|3k|2k|4k", "eq_b2_ clean_res" },
     { "ess", "\\bs\\b|s sounds|sibilan|de-?ess|esses", "clean_ess" },
     { "lows", "low end|lows|bass|mud|muddy|low mids|low-mids|boxy|rumble|body|bottom", "eq_lo_ eq_b1_ clean_tone clean_amount clean_on" },
@@ -269,8 +269,6 @@ IntentFrame parse (const juce::String& text)
     else if (find (t, "\\b(lead|main vocal)\\b")) f.role = "lead";
     if (find (t, "\\b(reverb|echo|delay|ambience|ambiance)\\b", &m))
     {
-        if (find (t, "\\breverb\\b"))
-            f.notes.add ("GlitchKid has no reverb, so space comes from Echo and Dimension.");
         f.ops[depth] += mag;
         f.heard.add (m);
     }
@@ -517,7 +515,7 @@ std::vector<Change> Director::decide()
         if (flags.count ("air") > 0 && d[bright] > 0)
         {
             put ("air_on", 1.0f, "AIR LAB on: an open, breathy top");
-            if (cur ("air_air") < 80.0f) toward ("air_air", 80.0f, k (d[bright]), "More AIR LAB air");
+            if (cur ("air_air") < 80.0f) toward ("air_air", 80.0f, k (d[bright]), "More HIGH AIR");
         }
     }
     if (std::abs (d[warm]) > 1e-6f)
@@ -579,6 +577,9 @@ std::vector<Change> Director::decide()
             put ("dim_on", 1.0f, "Dimension adds haze");
             if (cur ("dim_mix") < 55.0f) toward ("dim_mix", 55.0f, a, "Haze around the voice");
         }
+        put ("space_on", 1.0f, "SPACE reverb on: a room around the voice");
+        if (front) atMost ("space_mix", 10.0f, "Reverb kept low: you stay in front");
+        else if (cur ("space_mix") < (adlib ? 32.0f : 26.0f)) toward ("space_mix", adlib ? 32.0f : 26.0f, a, "More reverb: the voice in a bigger space");
         if (adlib)
         {
             add ("eq_lo_gain", -3.0f, "Ad-libs: thinner low end, behind the lead");
@@ -590,18 +591,21 @@ std::vector<Change> Director::decide()
     {
         if (cur ("echo_on") >= 0.5f) put ("echo_on", 0.0f, "Echo off: nothing behind you");
         if (cur ("dim_on") >= 0.5f && ! (d[width] > 0)) put ("dim_on", 0.0f, "Dimension off: close and direct");
+        if (cur ("space_on") >= 0.5f) put ("space_on", 0.0f, "Reverb off: dry and close");
     }
     else if (d[depth] < 0) // "less reverb": the space that is there, scaled down by as much as was asked
     {
         const float f = 1.0f + d[depth];
         if (cur ("echo_on") >= 0.5f) put ("echo_mix", cur ("echo_mix") * f, "Less echo: about " + juce::String (juce::roundToInt ((1.0f - f) * 100.0f)) + " % down");
         if (cur ("dim_on") >= 0.5f && ! (d[width] > 0)) put ("dim_mix", cur ("dim_mix") * f, "Less Dimension haze");
+        if (cur ("space_on") >= 0.5f) put ("space_mix", cur ("space_mix") * f, "Less reverb: about " + juce::String (juce::roundToInt ((1.0f - f) * 100.0f)) + " % down");
     }
     if (front && std::abs (d[width]) < 1e-6f && std::abs (d[depth]) < 1e-6f)
     {
         atMost ("echo_mix", 12.0f, "Echo kept low: you stay in front");
         atMost ("dim_mix", 30.0f, "Dimension kept light: you stay in front");
         atMost ("dbl_amount", 28.0f, "Doubles kept under you");
+        atMost ("space_mix", 10.0f, "Reverb kept low: you stay in front");
     }
     if (d[clean] > 0)
     {

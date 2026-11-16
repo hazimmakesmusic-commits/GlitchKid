@@ -83,7 +83,7 @@ private:
         std::function<juce::String (float)> text;
         std::unique_ptr<juce::SliderParameterAttachment> attachment; // single-parameter dials: JUCE's own gesture-correct binding
         const char* switchOn = nullptr;              // dragging the amount of a module that is off switches the module on
-        bool dragging = false;                       // a hand gesture is moving it (AIR LAB's LINK follows hand moves only)
+        bool dragging = false;                       // a hand gesture is moving it (a drag on an off module switches it on)
     };
     using Knob = nk::Knob;
     using Pill = nk::Pill;

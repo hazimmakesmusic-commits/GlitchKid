@@ -353,6 +353,108 @@ struct AirLabTests : public juce::UnitTest
             expect (peak <= 1.0001, "bright noise stays within full scale: " + juce::String (peak, 4));
         }
 
+        beginTest ("v2 independence: MID AIR works around 1.5-6 kHz and leaves the air band alone; HIGH AIR works above 8 kHz and leaves 2-5 kHz alone");
+        {
+            const auto src = voicedWithAir (n, 0.5f);
+            const std::vector<std::vector<float>> in { src };
+            const double pres = bandDb (src, 2500.0f, 5000.0f), air = bandDb (src, 10000.0f, 16000.0f);
+            const auto midOnly = run (on (1.0f, 0.0f), in), highOnly = run (on (0.0f, 1.0f), in);
+            const double midPres = bandDb (midOnly[0], 2500.0f, 5000.0f) - pres, midAir = bandDb (midOnly[0], 10000.0f, 16000.0f) - air;
+            const double highPres = bandDb (highOnly[0], 2500.0f, 5000.0f) - pres, highAir = bandDb (highOnly[0], 10000.0f, 16000.0f) - air;
+            logMessage ("MID AIR alone: 2.5-5 kHz " + juce::String (midPres, 2) + " dB, 10-16 kHz " + juce::String (midAir, 2) + " dB; HIGH AIR alone: 2.5-5 kHz "
+                        + juce::String (highPres, 2) + " dB, 10-16 kHz " + juce::String (highAir, 2) + " dB");
+            expect (midPres > 2.0 && std::abs (midAir) < 1.0, "MID AIR is a mid lift");
+            expect (highAir > 2.0 && std::abs (highPres) < 0.5, "HIGH AIR is a top lift");
+        }
+
+        beginTest ("v2 adaptive depth: a voice with weak presence gets a bigger MID AIR lift than one that already has a lot; a dark top gets more HIGH AIR than a bright one");
+        {
+            auto liftsFor = [] (const std::vector<float>& x)
+            {
+                AirLab lab;
+                lab.setSettings (on (1.0f, 1.0f));
+                lab.prepare (fs);
+                Buf b (1, (int) x.size());
+                b.copyFrom (0, 0, x.data(), (int) x.size());
+                lab.process (b);
+                return std::pair<float, float> { lab.getMidLiftDb(), lab.getHighLiftDb() };
+            };
+            // dull: the voice through a 2 kHz low-pass; harsh: the voice plus a strong 3 kHz component; bright: plus strong noise above 9 kHz
+            auto dull = voiced (n, 0.5f);
+            {
+                double z = 0.0; const double a = 1.0 - std::exp (-twoPi * 1500.0 / fs);
+                for (auto& v : dull) { z += a * ((double) v - z); v = (float) z; }
+            }
+            auto harsh = voiced (n, 0.5f);
+            for (int i = 0; i < n; ++i) harsh[(size_t) i] += 0.15f * (float) std::sin (twoPi * 3150.0 * i / fs);
+            auto bright = voiced (n, 0.5f);
+            const auto hiss = sibilant (n, 0.12f);
+            for (int i = 0; i < n; ++i) bright[(size_t) i] += hiss[(size_t) i];
+            const auto d = liftsFor (dull), h = liftsFor (harsh), b = liftsFor (bright), plain = liftsFor (voiced (n, 0.5f));
+            logMessage ("MID AIR lift now: dull " + juce::String (d.first, 2) + " dB, plain " + juce::String (plain.first, 2) + " dB, harsh " + juce::String (h.first, 2)
+                        + " dB; HIGH AIR lift now: plain " + juce::String (plain.second, 2) + " dB, bright " + juce::String (b.second, 2) + " dB");
+            expect (d.first > h.first + 1.0f, "presence adapts");
+            expect (plain.second > b.second + 0.5f, "air adapts");
+            expect (d.first < 6.0f && plain.second < 4.0f, "bounded");
+        }
+
+        beginTest ("v2 noise gate: the gaps after a phrase, a quiet breath or a room tone are not lifted; the voice is");
+        {
+            // 2 s of voice, then 2 s of noise 40 dB under it (the gap): the gap must come out (nearly) as it went in
+            const int half = n * 2 / 3;
+            std::vector<float> x ((size_t) half * 2, 0.0f);
+            const auto v = voiced (half, 0.5f);
+            const auto floorNoise = whiteNoise (half, 21, 0.005f);
+            std::copy (v.begin(), v.end(), x.begin());
+            std::copy (floorNoise.begin(), floorNoise.end(), x.begin() + half);
+            const auto out = run (on (1.0f, 1.0f), { x });
+            const std::vector<float> gapIn (x.begin() + half + (int) fs / 4, x.end()), gapOut (out[0].begin() + half + (int) fs / 4, out[0].end());
+            const double gapChange = 20.0 * std::log10 (rms (gapOut) / rms (gapIn));
+            const double voiceChange = bandDb (std::vector<float> (out[0].begin(), out[0].begin() + half), 2500.0f, 16000.0f) - bandDb (v, 2500.0f, 16000.0f);
+            logMessage ("gap after the phrase: " + juce::String (gapChange, 3) + " dB; the phrase above 2.5 kHz: " + juce::String (voiceChange, 2) + " dB");
+            expect (std::abs (gapChange) < 0.2, "the noise in the gap is not lifted");
+            expect (voiceChange > 2.0, "the voice is");
+            // a room tone on its own, under -60 dBFS, is never lifted either
+            const auto room = whiteNoise (n, 22, 0.0008f);
+            const auto roomOut = run (on (1.0f, 1.0f), { room });
+            expect (std::abs (20.0 * std::log10 (rms (roomOut[0]) / rms (room))) < 0.2, "room tone under -60 dBFS: untouched");
+        }
+
+        beginTest ("v2 sample rates: 44.1, 88.2, 96 and 192 kHz are finite, keep their lifts and stay under full scale");
+        {
+            for (double rate : { 44100.0, 88200.0, 96000.0, 192000.0 })
+            {
+                AirLab lab;
+                lab.setSettings (on (1.0f, 1.0f));
+                lab.prepare (rate);
+                const int len = (int) rate * 2;
+                Buf b (2, len);
+                for (int i = 0; i < len; ++i)
+                {
+                    const double t = i / rate;
+                    float s = 0.0f;
+                    for (int h = 1; h <= 30; ++h) s += (float) (std::sin (twoPi * 200.0 * h * t) / h);
+                    b.setSample (0, i, 0.3f * s);
+                    b.setSample (1, i, 0.3f * s);
+                }
+                for (int pos = 0; pos < len; pos += 512)
+                {
+                    const int l = juce::jmin (512, len - pos);
+                    juce::AudioBuffer<float> view (b.getArrayOfWritePointers(), 2, pos, l);
+                    lab.process (view);
+                }
+                bool finite = true;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < len; ++i) finite = finite && std::isfinite (b.getSample (ch, i));
+                expect (finite && b.getMagnitude (0, len) <= 1.0f, juce::String (rate) + " Hz: finite, under full scale");
+                expect (lab.getMidLiftDb() > 1.0f && lab.getHighLiftDb() > 0.5f, juce::String (rate) + " Hz: both lifts active (" + juce::String (lab.getMidLiftDb(), 1) + " / "
+                        + juce::String (lab.getHighLiftDb(), 1) + " dB)");
+            }
+            AirLab off;
+            off.prepare (fs);
+            expect (std::abs (off.getMidLiftDb()) < 1.0e-6f && std::abs (off.getHighLiftDb()) < 1.0e-6f, "off: the readouts show no lift");
+        }
+
         beginTest ("CPU (information only, not an assertion): stereo, 480-sample blocks, all controls at maximum");
         {
             AirLab lab;
@@ -376,11 +478,13 @@ struct AirLabTests : public juce::UnitTest
         beginTest ("processor integration: new parameters appended with neutral defaults, AIR LAB off leaves the output identical, on changes it, no latency change, state round trip, old state loads neutral");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
             expectEquals (th::getParam (p, "air_on"), 0.0f);
             expectEquals (th::getParam (p, "air_presence"), 30.0f);
             expectEquals (th::getParam (p, "air_air"), 30.0f);
-            expectEquals (th::getParam (p, "air_link"), 1.0f);
+            expectEquals (th::getParam (p, "air_link"), 0.0f); // retired: MID AIR and HIGH AIR are independent; kept so old sessions still load
+            if (auto* link = p.getParameters()[57])
+                expect (! link->isAutomatable(), "the retired link is not offered for automation");
             expectEquals (th::getParam (p, "air_mix"), 100.0f);
             expectEquals (th::getParam (p, "air_trim"), 0.0f);
             // the last six parameters are the AIR LAB ones, so every older parameter keeps its host index

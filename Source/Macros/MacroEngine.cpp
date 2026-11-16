@@ -20,7 +20,7 @@ const char* macroDescription (Macro m)
 {
     switch (m)
     {
-        case Macro::space:     return "More atmosphere: raises the echo, Dimension and Doubler together. (GlitchKid has no reverb: this is delay and width.)";
+        case Macro::space:     return "More atmosphere: raises the SPACE reverb, the echo, Dimension and the Doubler together.";
         case Macro::punch:     return "More control: raises the compressor ratio and lowers its threshold, with matching makeup gain.";
         case Macro::tone:      return "Darker to brighter: moves the AIR (8 kHz) and PRESENCE (3 kHz) EQ gains together. The middle is flat.";
     }
@@ -54,6 +54,9 @@ void apply (Macro m, float value, SoundState& s)
             s.set ("echo_width", lerp (20.0f, 75.0f, v));
             s.set ("dim_mix", 45.0f * v);
             s.set ("dbl_amount", 40.0f * v);
+            s.set ("space_on", on);
+            s.set ("space_mix", 30.0f * v);
+            s.set ("space_decay", lerp (1.0f, 3.0f, v));
             break;
         }
         case Macro::punch:
@@ -85,7 +88,7 @@ const char* commandDescription (Command c)
     switch (c)
     {
         case Command::darker:     return "Darker: top shelf -1.5 dB, presence -0.5 dB and a duller echo. Press again for more.";
-        case Command::moreSpace:  return "More space: the SPACE macro +15 points (echo, Dimension, Doubler).";
+        case Command::moreSpace:  return "More space: the SPACE macro +15 points (reverb, echo, Dimension, Doubler).";
         case Command::harderTune: return "Harder tune: Pitch Tune on, strength +10 %, speed 8 ms faster. Adds about 31 ms of reported latency while Pitch Tune is on.";
     }
     return "";

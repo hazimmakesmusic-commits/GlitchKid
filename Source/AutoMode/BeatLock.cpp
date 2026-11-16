@@ -23,7 +23,7 @@ BeatLockResult analyseBeatLock (const analysis::VocalAnalysis& lead, const analy
 {
     using S = analysis::VocalAnalysis::Status;
     BeatLockResult r;
-    r.unavailable.add ("BEAT LOCK adjusts only the vocal's own controls. It does not process the instrumental, move your mixer faders, or add reverb (GlitchKid has none).");
+    r.unavailable.add ("BEAT LOCK adjusts only the vocal's own controls. It does not process the instrumental, move your mixer faders, or change the SPACE reverb.");
     if (input == InstrumentalInput::notConnected)
     {
         r.status = BeatLockResult::Status::noBeatInput;

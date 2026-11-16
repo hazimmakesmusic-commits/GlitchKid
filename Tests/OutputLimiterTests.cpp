@@ -315,7 +315,7 @@ struct OutputLimiterTests : public juce::UnitTest
         beginTest ("in the real plug-in: the limiter parameters keep indices 65-68 (mastering is appended after them), off by default (an older state is unchanged)");
         {
             GlitchKidProcessor p;
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
             const char* ids[4] = { "lim_on", "lim_ceiling", "lim_drive", "lim_release" };
             for (int i = 0; i < 4; ++i)
                 expectEquals (juce::String (dynamic_cast<juce::RangedAudioParameter*> (p.getParameters()[65 + i])->paramID), juce::String (ids[i]));

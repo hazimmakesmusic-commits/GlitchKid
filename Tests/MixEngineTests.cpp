@@ -268,6 +268,48 @@ struct MixEngineTests : public juce::UnitTest
             expect (am::buildMix (dull, rangesOf (p)).sound.get ("eq_b2_gain", 0.0f) > ref.get ("eq_b2_gain", 0.0f) + 0.5f);
             auto boomy = base; boomy.lead.bandFraction = { 0.40f, 0.35f, 0.15f, 0.07f, 0.03f };
             expect (am::buildMix (boomy, rangesOf (p)).sound.get ("eq_lo_gain", 0.0f) < ref.get ("eq_lo_gain", 0.0f) - 1.0f);
+            // EQ LAB: a measured low cut on band 5, steeper and higher for a boomy take; CLEAN LAB's rumble filter does this job when it is on
+            const auto boomyBuild = am::buildMix (boomy, rangesOf (p)).sound;
+            expect (ref.get ("eq_band5_on", 0.0f) >= 0.5f && juce::roundToInt (ref.get ("eq_band5_type", 0.0f)) == (int) EqType::lowCut, "a build adds the vocal low cut");
+            expect (ref.get ("eq_band5_freq", 0.0f) >= 60.0f && ref.get ("eq_band5_freq", 0.0f) <= 80.0f);
+            expect (boomyBuild.get ("eq_band5_freq", 0.0f) > ref.get ("eq_band5_freq", 0.0f) && juce::roundToInt (boomyBuild.get ("eq_band5_slope", 0.0f)) == 2,
+                    "a boomy take gets a higher, 18 dB/oct cut");
+            auto withClean = boomy;
+            withClean.current.set ("clean_on", 1.0f);
+            withClean.current.set ("clean_amount", 60.0f);
+            expect (am::buildMix (withClean, rangesOf (p)).sound.get ("eq_band5_on", 0.0f) < 0.5f, "CLEAN LAB on: no second low cut");
+            // EQ LAB dynamics: strong S sounds get a dynamic de-esser on band 6 (a cut only while an S jumps out), scaled by how strong they measured
+            auto sibilant = base; sibilant.lead.sibilanceIndex = 0.6f;
+            const auto sb = am::buildMix (sibilant, rangesOf (p)).sound;
+            expect (sb.get ("eq_band6_on", 0.0f) >= 0.5f && sb.get ("eq_band6_dyn", 0.0f) >= 0.5f && juce::roundToInt (sb.get ("eq_band6_type", -1.0f)) == (int) EqType::bell,
+                    "a dynamic de-esser band");
+            expect (sb.get ("eq_band6_range", 0.0f) <= -3.0f && sb.get ("eq_band6_range", 0.0f) >= -8.0f && std::abs (sb.get ("eq_band6_gain", 1.0f)) < 0.01f,
+                    "a dynamic cut only, no static one");
+            expectWithinAbsoluteError (sb.get ("eq_band6_thresh", 0.0f), std::round (juce::jlimit (-50.0f, -10.0f, base.lead.rmsDb - 8.0f)), 0.01f, "threshold from the vocal's level");
+            expect (ref.get ("eq_band6_on", 0.0f) < 0.5f, "normal S sounds: no de-esser");
+            auto sibilantClean = sibilant;
+            sibilantClean.current.set ("clean_on", 1.0f);
+            sibilantClean.current.set ("clean_amount", 60.0f);
+            expect (am::buildMix (sibilantClean, rangesOf (p)).sound.get ("eq_band6_on", 0.0f) < 0.5f, "CLEAN LAB's de-esser does this job when it is on");
+            // SPACE: every profile brings its reverb; intensity scales its mix like the other effect amounts
+            expect (ref.get ("space_on", 0.0f) >= 0.5f && ref.get ("space_mix", 0.0f) > 0.0f, "a build has the profile's reverb");
+            auto gentle = base; gentle.intensity = 0.0f;
+            auto full = base; full.intensity = 1.0f;
+            expect (am::buildMix (gentle, rangesOf (p)).sound.get ("space_mix", 0.0f) < am::buildMix (full, rangesOf (p)).sound.get ("space_mix", 0.0f),
+                    "intensity scales the reverb");
+            // AIR LAB: switched on and set from the measured balance; a dull voice gets more of both, a bright one less, strong S sounds hold HIGH AIR back
+            {
+                expect (ref.get ("air_on", 0.0f) >= 0.5f && std::abs (ref.get ("air_mix", 0.0f) - 100.0f) < 0.01f && std::abs (ref.get ("air_trim", 1.0f)) < 0.01f, "a build uses AIR LAB");
+                const auto d = am::buildMix (dull, rangesOf (p)).sound;
+                auto bright = base; bright.lead.bandFraction = { 0.08f, 0.30f, 0.26f, 0.20f, 0.16f };
+                const auto b = am::buildMix (bright, rangesOf (p)).sound;
+                expect (d.get ("air_presence", 0.0f) > ref.get ("air_presence", 0.0f) && ref.get ("air_presence", 0.0f) > b.get ("air_presence", 0.0f), "MID AIR follows the presence share");
+                expect (d.get ("air_air", 0.0f) > ref.get ("air_air", 0.0f) && ref.get ("air_air", 0.0f) > b.get ("air_air", 0.0f), "HIGH AIR follows the air share");
+                expect (b.get ("air_presence", 0.0f) >= 10.0f && d.get ("air_presence", 0.0f) <= 45.0f && b.get ("air_air", 0.0f) >= 5.0f && d.get ("air_air", 0.0f) <= 50.0f, "bounded");
+                expect (sb.get ("air_air", 100.0f) <= 15.0f, "strong S sounds: HIGH AIR held back");
+                auto mine = base; mine.current.set ("air_on", 0.0f); mine.current.set ("air_presence", 90.0f);
+                expectWithinAbsoluteError (am::buildMix (mine, rangesOf (p)).sound.get ("air_presence", 0.0f), ref.get ("air_presence", 0.0f), 0.01f, "set from the voice, not kept from before");
+            }
             auto peaky = base; peaky.lead.peakDb = -1.0f;
             expect (am::buildMix (peaky, rangesOf (p)).sound.get ("comp_makeup", 0.0f) < ref.get ("comp_makeup", 0.0f) - 2.0f, "louder peaks get less makeup gain");
             auto hot = base; hot.lead.clippedSamples = 30;
@@ -350,7 +392,7 @@ struct MixEngineTests : public juce::UnitTest
             auto asSaved = inputFor (p, 6);
             asSaved.lead = typicalLead();
             asSaved.lead.rmsDb = -20.0f; asSaved.lead.peakDb = -8.0f; // exactly the level the profile was set for: no fitting happens
-            asSaved.lead.bandFraction = { 0.10f, 0.45f, 0.28f, 0.10f, 0.07f }; asSaved.lead.dynamicRangeDb = 14.0f; asSaved.lead.sibilanceIndex = 0.1f;
+            asSaved.lead.bandFraction = { 0.10f, 0.45f, 0.30f, 0.10f, 0.05f }; asSaved.lead.dynamicRangeDb = 14.0f; asSaved.lead.sibilanceIndex = 0.1f; // the fallback's neutral shares (AIR LAB is set from them)
             const auto fitted = am::buildMix (asSaved, rangesOf (p));
             expectEquals (differing (on.sound, fitted.sound), 0, "the fallback equals a build on a vocal that needs no adjustment");
             for (const auto& e : on.evidence)
@@ -369,7 +411,8 @@ struct MixEngineTests : public juce::UnitTest
             double inE = 0.0;
             for (size_t i = 72000; i < in.size(); ++i) inE += (double) in[i] * in[i];
             const double inDb = 10.0 * std::log10 (inE / (double) (in.size() - 72000));
-            double worst = 0.0, worstPeak = 0.0;
+            double worst = 0.0, worstPeak = 0.0, worstCpu = 0.0;
+            juce::String worstCpuName;
             for (int prof = -1; prof < fp::count; ++prof)
             {
                 GlitchKidProcessor p;
@@ -382,11 +425,14 @@ struct MixEngineTests : public juce::UnitTest
                 juce::MidiBuffer midi;
                 double e = 0.0, peak = 0.0;
                 bool finite = true;
+                double seconds = 0.0;
                 for (size_t pos = 0; pos + 480 <= in.size(); pos += 480)
                 {
                     th::Buf b (2, 480);
                     for (int i = 0; i < 480; ++i) { b.setSample (0, i, in[pos + (size_t) i]); b.setSample (1, i, in[pos + (size_t) i]); }
+                    const auto t0 = juce::Time::getHighResolutionTicks();
                     p.processBlock (b, midi);
+                    seconds += juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - t0);
                     for (int i = 0; i < 480; ++i)
                     {
                         const float v = b.getSample (0, i);
@@ -400,7 +446,10 @@ struct MixEngineTests : public juce::UnitTest
                 expect (std::abs (d) < 4.0 && peak < 0.99, juce::String (r.profileName) + " level " + juce::String (d, 1) + " dB peak " + juce::String (peak, 2));
                 worst = juce::jmax (worst, std::abs (d));
                 worstPeak = juce::jmax (worstPeak, peak);
+                if (const double cpu = seconds / ((double) in.size() / 48000.0); cpu > worstCpu) { worstCpu = cpu; worstCpuName = r.profileName; }
             }
+            logMessage ("heaviest built mix (information only, one core, stereo 48 kHz, whole chain incl. EQ LAB, SPACE, AIR LAB): " + worstCpuName + " "
+                        + juce::String (worstCpu * 100.0, 2) + " %");
             logMessage ("end to end over 51 builds: worst level change " + juce::String (worst, 2) + " dB, worst peak " + juce::String (worstPeak, 2));
         }
     }

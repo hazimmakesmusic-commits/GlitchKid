@@ -67,6 +67,7 @@ target_sources(GlitchKid PRIVATE
     Source/DSP/OutputLimiter.cpp
     Source/DSP/GlitchStutter.cpp
     Source/DSP/LiquidEcho.cpp
+    Source/DSP/SpaceReverb.cpp
     Source/DSP/Dimension.cpp
     Source/DSP/VocalMutation.cpp
     Source/DSP/VocalDoubling/VocalDoubler.cpp
@@ -103,6 +104,7 @@ target_sources(GlitchKid PRIVATE
     Source/UI/MasteringScreen.cpp
     Source/UI/LabPage.cpp
     Source/Analysis/DisplaySpectrum.cpp
+    Source/Analysis/EqAnalyzer.cpp
     Source/UI/EffectModel.cpp
     Source/DSP/PitchCorrection/YinPitchDetector.cpp
     Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -158,6 +160,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/CompressorTests.cpp
         Tests/SaturationTests.cpp
         Tests/AirLabTests.cpp
+        Tests/EqLabTests.cpp
+        Tests/SpaceTests.cpp
         Tests/CleanLabTests.cpp
         Tests/MixTests.cpp
         Tests/StutterTests.cpp
@@ -206,6 +210,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/DSP/OutputLimiter.cpp
         Source/DSP/GlitchStutter.cpp
         Source/DSP/LiquidEcho.cpp
+        Source/DSP/SpaceReverb.cpp
         Source/DSP/Dimension.cpp
         Source/DSP/VocalMutation.cpp
         Source/DSP/VocalDoubling/VocalDoubler.cpp
@@ -242,6 +247,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/UI/MasteringScreen.cpp
         Source/UI/LabPage.cpp
         Source/Analysis/DisplaySpectrum.cpp
+        Source/Analysis/EqAnalyzer.cpp
         Source/UI/EffectModel.cpp
         Source/AlterEgos.cpp
         Source/PluginProcessor.cpp

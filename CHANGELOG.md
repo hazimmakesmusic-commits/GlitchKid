@@ -3,6 +3,22 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- **Processing systems: EQ LAB, SPACE, AIR LAB v2.** See `docs/PROCESSING_SYSTEMS.md`.
+  - **EQ LAB:**
+    - 16 bands: 8 types, cut slopes from 6 to 96 dB/oct, stereo / left / right / mid / side placement, solo;
+    - per-band dynamics;
+    - an interactive graph with the EQ input and output spectrum.
+  - **SPACE:** an algorithmic reverb with 8 algorithms, 3 characters, freeze and 9 vocal presets.
+  - **AIR LAB v2:**
+    - MID AIR and HIGH AIR are now independent (the Link control is retired) and follow the voice;
+    - a noise gate keeps gaps and room tone from being lifted;
+    - a live readout shows what each is adding.
+  - **BUILD MY MIX** uses all three:
+    - EQ LAB: a low cut and a dynamic de-esser;
+    - SPACE: each profile's reverb;
+    - AIR LAB: set from the measured presence and air.
+  - **Parameters:** 291. The 215 new ones (EQ LAB bands, EQ LAB dynamics, SPACE) are appended after the existing ones.
+    Older sessions and presets load unchanged, except AIR LAB's new sound.
 - Producer workspace pass (UI only; see `docs/V1_SPRINT.md`, "Second pass").
   - TUNE / TONE: less common controls behind one shared ADVANCED switch (off by default, remembered).
   - REFERENCE: clearer step names, a one-line notice, technical detail behind DETAILS.

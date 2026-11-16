@@ -44,10 +44,10 @@ void hugeBurst (Buf& b)
 
 void setEq (ParametricEq& eq)
 {
-    eq.setBand (0, { 100.0f, 9.0f, 0.7071f });
+    eq.setBand (0, { 100.0f, 9.0f, 0.7071f, EqType::lowShelf });
     eq.setBand (1, { 300.0f, 12.0f, 8.0f }); // narrow and high gain: rings for a while
     eq.setBand (2, { 3000.0f, -6.0f, 2.0f });
-    eq.setBand (3, { 9000.0f, 6.0f, 0.7071f });
+    eq.setBand (3, { 9000.0f, 6.0f, 0.7071f, EqType::highShelf });
 }
 
 constexpr int block = 512;

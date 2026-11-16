@@ -231,7 +231,7 @@ struct LevelUiTests : public juce::UnitTest
                 ed->setSize (ed->getWidth() * 6 / 5, ed->getHeight() * 6 / 5);
             }
             for (const auto& e : before.values)
-                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
+                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, juce::jmax (1.0e-4f, std::abs (e.value) * 1.0e-6f)); // a float step above 1 kHz is > 1e-4
             expectEquals (p.getPresetName(), presetName);
             findButton (*content, "BEAT")->triggerClick();
             pump (60);
@@ -366,7 +366,7 @@ struct LevelUiTests : public juce::UnitTest
             collectToggles (*content, ticks);
             expect (ticks.empty(), "no suggestions are listed");
             for (const auto& e : before.values)
-                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
+                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, juce::jmax (1.0e-4f, std::abs (e.value) * 1.0e-6f)); // a float step above 1 kHz is > 1e-4
             findButton (*content, "NO BEAT? BUILD MY MIX  >")->triggerClick();
             pump (60);
             expectEquals (p.getUiInt ("uiLevel", -1), 3);
@@ -422,7 +422,7 @@ struct LevelUiTests : public juce::UnitTest
             findButton (*content, "APPLY SELECTED")->triggerClick();
             pump (60);
             for (const auto& e : before.values)
-                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, 1.0e-4f);
+                expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, juce::jmax (1.0e-4f, std::abs (e.value) * 1.0e-6f)); // a float step above 1 kHz is > 1e-4
             expect (! findButton (*content, "UNDO")->isEnabled(), "nothing was applied, so there is nothing to undo");
 
             for (auto* t : ticks)

@@ -79,7 +79,7 @@ struct MainScreenTests : public juce::UnitTest
             expectEquals (ed->uiRailIndexForTest(), 0);
             expect (main.isVisible() && main.getBounds() == juce::Rectangle<int> (0, 0, 1120, 680), "the whole window");
             expect (kid.getParentComponent() == nullptr, "Kid is not attached while HOME shows");
-            const char* names[] = { "CORRECTION", "INTENSITY", "AIR", "CEILING", "TONE", "PUNCH", "SPACE", "PRESENCE", "MIX", "OUTPUT" };
+            const char* names[] = { "CORRECTION", "INTENSITY", "HIGH AIR", "CEILING", "TONE", "PUNCH", "SPACE", "MID AIR", "MIX", "OUTPUT" };
             for (int i = 0; i < MS::numDials; ++i)
                 expectEquals (main.dialNameForTest (i), juce::String (names[i]));
             for (auto* b : { "ORIGINAL", "PROCESSED", "UNDO", "SAVE", "SET A", "SET B", "A", "B", "BUILD MY MIX", "Fit to beat", "ADVANCED MIXING", "Mandala" })
@@ -117,16 +117,15 @@ struct MainScreenTests : public juce::UnitTest
             main.dragForTest (MS::ceiling, -3.0);
             expect (getParam (p, "lim_on") > 0.5f && std::abs (getParam (p, "lim_ceiling") + 3.0f) < 0.06f, "CEILING");
             th::setParam (p, "air_on", 0.0f);
-            th::setParam (p, "air_link", 0.0f); // LINK is on by default
             main.dragForTest (MS::presence, 55.0);
-            expect (getParam (p, "air_on") > 0.5f && std::abs (getParam (p, "air_presence") - 55.0f) < 0.2f, "PRESENCE is AIR LAB's presence, and switches it on");
-            expectWithinAbsoluteError (getParam (p, "air_air"), 35.0f, 0.2f, "LINK off: AIR stays");
-            th::setParam (p, "air_link", 1.0f);
+            expect (getParam (p, "air_on") > 0.5f && std::abs (getParam (p, "air_presence") - 55.0f) < 0.2f, "MID AIR is AIR LAB's presence, and switches it on");
+            expectWithinAbsoluteError (getParam (p, "air_air"), 35.0f, 0.2f, "MID AIR never moves HIGH AIR");
+            th::setParam (p, "air_link", 1.0f); // even an old session with the link saved on
             main.dragForTest (MS::presence, 62.0);
-            expectWithinAbsoluteError (getParam (p, "air_air"), 62.0f, 0.2f, "LINK on: a hand move of PRESENCE moves AIR too");
-            main.dialForTest (MS::presence).setValue (20.0, juce::sendNotificationSync);
-            expectWithinAbsoluteError (getParam (p, "air_air"), 62.0f, 0.2f, "LINK follows hand moves only");
-            th::setParam (p, "air_link", 1.0f); // back to the default
+            expectWithinAbsoluteError (getParam (p, "air_air"), 35.0f, 0.2f, "the retired link does nothing");
+            main.dragForTest (MS::air, 40.0);
+            expectWithinAbsoluteError (getParam (p, "air_presence"), 62.0f, 0.2f, "HIGH AIR never moves MID AIR");
+            th::setParam (p, "air_link", 0.0f);
             main.dialForTest (MS::tone).setValue (85.0, juce::sendNotificationSync);
             expect (getParam (p, "eq_hi_gain") > 1.0f && main.dialTextForTest (MS::tone).startsWith ("Brighter"), "TONE drives the TONE macro");
             main.dialForTest (MS::punch).setValue (60.0, juce::sendNotificationSync);

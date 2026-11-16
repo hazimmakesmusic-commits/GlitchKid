@@ -26,7 +26,7 @@ std::vector<float> shaped (std::vector<float> in, double sr, int band, float hz,
 {
     ParametricEq eq;
     eq.prepare (sr);
-    eq.setBand (band, { hz, gainDb, q });
+    eq.setBand (band, { hz, gainDb, q, band == 3 ? EqType::highShelf : band == 0 ? EqType::lowShelf : EqType::bell });
     juce::AudioBuffer<float> b (1, (int) in.size());
     b.copyFrom (0, 0, in.data(), (int) in.size());
     eq.reset();
@@ -299,7 +299,7 @@ struct ReferenceMatchTests : public juce::UnitTest
             p2.applyParameterChanges (after);
             for (const auto& c : applied)
                 expectWithinAbsoluteError (th::getParam (p2, c.id.toRawUTF8()), c.to, 0.06f);
-            expectEquals (p2.getParameters().size(), 76);
+            expectEquals (p2.getParameters().size(), 291);
             (void) cur;
         }
 
@@ -549,7 +549,7 @@ struct ReferenceUiTests : public juce::UnitTest
             expect (ed->uiReferencePanelForTest().isVisible() && ed->uiReferencePanelForTest().getParentComponent() != nullptr);
             ed->uiShowWorkspaceForTest (0);
             expect (ed->uiReferencePanelForTest().getParentComponent() == nullptr, "the panel is only part of the window while its own tab is open");
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
         }
 
         beginTest ("the eleven rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
@@ -618,7 +618,7 @@ struct ReferenceUiTests : public juce::UnitTest
             expect (moved >= 1 && ed->uiCanUndoForTest());
             for (const char* id : { "gain", "mix", "tune_on", "tune_key", "tune_scale", "tune_strength", "tune_speed", "eq_lo_gain" })
                 expectWithinAbsoluteError (after.get (id, -99.0f), before.get (id, -99.0f), 1.0e-4f, id);
-            expectEquals (p.getParameters().size(), 76); // 69 + the 7 mastering parameters appended last
+            expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
             ed->uiUndoForTest();
             for (const auto& v : before.values)
                 expectWithinAbsoluteError (th::getParam (p, v.id.toRawUTF8()), v.value, 1.0e-3f);

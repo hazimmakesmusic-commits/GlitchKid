@@ -160,10 +160,17 @@ float eqGainDbAt (ParametricEq& eq, double sr, float freq)
     return juce::Decibels::gainToDecibels (b.getRMSLevel (0, n / 2, n / 2) / ref.getRMSLevel (0, n / 2, n / 2));
 }
 
+// The original four bands' types (band 0 low shelf, 1-2 bells, 3 high shelf): these tests were written when the band number implied the type.
+EqBandSettings legacyType (int band, EqBandSettings s)
+{
+    s.type = band == 0 ? EqType::lowShelf : band == 3 ? EqType::highShelf : EqType::bell;
+    return s;
+}
+
 ParametricEq makeEq (double sr, int band, EqBandSettings s)
 {
     ParametricEq eq;
-    eq.setBand (band, s);
+    eq.setBand (band, legacyType (band, s));
     eq.prepare (sr);
     return eq;
 }
@@ -259,9 +266,9 @@ struct ParametricEqTests : public juce::UnitTest
             float peak = 0.0f;
             for (int blk = 0; blk < 400; ++blk)
             {
-                for (int band = 0; band < ParametricEq::numBands; ++band)
-                    eq.setBand (band, { 20.0f + rng.nextFloat() * 20000.0f, (rng.nextFloat() - 0.5f) * 30.0f,
-                                        0.3f + rng.nextFloat() * 9.7f });
+                for (int band = 0; band < 4; ++band)
+                    eq.setBand (band, legacyType (band, { 20.0f + rng.nextFloat() * 20000.0f, (rng.nextFloat() - 0.5f) * 30.0f,
+                                                          0.3f + rng.nextFloat() * 9.7f }));
                 Buf b = makeNoise (2, 256, blk);
                 eq.process (b);
                 peak = juce::jmax (peak, b.getMagnitude (0, 256));
