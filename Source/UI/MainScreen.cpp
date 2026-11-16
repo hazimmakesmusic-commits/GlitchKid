@@ -530,7 +530,7 @@ void MainScreen::paint (juce::Graphics& g)
     {
         const auto r = modules[(size_t) m];
         const auto card = r.toFloat().reduced (5.0f, 2.0f);
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff17151e), card.getX(), card.getY(), juce::Colour (0xff0e0d13), card.getX(), card.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (surface, card.getX(), card.getY(), bgTop, card.getX(), card.getBottom(), false));
         g.fillRoundedRectangle (card, 12.0f);
         if (active[(size_t) m])
         {
@@ -564,7 +564,7 @@ void MainScreen::paint (juce::Graphics& g)
 
         auto text = juce::Rectangle<int> (r.getX() + 112, r.getY() + (m == autotune ? 80 : 52), r.getWidth() - 112 - 16, 64);
         g.setFont (fontOf (12.5f));
-        g.setColour (active[(size_t) m] ? juce::Colour (0xffd6d2de) : faint);
+        g.setColour (active[(size_t) m] ? textBright.interpolatedWith (textDim, 0.4f) : faint);
         g.drawFittedText (status[(size_t) m], text, juce::Justification::topLeft, 3, 0.9f);
         if (m == limiter && active[(size_t) m]) // the limiter's real gain reduction, 0..12 dB
         {
@@ -611,7 +611,7 @@ void MainScreen::paintCore (juce::Graphics& g)
     const auto c = ribbon.toFloat().getCentre();
     const float R = (float) ribbon.getHeight() * 0.44f;
     const auto ring = juce::Rectangle<float> (2.0f * R, 2.0f * R).withCentre (c);
-    g.setColour (juce::Colour (0xff09080d).withAlpha (0.86f)); // the core: the waveform passes behind it
+    g.setColour (bgBottom.withAlpha (0.86f)); // the core: the waveform passes behind it
     g.fillEllipse (ring);
     const float lit = dry ? 0.0f : juce::jlimit (0.0f, 1.0f, bloom * 1.6f);
     if (lit > 0.01f)
@@ -725,7 +725,7 @@ void MainScreen::paintRibbon (juce::Graphics& g)
 {
     using P = GlitchKidProcessor;
     const bool dry = on (P::bypassId);
-    const auto A = dry ? dim : uv, B = dry ? juce::Colour (0xffb7b1c2) : pinkNeon; // ORIGINAL: the same real levels, without GlitchKid's colour
+    const auto A = dry ? dim : uv, B = dry ? textDim : pinkNeon; // ORIGINAL: the same real levels, without GlitchKid's colour
     const auto r = ribbon.toFloat();
     const float mid = r.getCentreY(), amp = r.getHeight() * 0.46f;
     const int n = (int) envOut.size();
@@ -834,7 +834,7 @@ void MainScreen::paintMandala (juce::Graphics& g)
     juce::Graphics::ScopedSaveState clip (g);
     g.reduceClipRegion (visual.reduced (40, 30));
     const bool dry = on (GlitchKidProcessor::bypassId);
-    const auto A = dry ? dim : uv, B = dry ? juce::Colour (0xffb7b1c2) : pinkNeon;
+    const auto A = dry ? dim : uv, B = dry ? textDim : pinkNeon;
     const auto r = ribbon.toFloat();
     const auto c = r.getCentre();
     const float R = r.getHeight() * 0.5f + 2.0f, r0 = 9.0f;

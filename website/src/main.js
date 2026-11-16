@@ -10,17 +10,17 @@ const css = (name) => getComputedStyle (document.documentElement).getPropertyVal
 const el = (tag, props = {}, text = "") => Object.assign (document.createElement (tag), props, text ? { textContent: text } : {});
 document.querySelectorAll ("[data-year]").forEach ((n) => (n.textContent = new Date().getFullYear()));
 
-// ---- colour profiles (the same five as the plug-in; MAGENTA by default) ----
+// ---- colour profiles (the same five as the plug-in; VIRIDIAN by default, used only when no valid saved choice exists) ----
 const profiles = ["viridian", "magenta", "sapphire", "amber", "void"];
 const profileListeners = [];
 function setProfile (name, remember) {
-    if (! profiles.includes (name)) name = "magenta";
+    if (! profiles.includes (name)) name = "viridian";
     document.documentElement.dataset.profile = name;
     document.querySelectorAll (".swatches [data-profile]").forEach ((b) => b.setAttribute ("aria-checked", String (b.dataset.profile === name)));
     if (remember) store.set ("gk-profile", name);
     profileListeners.forEach ((f) => f());
 }
-setProfile (store.get ("gk-profile") || "magenta", false);
+setProfile (store.get ("gk-profile") || "viridian", false);
 document.querySelectorAll (".swatches [data-profile]").forEach ((b) => b.addEventListener ("click", () => setProfile (b.dataset.profile, true)));
 
 // ---- navigation ----

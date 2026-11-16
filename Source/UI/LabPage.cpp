@@ -125,7 +125,7 @@ void LabPage::paint (juce::Graphics& g)
     {
         const auto r = cards[(size_t) i].toFloat();
         const bool on = isOn (i);
-        g.setColour (on ? juce::Colour (0xff1a1019) : panelBottom); // quiet until the effect is really on
+        g.setColour (on ? pink.interpolatedWith (panelBottom, 0.9f) : panelBottom); // quiet until the effect is really on
         g.fillRoundedRectangle (r, 12.0f);
         g.setColour (on ? pink.withAlpha (0.55f) : border);
         g.drawRoundedRectangle (r.reduced (0.5f), 12.0f, 1.0f);

@@ -127,7 +127,7 @@ export function createSignal (canvas, { y = 0.5, onPhase = () => {}, speed = 1 }
         if (st.enter < 1) {
             const x = w * st.enter;
             ctx.globalAlpha = 1;
-            ctx.fillStyle = "#f2eff6";
+            ctx.fillStyle = p.text;
             ctx.fillRect (x - 1, h * y - 1, 2, 2);
         }
         // analog texture, only while the signal is disturbed: scan lines and grain

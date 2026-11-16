@@ -30,7 +30,7 @@ void LevelMeter::pushPeak (float linearPeak)
 void LevelMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (ui::well);
     g.fillRect (r);
     g.setColour (ui::border);
     g.drawRect (r, 1.0f);
@@ -63,7 +63,7 @@ void GainReductionMeter::pushReduction (float db)
 void GainReductionMeter::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (ui::well);
     g.fillRect (r);
     g.setColour (ui::border);
     g.drawRect (r, 1.0f);
@@ -1972,7 +1972,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
         g.fillRect (pg);
         g.setGradientFill (juce::ColourGradient (ui::pink.withAlpha (0.10f), pg.getX() + 80.0f, pg.getBottom(), ui::pink.withAlpha (0.0f), pg.getX() + 600.0f, pg.getBottom() - 300.0f, true));
         g.fillRect (pg);
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff5ee6ff).withAlpha (0.045f), pg.getCentreX(), pg.getCentreY(), juce::Colour (0xff5ee6ff).withAlpha (0.0f), pg.getCentreX() + 260.0f, pg.getCentreY(), true));
+        g.setGradientFill (juce::ColourGradient (ui::neon.withAlpha (0.045f), pg.getCentreX(), pg.getCentreY(), ui::neon.withAlpha (0.0f), pg.getCentreX() + 260.0f, pg.getCentreY(), true));
         g.fillRect (pg);
     }
 
@@ -1981,7 +1981,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
         const auto& item = railItems[railIndex()];
         g.setColour (ui::panelBottom);
         g.fillRect (R, 0.0f, W - R, 52.0f);
-        juce::ColourGradient spectrum (ui::violet, R, 0.0f, juce::Colour (0xff5ee6ff), W, 0.0f, false); // ultraviolet, magenta, then a little cyan
+        juce::ColourGradient spectrum (ui::violet, R, 0.0f, ui::neon, W, 0.0f, false); // primary, secondary, then soft: the profile's own spectrum
         spectrum.addColour (0.6, ui::pink);
         g.setGradientFill (spectrum);
         g.setOpacity (0.18f);

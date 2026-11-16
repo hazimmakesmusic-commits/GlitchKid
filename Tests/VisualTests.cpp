@@ -34,8 +34,10 @@ struct VisualTests : public juce::UnitTest
         beginTest ("the palette tokens are the approved ones, and the text colours keep AA contrast on every surface");
         {
             namespace ui = glitchkid::ui;
-            expect (ui::obsidian == juce::Colour (0xff101014) && ui::panelBottom == juce::Colour (0xff1b1921) && ui::panelTop == juce::Colour (0xff25222d) && ui::violet == juce::Colour (0xff8c4cf7)
-                    && ui::pink == juce::Colour (0xffff4fb8) && ui::textBright == juce::Colour (0xfff0ecf5) && ui::textDim == juce::Colour (0xffa7a0b2));
+            // VIRIDIAN, the default identity: the exact brand tokens (VOID, SURFACE, ELEVATED, BORDER, text; deep teal, viridian, emerald)
+            expect (ui::obsidian == juce::Colour (0xff080d0d) && ui::panelBottom == juce::Colour (0xff111a18) && ui::panelTop == juce::Colour (0xff1b2925)
+                    && ui::border == juce::Colour (0xff293a34) && ui::textBright == juce::Colour (0xfff1f7f4) && ui::textDim == juce::Colour (0xff91a69c)
+                    && ui::violet == juce::Colour (0xff08776f) && ui::pink == juce::Colour (0xff00dda5) && ui::neon == juce::Colour (0xff00b894));
             auto ratio = [] (juce::Colour fg, juce::Colour bg) { const float a = luminance (fg) + 0.05f, b = luminance (bg) + 0.05f; return std::max (a, b) / std::min (a, b); };
             for (auto bg : { ui::obsidian, ui::panelBottom, ui::panelTop })
             {
@@ -44,7 +46,7 @@ struct VisualTests : public juce::UnitTest
             }
             expect (ratio (juce::Colours::white, ui::violet) >= 4.5f, "white text on the violet selection fill: " + juce::String (ratio (juce::Colours::white, ui::violet), 2));
             expect (ratio (ui::violet, ui::obsidian) >= 3.0f, "violet accents on the background (graphics, 3:1): " + juce::String (ratio (ui::violet, ui::obsidian), 2));
-            expect (ratio (ui::pink, ui::obsidian) >= 3.0f, "magenta accents on the background: " + juce::String (ratio (ui::pink, ui::obsidian), 2));
+            expect (ratio (ui::pink, ui::obsidian) >= 3.0f, "secondary accents on the background: " + juce::String (ratio (ui::pink, ui::obsidian), 2));
         }
 
         beginTest ("display case: capitals are re-cased for display, acronyms, units and mixed-case text are left alone");
@@ -167,18 +169,23 @@ struct ColourProfileTests : public juce::UnitTest
         beginTest ("every profile keeps AA text contrast and visible accents on the near-black surfaces");
         {
             expectEquals ((int) tm::numProfiles, 5);
-            expectEquals (juce::String (tm::profile (tm::defaultProfile).name), juce::String ("MAGENTA"), "MAGENTA is the default");
+            expectEquals (juce::String (tm::profile (tm::defaultProfile).name), juce::String ("VIRIDIAN"), "VIRIDIAN is the default");
             const char* names[] = { "VIRIDIAN", "MAGENTA", "SAPPHIRE", "AMBER", "VOID" };
             for (int i = 0; i < tm::numProfiles; ++i)
             {
                 const auto& p = tm::profile (i);
                 expectEquals (juce::String (p.name), juce::String (names[i]));
                 expect (ratio (juce::Colours::white, p.primary) >= 4.5f, juce::String (p.name) + ": white on the primary fill " + juce::String (ratio (juce::Colours::white, p.primary), 2));
-                for (auto bg : { ui::obsidian, ui::panelBottom, juce::Colour (0xff0b0910) })
+                for (auto bg : { p.base.window, p.base.panel, p.base.raised })
                 {
-                    expect (ratio (p.primary, bg) >= 3.0f, juce::String (p.name) + ": primary accent on " + bg.toString() + " " + juce::String (ratio (p.primary, bg), 2));
+                    expect (ratio (p.base.text, bg) >= 7.0f, juce::String (p.name) + ": primary text on " + bg.toString());
+                    expect (ratio (p.base.textDim, bg) >= 4.5f, juce::String (p.name) + ": secondary text on " + bg.toString() + " " + juce::String (ratio (p.base.textDim, bg), 2));
                     expect (ratio (p.secondary, bg) >= 4.5f, juce::String (p.name) + ": secondary as text on " + bg.toString());
                     expect (ratio (p.soft, bg) >= 4.5f, juce::String (p.name) + ": soft as text on " + bg.toString());
+                }
+                for (auto bg : { p.base.window, p.base.panel, p.base.windowLow }) // the primary is drawn as a mark on the window and panels (not on raised controls)
+                {
+                    expect (ratio (p.primary, bg) >= 3.0f, juce::String (p.name) + ": primary accent on " + bg.toString() + " " + juce::String (ratio (p.primary, bg), 2));
                 }
             }
         }
@@ -188,11 +195,13 @@ struct ColourProfileTests : public juce::UnitTest
             tm::apply (tm::sapphire);
             expect (ui::violet == tm::profile (tm::sapphire).primary && ui::pink == tm::profile (tm::sapphire).secondary && ui::neon == tm::profile (tm::sapphire).soft);
             expect (ui::nk::uv == ui::violet && ui::nk::pinkNeon == ui::pink && ui::nk::uvSoft == ui::neon, "HOME's names follow");
+            expect (ui::obsidian == tm::profile (tm::sapphire).base.window && ui::nk::surface == tm::profile (tm::sapphire).base.panel
+                    && ui::nk::white == tm::profile (tm::sapphire).base.text, "the foundation follows too, in both workspaces");
             tm::apply (tm::defaultProfile);
-            expect (ui::violet == juce::Colour (0xff8c4cf7) && ui::pink == juce::Colour (0xffff4fb8));
+            expect (ui::violet == juce::Colour (0xff08776f) && ui::pink == juce::Colour (0xff00dda5) && ui::obsidian == juce::Colour (0xff080d0d));
         }
 
-        beginTest ("the choice is the user's preference: saved, read back, and a missing or broken file means MAGENTA");
+        beginTest ("the choice is the user's preference: saved, read back, and a missing or broken file means VIRIDIAN");
         {
             const auto f = tm::settingsFile();
             f.deleteFile();
@@ -203,10 +212,10 @@ struct ColourProfileTests : public juce::UnitTest
             expectEquals (tm::loadSaved(), (int) tm::defaultProfile, "a broken file is not an error");
             f.replaceWithText ("<GlitchKidSettings colourProfile=\"neon-green\"/>");
             expectEquals (tm::loadSaved(), (int) tm::defaultProfile, "an unknown profile is not an error");
-            tm::save (tm::viridian);
+            tm::save (tm::magenta); // a saved choice wins over the default: existing users keep the profile they picked
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
-            expectEquals (tm::current(), (int) tm::viridian, "a new window opens with the saved profile");
+            expectEquals (tm::current(), (int) tm::magenta, "a new window opens with the saved profile");
             e.reset();
             f.deleteFile();
             tm::apply (tm::defaultProfile);
@@ -348,7 +357,7 @@ struct BrandTests : public juce::UnitTest
                     juce::Image lockup (juce::Image::ARGB, 1200, 300, true);
                     {
                         juce::Graphics g (lockup);
-                        g.fillAll (juce::Colour (0xff0b0a10));
+                        g.fillAll (tm::profile (i).base.window);
                         ui::brand::drawEmblem (g, { 40.0f, 40.0f, 260.0f, 180.0f }, juce::Justification::centred);
                         ui::brand::drawWordmark (g, { 330.0f, 78.0f, 820.0f, 108.0f });
                         ui::brand::drawTagline (g, { 336.0f, 210.0f, 700.0f, 24.0f }, 17.0f);

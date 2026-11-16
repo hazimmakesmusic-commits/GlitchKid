@@ -165,12 +165,12 @@ def main():
     em, ew, eh = normalise(emblem(), 2.0)
     wm, ww, wh = normalise(wordmark(), 2.0)
 
-    # emblem and wordmark: primary (chrome), white, black, single colour (the default profile's ultraviolet)
+    # emblem and wordmark: primary (chrome), white, black, single colour (VIRIDIAN #00DDA5, the default identity)
     for name, polys, w, h in (("emblem", em, ew, eh), ("wordmark", wm, ww, wh)):
         write(f"glitchkid-{name}.svg", svg(polys, w, h, f"url(#chrome-{name})", chrome_defs(f"chrome-{name}", w, h)))
         write(f"glitchkid-{name}-white.svg", svg(polys, w, h, "#FFFFFF"))
         write(f"glitchkid-{name}-black.svg", svg(polys, w, h, "#000000"))
-        write(f"glitchkid-{name}-mono.svg", svg(polys, w, h, "#8C4CF7"))
+        write(f"glitchkid-{name}-mono.svg", svg(polys, w, h, "#00DDA5"))
 
     # the lockup: emblem, wordmark and the tagline (set in Inter, the interface typeface)
     scale = eh / wh * 0.62
@@ -180,16 +180,16 @@ def main():
                f'font-size="9" letter-spacing="4.2">— BUILT TO SOUND DIFFERENT</text>\n')
     write("glitchkid-lockup.svg", svg(lock, lock_w, eh + 14, "url(#chrome-lockup)", chrome_defs("chrome-lockup", lock_w, eh), tagline))
 
-    # the app icon: emblem only, on a graphite tile with the default profile's corner light
+    # the app icon: emblem only, on a VOID tile (SURFACE -> VOID) with VIRIDIAN's corner light (viridian -> deep teal)
     size = 1024.0
     k = size * 0.56 / max(ew, eh)
     ox, oy = (size - ew * k) / 2, (size - eh * k) / 2
     icon_polys = [[(ox + x * k, oy + y * k) for x, y in p] for p in em]
     icon_defs = (
         '  <defs>\n'
-        '    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17151E"/><stop offset="1" stop-color="#08070B"/></linearGradient>\n'
-        '    <radialGradient id="glow" cx="1" cy="1" r="0.9"><stop offset="0" stop-color="#8C4CF7" stop-opacity="0.85"/>'
-        '<stop offset="0.45" stop-color="#FF4FB8" stop-opacity="0.25"/><stop offset="1" stop-color="#FF4FB8" stop-opacity="0"/></radialGradient>\n'
+        '    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111A18"/><stop offset="1" stop-color="#080D0D"/></linearGradient>\n'
+        '    <radialGradient id="glow" cx="1" cy="1" r="0.9"><stop offset="0" stop-color="#00DDA5" stop-opacity="0.7"/>'
+        '<stop offset="0.45" stop-color="#08776F" stop-opacity="0.25"/><stop offset="1" stop-color="#08776F" stop-opacity="0"/></radialGradient>\n'
         f'    <linearGradient id="chrome-icon" x1="{ox:.0f}" y1="{oy:.0f}" x2="{ox + ew * k * 0.25:.0f}" y2="{oy + eh * k:.0f}" gradientUnits="userSpaceOnUse">'
         + "".join(f'<stop offset="{o}" stop-color="{c}"/>' for o, c in CHROME) + "</linearGradient>\n"
         '  </defs>\n'

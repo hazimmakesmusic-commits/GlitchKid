@@ -117,12 +117,12 @@ void drawDial (juce::Graphics& g, juce::Rectangle<float> dial, float start, floa
     const auto body = juce::Rectangle<float> (2.0f * br, 2.0f * br).withCentre (c);
     g.setColour (juce::Colours::black.withAlpha (0.55f * alpha));
     g.fillEllipse (body.translated (0.0f, 3.0f).expanded (1.0f));
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2e2a38).withAlpha (alpha), c.x, body.getY(), juce::Colour (0xff111016).withAlpha (alpha), c.x, body.getBottom(), false));
+    g.setGradientFill (juce::ColourGradient (panelTop.brighter (0.25f).withAlpha (alpha), c.x, body.getY(), obsidian.withAlpha (alpha), c.x, body.getBottom(), false));
     g.fillEllipse (body);
     g.setColour (juce::Colours::white.withAlpha ((hot ? 0.16f : 0.09f) * alpha));
     g.drawEllipse (body.reduced (0.5f), 1.0f);
     const auto cap = body.reduced (br * 0.22f);
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1a1820), c.x, cap.getY(), juce::Colour (0xff23202b), c.x, cap.getBottom(), false));
+    g.setGradientFill (juce::ColourGradient (panelBottom, c.x, cap.getY(), panelTop, c.x, cap.getBottom(), false));
     g.fillEllipse (cap);
     const juce::Point<float> a (c.x + std::sin (angle) * br * 0.38f, c.y - std::cos (angle) * br * 0.38f), b (c.x + std::sin (angle) * br * 0.84f, c.y - std::cos (angle) * br * 0.84f);
     g.setColour (alpha >= 1.0f ? textBright : disabled);
@@ -186,7 +186,7 @@ void NoteKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
     const bool sharp = getButtonText().contains ("#");
-    const auto base = selected ? violet : (sharp ? juce::Colour (0xff0d0d11) : juce::Colour (0xff25222d));
+    const auto base = selected ? violet : (sharp ? well : panelTop);
     g.setColour (down || highlighted ? base.brighter (0.15f) : base);
     g.fillPath (chamferPath (r, 4.0f));
     g.setColour (selected ? neon : (highlighted ? border.brighter (0.4f) : border));
@@ -229,7 +229,7 @@ void ScopeStrip::push (float peak)
 void ScopeStrip::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillPath (chamferPath (r, 4.0f));
     g.setColour (border);
     g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
@@ -261,7 +261,7 @@ void ReductionBar::push (float db)
 void ReductionBar::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillPath (chamferPath (r, 4.0f));
     g.setColour (border);
     g.strokePath (chamferPath (r.reduced (0.5f), 4.0f), juce::PathStrokeType (1.0f));
@@ -297,7 +297,7 @@ void BuildButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
     const auto r = getLocalBounds().toFloat().reduced (1.5f);
     const auto shape = chamferPath (r, 10.0f);
     const bool solid = state == AutoState::idle || state == AutoState::ready;
-    g.setColour ((solid ? (down ? violet.darker (0.35f) : highlighted ? violet.brighter (0.12f) : violet) : juce::Colour (0xff1f0d2b)).withAlpha (alpha));
+    g.setColour ((solid ? (down ? violet.darker (0.35f) : highlighted ? violet.brighter (0.12f) : violet) : violet.interpolatedWith (obsidian, 0.78f)).withAlpha (alpha));
     g.fillPath (shape);
     {
         const juce::Graphics::ScopedSaveState keep (g);
@@ -562,7 +562,7 @@ void EqGraph::paint (juce::Graphics& g)
 {
     if (! haveCurve)
         rebuildCurve();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 3.0f);
     g.setColour (border);
     g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), 3.0f, 1.0f);
@@ -738,23 +738,23 @@ void EqGraph::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelD
 
 PlaygroundLookAndFeel::PlaygroundLookAndFeel()
 {
-    setColour (juce::ResizableWindow::backgroundColourId, obsidian);
-    setColour (juce::Label::textColourId, textBright);
-    setColour (juce::TextButton::buttonColourId, juce::Colour (0xff25222d));
-    setColour (juce::TextButton::buttonOnColourId, violet);
-    setColour (juce::TextButton::textColourOffId, textBright);
     setColour (juce::TextButton::textColourOnId, chrome);
-    setColour (juce::Slider::textBoxTextColourId, textBright);
     setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack); // a knob's value is a plain number under it, not a boxed field
     setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
-    setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff0d0d11));
-    setColour (juce::ComboBox::outlineColourId, border.brighter (0.2f));
-    setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff1b1921));
     applyTheme();
 }
 
-void PlaygroundLookAndFeel::applyTheme()
+void PlaygroundLookAndFeel::applyTheme() // everything that follows the profile: accents and the foundation
 {
+    setColour (juce::ResizableWindow::backgroundColourId, obsidian);
+    setColour (juce::Label::textColourId, textBright);
+    setColour (juce::TextButton::buttonColourId, panelTop);
+    setColour (juce::TextButton::textColourOffId, textBright);
+    setColour (juce::Slider::textBoxTextColourId, textBright);
+    setColour (juce::ComboBox::backgroundColourId, well);
+    setColour (juce::ComboBox::outlineColourId, border.brighter (0.2f));
+    setColour (juce::PopupMenu::backgroundColourId, panelBottom);
+    setColour (juce::PopupMenu::textColourId, textBright);
     setColour (juce::TextButton::buttonOnColourId, violet);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, violet);
 }

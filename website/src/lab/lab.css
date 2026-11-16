@@ -3,11 +3,17 @@
 @font-face { font-family: "Inter"; src: url("../fonts/inter-var.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("../fonts/jetbrains-mono-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "JetBrains Mono"; src: url("../fonts/jetbrains-mono-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }
-:root { --field: #07070a; --plane: #0d0c11; --rule: #24222b; --text: #f2eff6; --text-2: #b4adbf; --text-3: #6f6979;
-        --primary: #8c4cf7; --secondary: #ff4fb8; --soft: #c4a6ff; --deep: #3b1a7a;
+:root { /* VIRIDIAN, the default identity: the brand tokens (website/src/styles.css, Source/UI/Theme.cpp) */
+        --field: #080d0d; --plane: #111a18; --rule: #293a34; --rule-2: color-mix(in srgb, #293a34 70%, #91a69c);
+        --text: #f1f7f4; --text-2: #91a69c; --text-3: color-mix(in srgb, #91a69c 85%, #080d0d);
+        --primary: #08776f; --secondary: #00dda5; --soft: #00b894; --deep: #08776f; --mid: #00b894;
+        --grad: linear-gradient(110deg, var(--secondary) 0%, var(--mid) 48%, var(--primary) 100%);
         --display: "Archivo", "Arial Narrow", sans-serif; --body: "Inter", system-ui, sans-serif; --mono: "JetBrains Mono", ui-monospace, monospace;
         color-scheme: dark; }
-[data-profile="viridian"] { --primary: #0d7f5c; --secondary: #2fe0a0; --soft: #a8f2d6; --deep: #0a4f57; }
+[data-profile="magenta"], [data-profile="sapphire"], [data-profile="amber"], [data-profile="void"] { /* the graphite foundation */
+    --field: #07070a; --plane: #0d0c11; --rule: #24222b; --rule-2: #3a3644; --text: #f2eff6; --text-2: #b4adbf; --text-3: #6f6979;
+    --mid: color-mix(in srgb, var(--secondary) 40%, var(--primary)); }
+[data-profile="magenta"] { --primary: #8c4cf7; --secondary: #ff4fb8; --soft: #c4a6ff; --deep: #3b1a7a; }
 [data-profile="sapphire"] { --primary: #2563eb; --secondary: #4fa8ff; --soft: #b5d6ff; --deep: #0b1f4d; }
 [data-profile="amber"] { --primary: #a8501c; --secondary: #ff9a3d; --soft: #ffd4a8; --deep: #5c2810; }
 [data-profile="void"] { --primary: #6a6f7a; --secondary: #c9ced6; --soft: #eef0f3; --deep: #2a2d33; }
@@ -19,7 +25,7 @@ a { color: var(--soft); }
 
 /* the lab's own chrome: a measured strip at the bottom, never over the artwork */
 .lab-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
-           padding: 12px clamp(16px, 3vw, 32px); background: rgba(7,7,10,.86); backdrop-filter: blur(8px); border-top: 1px solid var(--rule); }
+           padding: 12px clamp(16px, 3vw, 32px); background: color-mix(in srgb, var(--field) 86%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--rule); }
 .lab-bar button, .lab-bar label.btn { font: 500 11.5px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--text); background: transparent;
            border: 1px solid #3a3644; padding: 9px 12px; cursor: pointer; transition: border-color .14s cubic-bezier(.2,.8,.2,1), color .14s; }
 .lab-bar button:hover, .lab-bar label.btn:hover { border-color: var(--soft); }
@@ -29,7 +35,7 @@ a { color: var(--soft); }
 .chips { display: inline-flex; gap: 6px; }
 .chips button { width: 18px; height: 18px; padding: 0; border-radius: 50%; border: 1px solid transparent; }
 .chips button[aria-pressed="true"] { border-color: var(--text); }
-.chips [data-p="viridian"] { background: linear-gradient(135deg, #2fe0a0, #0d7f5c); }
+.chips [data-p="viridian"] { background: linear-gradient(135deg, #00dda5, #00b894 48%, #08776f); }
 .chips [data-p="magenta"] { background: linear-gradient(135deg, #ff4fb8, #8c4cf7); }
 .chips [data-p="sapphire"] { background: linear-gradient(135deg, #4fa8ff, #2563eb); }
 .chips [data-p="amber"] { background: linear-gradient(135deg, #ff9a3d, #a8501c); }

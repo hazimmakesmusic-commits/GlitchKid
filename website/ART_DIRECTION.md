@@ -31,7 +31,7 @@ This order gives the page a structure that comes from the product, not from a te
 
 - **12 columns,** 1440 max, 24 px gutters, 16 px outer margin on phones.
 - **Asymmetry:** text anchors to columns 1–6. Signal graphics bleed off the right edge (columns 5–12 and beyond the frame), so the page never centres a hero.
-- **Measurement layer:** 1 px hairlines (`#24222b`), tick marks every 8 px on the section rules, and mono stage labels (`IN · 00`, `PROC · 01`…) at the top-left of each section. This gives the technical precision of an oscilloscope graticule, used sparingly.
+- **Measurement layer:** 1 px hairlines (BORDER `#293A34`), tick marks every 8 px on the section rules, and mono stage labels (`IN · 00`, `PROC · 01`…) at the top-left of each section. This gives the technical precision of an oscilloscope graticule, used sparingly.
 - **Negative space:** at least 18 vh between sections. No section has more than one heading level visible above the fold.
 
 ## 4. Typography
@@ -39,7 +39,7 @@ This order gives the page a structure that comes from the product, not from a te
 | Role | Face | Setting |
 |---|---|---|
 | Display | **Archivo** variable (width 62–125, weight 100–900) | Uppercase, weight 800, width 72 (condensed), leading 0.86, tracking −0.02 em. Sizes from 15vw (hero, phones) down to 48 px. |
-| Body | **Inter** variable | 17/1.6, weight 400, `#b4adbf` on near-black. Measure ≤ 62 ch. |
+| Body | **Inter** variable | 17/1.6, weight 400, SECONDARY TEXT `#91A69C` on VOID. Measure ≤ 62 ch. |
 | Technical | **JetBrains Mono** 400/500 | 11–13 px, uppercase, tracking +0.08 em. Labels, timecodes, values, captions. |
 
 All are self-hosted WOFF2 under the SIL OFL (`src/fonts/`), about 180 KB in total. No third-party font requests.
@@ -48,11 +48,11 @@ All are self-hosted WOFF2 under the SIL OFL (`src/fonts/`), about 180 KB in tota
 
 ## 5. Colour
 
-- **Fixed:** `#07070a` (field), `#0d0c11` (graphite plane), `#24222b` (hairline), `#f2eff6` (text), `#b4adbf` (secondary text), `#6f6979` (tertiary, ≥ 4.5:1 only for large mono labels).
-- **Profiles:** the plug-in's five profiles. Each has primary, secondary, soft and deep; MAGENTA by default. Values are identical to `Source/UI/Theme.cpp`.
+- **VIRIDIAN is the default identity** (the same tokens as the plug-in, `Source/UI/Theme.cpp`, and `src/styles.css`): VIRIDIAN `#00DDA5`, EMERALD `#00B894`, DEEP TEAL `#08776F`; signature gradient `linear-gradient(110deg, #00DDA5 0%, #00B894 48%, #08776F 100%)`; VOID `#080D0D` (field), SURFACE `#111A18` (plane), ELEVATED `#1B2925`, BORDER `#293A34` (hairline), PRIMARY TEXT `#F1F7F4`, SECONDARY TEXT `#91A69C`. Tertiary text is secondary text mixed 15 % into VOID.
+- **Profiles:** the plug-in's five profiles stay selectable. Each has primary, secondary, soft and deep. The other four sit on the original graphite foundation (`#07070a`, `#0d0c11`, `#24222b`, `#f2eff6`, `#b4adbf`, `#6f6979`).
 - **Rules:**
   1. Accent colour appears only in the signal graphics, the primary CTA, focus rings and the selected state.
-  2. Gradients run in frequency order: deep → primary → secondary as frequency rises, or as the signal resolves.
+  2. Gradients run in frequency order: deep → primary → secondary as frequency rises, or as the signal resolves (VIRIDIAN: deep teal → emerald → viridian, the signature gradient).
   3. Chromatic separation uses true R/G/B channels: it's a physical effect, not a palette. The brand gradient is what the signal resolves into.
 
 ## 6. Motion language

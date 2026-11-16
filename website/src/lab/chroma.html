@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-profile="magenta">
+<html lang="en" data-profile="viridian">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GLITCHKID motion lab — 02 Chromatic distortion</title>
@@ -58,6 +58,7 @@
 <script type="module">
 import { createChroma } from "../motion/chroma.js";
 import { createSignal } from "../motion/signal.js";
+import { currentProfile } from "../motion/core.js";
 import { mountLabBar } from "./lab.js";
 
 const load = (src) => new Promise ((ok, bad) => { const i = new Image(); i.onload = () => ok (i); i.onerror = bad; i.src = src; });
@@ -76,7 +77,7 @@ intro.width = 1120; intro.height = 680;
     await new Promise ((r) => requestAnimationFrame (() => requestAnimationFrame (r))); // the signal draws on its own frame clock
     sig.stop();
     const g = intro.getContext ("2d");
-    g.fillStyle = "#07070a"; g.fillRect (0, 0, 1120, 680);
+    g.fillStyle = currentProfile().field; g.fillRect (0, 0, 1120, 680);
     g.drawImage (host, 0, 0, 1120, 680);
     const mark = await load ("../assets/brand/glitchkid-wordmark.svg");
     const mw = 620, mh = mw * mark.height / mark.width; // sits on the line like a baseline, inside the part of the screen that never bleeds off

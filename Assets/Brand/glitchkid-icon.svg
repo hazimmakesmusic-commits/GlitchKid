@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024.00 1024.00" width="1024" height="1024">
   <title>GLITCHKID app icon</title>
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#17151E"/><stop offset="1" stop-color="#08070B"/></linearGradient>
-    <radialGradient id="glow" cx="1" cy="1" r="0.9"><stop offset="0" stop-color="#8C4CF7" stop-opacity="0.85"/><stop offset="0.45" stop-color="#FF4FB8" stop-opacity="0.25"/><stop offset="1" stop-color="#FF4FB8" stop-opacity="0"/></radialGradient>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#111A18"/><stop offset="1" stop-color="#080D0D"/></linearGradient>
+    <radialGradient id="glow" cx="1" cy="1" r="0.9"><stop offset="0" stop-color="#00DDA5" stop-opacity="0.7"/><stop offset="0.45" stop-color="#08776F" stop-opacity="0.25"/><stop offset="1" stop-color="#08776F" stop-opacity="0"/></radialGradient>
     <linearGradient id="chrome-icon" x1="225" y1="274" x2="369" y2="750" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F7F8FA"/><stop offset="0.38" stop-color="#C3C8D0"/><stop offset="0.5" stop-color="#8A909A"/><stop offset="0.62" stop-color="#DDE1E6"/><stop offset="1" stop-color="#6E747E"/></linearGradient>
   </defs>
   <rect width="1024" height="1024" rx="224" fill="url(#tile)"/>

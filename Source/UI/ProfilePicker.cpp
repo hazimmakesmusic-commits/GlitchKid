@@ -1,5 +1,6 @@
 #include "ProfilePicker.h"
 #include "PlaygroundWidgets.h"
+#include "NeonKit.h"
 
 namespace glitchkid::ui
 {
@@ -13,7 +14,7 @@ void paintProfileTile (juce::Graphics& g, juce::Rectangle<float> r, int index, b
         juce::Path clip;
         clip.addRoundedRectangle (art, 9.0f);
         g.reduceClipRegion (clip);
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff17151e), art.getX(), art.getY(), juce::Colour (0xff08070b), art.getX(), art.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (nk::surface, art.getX(), art.getY(), nk::bgBottom, art.getX(), art.getBottom(), false));
         g.fillRect (art);
         for (int k = 0; k < 2; ++k) // two ribbons: an S-curve band across the tile, the second fainter and offset
         {

@@ -30,7 +30,7 @@ void Pill::paintButton (juce::Graphics& g, bool over, bool down)
         g.setColour (hairline);
         g.drawRoundedRectangle (r, rad, 1.0f);
     }
-    g.setColour (on || over ? white : juce::Colour (0xffd6d2de));
+    g.setColour (on || over ? white : textBright.interpolatedWith (textDim, 0.4f));
     g.setFont (fontOf (13.0f, on));
     g.drawFittedText (getButtonText(), getLocalBounds().reduced (10, 0), juce::Justification::centred, 1, 0.8f);
     if (hasKeyboardFocus (false))

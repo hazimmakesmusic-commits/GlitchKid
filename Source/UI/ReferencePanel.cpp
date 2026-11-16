@@ -43,7 +43,7 @@ void ToneDiffView::set (const std::array<float, Profile::numBands>& d, int b, bo
 void ToneDiffView::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillPath (chamferPath (r, 6.0f));
     g.setColour (border);
     g.strokePath (chamferPath (r.reduced (0.5f), 6.0f), juce::PathStrokeType (1.0f));

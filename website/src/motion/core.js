@@ -18,23 +18,25 @@ export const ease = {
 // progress of t through [a, b], eased
 export const span = (t, a, b, f = (x) => x) => f (clamp ((t - a) / (b - a)));
 
-// the five profiles (identical to the plug-in, Source/UI/Theme.cpp)
+// the five profiles (identical to the plug-in, Source/UI/Theme.cpp). VIRIDIAN is the default identity: its spectral middle is emerald, so the
+// signal resolves along the signature gradient (deep teal -> emerald -> viridian); field and text are each profile's foundation.
+const graphite = { field: "#07070a", text: "#f2eff6" };
 export const profiles = {
-    viridian: { primary: "#0d7f5c", secondary: "#2fe0a0", soft: "#a8f2d6", deep: "#0a4f57" },
-    magenta:  { primary: "#8c4cf7", secondary: "#ff4fb8", soft: "#c4a6ff", deep: "#3b1a7a" },
-    sapphire: { primary: "#2563eb", secondary: "#4fa8ff", soft: "#b5d6ff", deep: "#0b1f4d" },
-    amber:    { primary: "#a8501c", secondary: "#ff9a3d", soft: "#ffd4a8", deep: "#5c2810" },
-    void:     { primary: "#6a6f7a", secondary: "#c9ced6", soft: "#eef0f3", deep: "#2a2d33" },
+    viridian: { primary: "#08776f", secondary: "#00dda5", soft: "#00b894", deep: "#08776f", mid: "#00b894", field: "#080d0d", text: "#f1f7f4" },
+    magenta:  { primary: "#8c4cf7", secondary: "#ff4fb8", soft: "#c4a6ff", deep: "#3b1a7a", ...graphite },
+    sapphire: { primary: "#2563eb", secondary: "#4fa8ff", soft: "#b5d6ff", deep: "#0b1f4d", ...graphite },
+    amber:    { primary: "#a8501c", secondary: "#ff9a3d", soft: "#ffd4a8", deep: "#5c2810", ...graphite },
+    void:     { primary: "#6a6f7a", secondary: "#c9ced6", soft: "#eef0f3", deep: "#2a2d33", ...graphite },
 };
-export const currentProfile = () => profiles[document.documentElement.dataset.profile] || profiles.magenta;
+export const currentProfile = () => profiles[document.documentElement.dataset.profile] || profiles.viridian;
 
 export function hexToRgb (hex) {
     const n = parseInt (hex.slice (1), 16);
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
 }
-// colour along the frequency order deep -> primary -> secondary (t in 0..1)
+// colour along the frequency order deep -> primary (VIRIDIAN: emerald) -> secondary (t in 0..1)
 export function spectral (p, t, alpha = 1) {
-    const stops = [p.deep, p.primary, p.secondary].map (hexToRgb);
+    const stops = [p.deep, p.mid || p.primary, p.secondary].map (hexToRgb);
     const x = clamp (t) * 2, i = Math.min (1, Math.floor (x)), f = x - i;
     const c = stops[i].map ((v, k) => Math.round (mix (v, stops[i + 1][k], f)));
     return `rgba(${c[0]},${c[1]},${c[2]},${alpha})`;

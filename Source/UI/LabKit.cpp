@@ -48,7 +48,7 @@ void LevelBar::setActive (bool a)
 void LevelBar::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillRect (r);
     g.setColour (border);
     g.drawRect (r, 1.0f);
@@ -87,7 +87,7 @@ void BandCompare::paint (juce::Graphics& g)
 {
     static const char* names[numBands] = { "Low", "Low-mid", "Mid", "Presence", "Air" };
     auto r = getLocalBounds().toFloat();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillPath (chamferPath (r, 6.0f));
     g.setColour (border);
     g.strokePath (chamferPath (r.reduced (0.5f), 6.0f), juce::PathStrokeType (1.0f));
@@ -352,7 +352,7 @@ void SpectrumView::paint (juce::Graphics& g)
     ++paintCount;
     if (geometryDirty)
         rebuildGeometry();
-    g.setColour (juce::Colour (0xff0d0d11));
+    g.setColour (well);
     g.fillPath (framePath);
     g.setColour (border);
     g.strokePath (framePath, juce::PathStrokeType (1.0f));
@@ -364,7 +364,7 @@ void SpectrumView::paint (juce::Graphics& g)
     for (const auto& l : gridLabels)
         g.drawText (l.text, l.box, l.left ? juce::Justification::centredLeft : juce::Justification::centred, false);
 
-    const juce::Colour colours[3] = { violet, pink, juce::Colour (0xff9b91a5) }; // the current profile's accents (not cached)
+    const juce::Colour colours[3] = { violet, pink, textDim }; // the current profile's accents and its neutral (not cached)
     static const char* names[3] = { "VOCAL INPUT", "OUTPUT", "INSTRUMENTAL INPUT" };
     bool any = false;
     for (int t : { 2, 0, 1 }) // the beat behind, then the vocal, then the output
@@ -402,7 +402,7 @@ void SpectrumView::paint (juce::Graphics& g)
     bool wave = false;
     if (showWave)
     {
-        g.setColour (juce::Colour (0xff0d0d11));
+        g.setColour (well);
         g.fillRect (waveArea);
         g.setColour (border.withAlpha (0.8f));
         g.drawRect (waveArea, 1.0f);
@@ -446,7 +446,7 @@ void SpectrumView::paint (juce::Graphics& g)
         const auto headFont = labFont (showWave ? 14.0f : 12.0f), subFont = fontOf (11.5f);
         const float tw = (float) juce::jmax (juce::GlyphArrangement::getStringWidth (headFont, head), sub.isEmpty() ? 0 : juce::GlyphArrangement::getStringWidth (subFont, sub)) + 36.0f;
         const auto pill = juce::Rectangle<float> (tw, sub.isEmpty() ? 26.0f : 42.0f).withCentre (plot.getCentre().translated (0.0f, emblemShown ? plot.getHeight() * 0.26f : 0.0f));
-        g.setColour (juce::Colour (0xff101014).withAlpha (0.9f));
+        g.setColour (obsidian.withAlpha (0.9f));
         g.fillPath (chamferPath (pill, 6.0f));
         g.setColour (border);
         g.strokePath (chamferPath (pill, 6.0f), juce::PathStrokeType (1.0f));

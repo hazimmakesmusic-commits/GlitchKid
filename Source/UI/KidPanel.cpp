@@ -1,5 +1,6 @@
 #include "KidPanel.h"
 #include "PlaygroundWidgets.h"
+#include "NeonKit.h"
 #include "../Analysis/ReferenceAnalyzer.h"
 
 namespace glitchkid::ui
@@ -7,8 +8,9 @@ namespace glitchkid::ui
 namespace
 {
 // Simple neon: near-black, charcoal surfaces, one ultraviolet accent, pink only for "live" (recording, ORIGINAL), white type.
-const juce::Colour bg (0xff08070b), surface (0xff121117), surfaceHi (0xff1a1820), hairline (0xff24212c), accent (0xff9b5cff), accentSoft (0xffc4a6ff),
-                   liveCol (0xffe14cbb), white (0xfff4f2f7), dim (0xff8d8798), faint (0xff5d5868);
+// The names are references to the live tokens, so KID follows the colour profile like the rest of the interface.
+const juce::Colour &bg = nk::bgBottom, &surface = nk::surface, &surfaceHi = nk::surfaceHi, &hairline = nk::hairline, &accent = violet, &accentSoft = neon,
+                   &liveCol = pink, &white = textBright, &dim = nk::dim, &faint = nk::faint;
 constexpr int advancedStage[5] = { 1, 7, 6, 8, 13 }; // Tune, Clean (corrective), Tone (EQ), Dynamics (compressor), Space (echo)
 
 void glow (juce::Graphics& g, juce::Rectangle<float> r, float radius, juce::Colour c, float strength)
@@ -51,7 +53,7 @@ void KidPanel::Pill::paintButton (juce::Graphics& g, bool over, bool down)
             g.setColour (hairline.withAlpha (alpha));
             g.drawRoundedRectangle (r, rad, 1.0f);
         }
-        g.setColour ((on ? white : over ? white : juce::Colour (0xffd6d2de)).withAlpha (alpha));
+        g.setColour ((on ? white : over ? white : white.interpolatedWith (dim, 0.4f)).withAlpha (alpha));
         g.setFont (fontOf (13.0f, on));
     }
     g.drawFittedText (getButtonText(), getLocalBounds().reduced (10, 0), juce::Justification::centred, 1, 0.85f);
@@ -67,7 +69,7 @@ void KidPanel::MicButton::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat().reduced (2.0f);
     juce::ColourGradient ring (accent, r.getX(), r.getBottom(), liveCol, r.getRight(), r.getY(), false);
-    ring.addColour (0.7, juce::Colour (0xffc9a6ff));
+    ring.addColour (0.7, accentSoft);
     if (live)
     {
         g.setColour (liveCol.withAlpha (0.25f));
@@ -75,7 +77,7 @@ void KidPanel::MicButton::paint (juce::Graphics& g)
     }
     g.setGradientFill (ring);
     g.fillEllipse (r);
-    g.setColour (live ? juce::Colour (0xff2a0f24) : juce::Colour (0xff0f0b13));
+    g.setColour (live ? liveCol.interpolatedWith (bg, 0.85f) : surface);
     g.fillEllipse (r.reduced (3.0f));
     if (! isEnabled())
     {
@@ -840,7 +842,7 @@ void KidPanel::paintChat (juce::Graphics& g)
     {
         juce::AttributedString as;
         as.setWordWrap (juce::AttributedString::byWord);
-        as.append (l.text, fontOf (l.kid ? 15.0f : 14.5f), l.kid ? white : juce::Colour (0xffdcd8e4));
+        as.append (l.text, fontOf (l.kid ? 15.0f : 14.5f), l.kid ? white : white.interpolatedWith (dim, 0.25f));
         juce::TextLayout tl;
         tl.createLayout (as, l.kid ? kidW - 20.0f : juce::jmin (youW - 28.0f, juce::GlyphArrangement::getStringWidth (fontOf (14.5f), l.text) + 4.0f));
         const float h = tl.getHeight() + (l.kid ? 26.0f : 22.0f);

@@ -1,9 +1,16 @@
-/* GLITCHKID website. Tokens first: the surfaces never change; a colour profile sets only the accents (the same values as the plug-in, Source/UI/Theme.cpp). */
+/* GLITCHKID website. Tokens first. VIRIDIAN is the default identity: the exact brand tokens, the same values as the plug-in (Source/UI/Theme.cpp).
+   The other colour profiles set their accents and sit on the original graphite foundation, as they do in the plug-in. */
 :root {
-    --bg: #0b0a10; --bg-2: #101014; --surface: #15131b; --surface-2: #1b1921; --line: #2a2733; --line-2: #3a3644;
-    --text: #f0ecf5; --text-2: #b4adbf; --text-3: #8d8798;
-    --primary: #8c4cf7; --secondary: #ff4fb8; --soft: #c4a6ff; --deep: #3b1a7a; /* MAGENTA (default) */
-    --grad: linear-gradient(100deg, var(--secondary), var(--primary) 70%);
+    /* brand tokens: the only place these values are written */
+    --gk-viridian: #00dda5; --gk-emerald: #00b894; --gk-deep-teal: #08776f;
+    --gk-void: #080d0d; --gk-surface: #111a18; --gk-elevated: #1b2925; --gk-border: #293a34; --gk-text: #f1f7f4; --gk-text-2: #91a69c;
+    /* roles (derived shades are mixes of the tokens, never new colours) */
+    --bg: var(--gk-void); --bg-2: var(--gk-void); --surface: var(--gk-surface); --surface-2: var(--gk-elevated);
+    --line: var(--gk-border); --line-2: color-mix(in srgb, var(--gk-border) 70%, var(--gk-text-2));
+    --text: var(--gk-text); --text-2: var(--gk-text-2); --text-3: color-mix(in srgb, var(--gk-text-2) 85%, var(--gk-void));
+    --primary: var(--gk-deep-teal); --secondary: var(--gk-viridian); --soft: var(--gk-emerald); --deep: var(--gk-deep-teal); --mid: var(--gk-emerald);
+    /* the signature gradient: linear-gradient(110deg, #00DDA5 0%, #00B894 48%, #08776F 100%) in VIRIDIAN */
+    --grad: linear-gradient(110deg, var(--secondary) 0%, var(--mid) 48%, var(--primary) 100%);
     --grad-fill: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 55%, var(--deep)));
     --radius: 14px; --radius-s: 8px;
     --gutter: clamp(16px, 4vw, 48px); --max: 1180px;
@@ -12,10 +19,13 @@
     --ease: cubic-bezier(.2, .7, .2, 1);
     color-scheme: dark;
 }
-[data-profile="viridian"] { --primary: #0d7f5c; --secondary: #2fe0a0; --soft: #a8f2d6; --deep: #0a4f57; }
-[data-profile="sapphire"] { --primary: #2563eb; --secondary: #4fa8ff; --soft: #b5d6ff; --deep: #0b1f4d; }
-[data-profile="amber"]    { --primary: #a8501c; --secondary: #ff9a3d; --soft: #ffd4a8; --deep: #5c2810; }
-[data-profile="void"]     { --primary: #6a6f7a; --secondary: #c9ced6; --soft: #eef0f3; --deep: #2a2d33; }
+[data-profile="magenta"], [data-profile="sapphire"], [data-profile="amber"], [data-profile="void"] { /* the graphite foundation */
+    --bg: #0b0a10; --bg-2: #101014; --surface: #15131b; --surface-2: #1b1921; --line: #2a2733; --line-2: #3a3644;
+    --text: #f0ecf5; --text-2: #b4adbf; --text-3: #8d8798; }
+[data-profile="magenta"]  { --primary: #8c4cf7; --secondary: #ff4fb8; --soft: #c4a6ff; --deep: #3b1a7a; --mid: color-mix(in srgb, #ff4fb8 40%, #8c4cf7); }
+[data-profile="sapphire"] { --primary: #2563eb; --secondary: #4fa8ff; --soft: #b5d6ff; --deep: #0b1f4d; --mid: color-mix(in srgb, #4fa8ff 40%, #2563eb); }
+[data-profile="amber"]    { --primary: #a8501c; --secondary: #ff9a3d; --soft: #ffd4a8; --deep: #5c2810; --mid: color-mix(in srgb, #ff9a3d 40%, #a8501c); }
+[data-profile="void"]     { --primary: #6a6f7a; --secondary: #c9ced6; --soft: #eef0f3; --deep: #2a2d33; --mid: color-mix(in srgb, #c9ced6 40%, #6a6f7a); }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 76px; }
@@ -68,7 +78,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .hero { position: relative; min-height: 100svh; display: grid; align-items: center; padding: 110px var(--gutter) 90px; overflow: hidden; isolation: isolate; }
 .hero__canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
 .hero::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; /* keeps the words readable over the signal */
-                background: linear-gradient(90deg, rgba(11,10,16,.84) 0%, rgba(11,10,16,.5) 46%, rgba(11,10,16,0) 70%); }
+                background: linear-gradient(90deg, color-mix(in srgb, var(--bg) 84%, transparent) 0%, color-mix(in srgb, var(--bg) 50%, transparent) 46%, transparent 70%); }
 .hero::after { content: ""; position: absolute; inset: auto 0 0; height: 30%; z-index: -1; background: linear-gradient(transparent, var(--bg)); pointer-events: none; }
 .hero__inner { width: 100%; max-width: var(--max); margin: 0 auto; }
 .hero__mark { display: flex; align-items: center; gap: clamp(14px, 2.5vw, 28px); margin-bottom: clamp(30px, 5vh, 56px); }
@@ -106,7 +116,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 
 /* audio player */
 .player { position: relative; border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); padding: clamp(18px, 3vw, 32px); overflow: hidden; }
-.player__scope { width: 100%; height: 160px; display: block; border-radius: var(--radius-s); background: #09080d; }
+.player__scope { width: 100%; height: 160px; display: block; border-radius: var(--radius-s); background: var(--bg-2); }
 .player__placeholder { position: absolute; inset: clamp(18px, 3vw, 32px) clamp(18px, 3vw, 32px) auto; height: 160px; display: none; flex-direction: column; justify-content: center; align-items: center; text-align: center; padding: 0 24px; color: var(--text-2); }
 .player__placeholder p { margin: 4px 0; max-width: 58ch; }
 .player__placeholder .mono { color: var(--soft); text-transform: uppercase; font-size: 12px; }
@@ -134,7 +144,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 
 /* features */
 .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.card { padding: 26px; border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), #0e0d13); border: 1px solid var(--line); position: relative; overflow: hidden; transition: border-color .3s, transform .3s var(--ease); }
+.card { padding: 26px; border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); position: relative; overflow: hidden; transition: border-color .3s, transform .3s var(--ease); }
 .card::before { content: ""; position: absolute; left: 0; top: 0; width: 26px; height: 26px; background: var(--grad); clip-path: polygon(0 0, 100% 0, 0 100%); opacity: 0; transition: opacity .3s; }
 .card:hover { border-color: color-mix(in srgb, var(--secondary) 45%, var(--line)); transform: translateY(-2px); }
 .card:hover::before { opacity: 1; }
@@ -155,7 +165,7 @@ h3 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
 .next { margin-top: 36px; padding: 24px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--surface); }
 .next h3 { font-size: 13px; text-transform: uppercase; color: var(--soft); margin-bottom: 12px; }
 .next ol { margin: 0; padding-left: 20px; color: var(--text-2); display: grid; gap: 8px; }
-.form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; padding: clamp(20px, 3vw, 34px); border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), #0e0d13); border: 1px solid var(--line); }
+.form { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 16px; padding: clamp(20px, 3vw, 34px); border-radius: var(--radius); background: linear-gradient(180deg, var(--surface), var(--bg-2)); border: 1px solid var(--line); }
 .field { display: grid; gap: 7px; align-content: start; }
 .field--wide { grid-column: 1 / -1; }
 .field--hp { position: absolute; left: -9999px; }
@@ -197,7 +207,7 @@ details p { margin: 0 0 20px; color: var(--text-2); }
 .swatches button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; transition: transform .2s var(--ease), border-color .2s; }
 .swatches button:hover { transform: scale(1.1); }
 .swatches button[aria-checked="true"] { border-color: var(--text); }
-.swatches [data-profile="viridian"] { background: linear-gradient(135deg, #2fe0a0, #0d7f5c 60%, #0a4f57); }
+.swatches [data-profile="viridian"] { background: linear-gradient(135deg, var(--gk-viridian), var(--gk-emerald) 48%, var(--gk-deep-teal)); }
 .swatches [data-profile="magenta"] { background: linear-gradient(135deg, #ff4fb8, #8c4cf7 60%, #3b1a7a); }
 .swatches [data-profile="sapphire"] { background: linear-gradient(135deg, #4fa8ff, #2563eb 60%, #0b1f4d); }
 .swatches [data-profile="amber"] { background: linear-gradient(135deg, #ff9a3d, #a8501c 60%, #5c2810); }
@@ -227,7 +237,7 @@ details p { margin: 0 0 20px; color: var(--text-2); }
     .nav__links a:not(.btn) { padding: 14px 0; border-bottom: 1px solid var(--line); }
     .nav__links .btn { margin-top: 16px; }
     .hero { padding-top: 96px; }
-    .hero::before { background: linear-gradient(rgba(11,10,16,.5), rgba(11,10,16,.66) 60%, rgba(11,10,16,.5)); }
+    .hero::before { background: linear-gradient(color-mix(in srgb, var(--bg) 50%, transparent), color-mix(in srgb, var(--bg) 66%, transparent) 60%, color-mix(in srgb, var(--bg) 50%, transparent)); }
     .hero__mark { flex-direction: column; align-items: flex-start; }
     .hero__ctas .btn { flex: 1 1 100%; }
     .grid, .steps, .form { grid-template-columns: 1fr; }

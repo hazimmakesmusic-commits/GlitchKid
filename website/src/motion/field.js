@@ -1,7 +1,7 @@
 // C. GENERATIVE FREQUENCY FIELD (ART_DIRECTION.md §7C): spectral strata. 28 log-spaced bands (40 Hz–16 kHz) from a real AnalyserNode, kept as
 // ~160 columns of history and stacked as a centred stream: low bands deep, mids primary, highs secondary. A time-domain filament runs through it.
 // With no audio it shows a quiet synthetic texture and says so (IDLE · NO AUDIO): it never pretends to listen.
-import { clamp, currentProfile, fitCanvas, hash, loop, reducedMotion, spectral } from "./core.js";
+import { clamp, currentProfile, fitCanvas, hash, hexToRgb, loop, reducedMotion, spectral } from "./core.js";
 
 export const BANDS = 28, LO = 40, HI = 16000, COLUMNS = 160;
 const edges = Array.from ({ length: BANDS + 1 }, (_, i) => LO * Math.pow (HI / LO, i / BANDS));
@@ -68,7 +68,7 @@ export function createField (canvas, { onReadout } = {}) {
             ctx.fillStyle = g;
             ctx.fill();
             // hairline between strata: the measurement, not decoration
-            ctx.strokeStyle = "rgba(7,7,10,0.85)";
+            ctx.strokeStyle = `rgba(${hexToRgb (p.field)},0.85)`;
             ctx.lineWidth = 0.75;
             ctx.beginPath();
             ctx.moveTo (0, upper[0]);
@@ -82,11 +82,11 @@ export function createField (canvas, { onReadout } = {}) {
             const x0 = w * 0.62, n = wave.length;
             ctx.beginPath();
             for (let k = 0; k < n; k += 2) { const x = x0 + (k / n) * (w - x0), y = mid + wave[k] * h * 0.22; k ? ctx.lineTo (x, y) : ctx.moveTo (x, y); }
-            ctx.strokeStyle = "rgba(242,239,246,0.85)";
+            ctx.strokeStyle = `rgba(${hexToRgb (p.text)},0.85)`;
             ctx.lineWidth = 1.2;
             ctx.stroke();
         } else {
-            ctx.fillStyle = "rgba(242,239,246,0.5)";
+            ctx.fillStyle = `rgba(${hexToRgb (p.text)},0.5)`;
             ctx.fillRect (0, mid - 0.5, w, 1); // idle: a flat line, the honest picture of silence
         }
         if (onReadout && now - lastReadout > 200) { lastReadout = now; onReadout (readout()); }
