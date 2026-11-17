@@ -120,7 +120,7 @@ struct RailItem { const char* name; int page; int category; const char* title; c
 // ADVANCED MIXING: the five stages of a vocal mix first (TUNE, CLEAN, SHAPE, SPACE, FINISH), then the tools under MORE. The indices keep their old meaning
 // (sessions, tests); only the order on screen changed. SHAPE is the old TONE plus the compressor; FINISH the old DYNAMICS without it, plus MIX.
 const RailItem railItems[11] = {
-    { "HOME", 6, 0, "Home", "The vocal instrument: AUTOTUNE, CLEAN LAB, AIR LAB, LIMITER and the main dials around your live vocal.",
+    { "HOME", 6, 0, "Home", "The vocal instrument: TUNE, CLEAN LAB, AIR LAB, LIMITER and the main dials around your live vocal.",
       "Back to Home: the vocal instrument. Everything you set here is the same setting there." },
     { "SOUNDS", 3, 0, "Sounds", "Choose a starting sound, or build a first mix fitted to your vocal.", "Starting sounds, and Build My Mix (fits a starting sound to your vocal)." },
     { "CLEAN", 1, 0, "Clean", "Rumble, mud, harsh resonances and sharp S sounds, measured on your voice.", "Corrective EQ, resonance suppression and de-essing for the vocal itself." },

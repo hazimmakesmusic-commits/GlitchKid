@@ -18,7 +18,7 @@ juce::String noteOf (float midi)
     const int n = (int) std::lround (midi);
     return juce::String (keyNames[((n % 12) + 12) % 12]) + juce::String (n / 12 - 1);
 }
-const char* const moduleName[MainScreen::numModules] = { "AUTOTUNE", "CLEAN LAB", "AIR LAB", "LIMITER" };
+const char* const moduleName[MainScreen::numModules] = { "TUNE", "CLEAN LAB", "AIR LAB", "LIMITER" };
 const char* const moduleSwitchId[MainScreen::numModules] = { GlitchKidProcessor::tuneOnId, GlitchKidProcessor::cleanOnId, GlitchKidProcessor::airOnId, GlitchKidProcessor::limOnId };
 }
 
@@ -42,13 +42,13 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
         box.setColour (juce::ComboBox::textColourId, white);
         addAndMakeVisible (box);
     };
-    choices (keyBox, GlitchKidProcessor::tuneKeyId, keyAtt, "The key AUTOTUNE pulls toward.");
-    choices (scaleBox, GlitchKidProcessor::tuneScaleId, scaleAtt, "The scale AUTOTUNE pulls toward (Chromatic = every note).");
+    choices (keyBox, GlitchKidProcessor::tuneKeyId, keyAtt, "The key TUNE pulls toward.");
+    choices (scaleBox, GlitchKidProcessor::tuneScaleId, scaleAtt, "The scale TUNE pulls toward (Chromatic = every note).");
     keyBox.setTitle ("Key");
     scaleBox.setTitle ("Scale");
 
     static const char* switchTip[numModules] = {
-        "AUTOTUNE on or off (Pitch Tune). While on it adds about 31 ms of latency, which your DAW compensates.",
+        "TUNE on or off (pitch correction). While on it adds about 31 ms of latency, which your DAW compensates.",
         "CLEAN LAB on or off: rumble, low-mid build-up, harsh resonances and sharp S sounds, measured on your voice.",
         "AIR LAB on or off: MID AIR (clarity) and HIGH AIR (air), each following the voice and easing off on S sounds and noise.",
         "LIMITER on or off: catches peaks above the ceiling at the very end of the chain." };
@@ -102,7 +102,7 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     advancedButton.getProperties().set ("secondary", true);
     advancedButton.setToggleState (true, juce::dontSendNotification); // drawn lit: the way into the detailed pages
     advancedButton.onClick = [this] { if (hooks.openAdvanced) hooks.openAdvanced(); };
-    useKeyButton.setTooltip ("Set AUTOTUNE's key and scale to the key Kid estimated from your vocal file. Nothing changes until you press it.");
+    useKeyButton.setTooltip ("Set TUNE's key and scale to the key Kid estimated from your vocal file. Nothing changes until you press it.");
     useKeyButton.onClick = [this]
     {
         if (suggestedKey < 0)
@@ -167,7 +167,7 @@ void MainScreen::setupDials()
     };
     struct Spec { const char* name; const char* what; const char* param; const char* switchOn; };
     const Spec spec[numDials] = {
-        { "CORRECTION", "How strongly AUTOTUNE pulls each note to the key and scale (Pitch Tune strength). Dragging it switches AUTOTUNE on.", P::tuneStrengthId, P::tuneOnId },
+        { "CORRECTION", "How strongly TUNE pulls each note to the key and scale (Pitch Tune strength). Dragging it switches TUNE on.", P::tuneStrengthId, P::tuneOnId },
         { "INTENSITY", "How much CLEAN LAB corrects. Dragging it switches CLEAN LAB on.", P::cleanAmountId, P::cleanOnId },
         { "HIGH AIR", "AIR LAB's HIGH AIR: brilliance and air that adapt to your voice and ease off on S sounds. Dragging it switches AIR LAB on.", P::airAirId, P::airOnId },
         { "CEILING", "The highest level the LIMITER lets through. Dragging it switches the LIMITER on.", P::limCeilingId, P::limOnId },
@@ -283,7 +283,7 @@ void MainScreen::refreshText()
                                        "Refine below and compare, then add your beat (optional)", "Fit to beat, compare with ORIGINAL", "Compare, then SAVE it as a preset" };
     nextText = nextLine[nextStep()];
 
-    // AUTOTUNE: the sung note and where it is pulled (the real detector), and a key Kid estimated from a vocal file
+    // TUNE: the sung note and where it is pulled (the real detector), and a key Kid estimated from a vocal file
     pitchText = {};
     if (on (P::tuneOnId))
     {

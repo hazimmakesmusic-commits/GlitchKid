@@ -355,7 +355,7 @@ struct MainScreenTests : public juce::UnitTest
             expectWithinAbsoluteError (getParam (p, "tune_key"), 9.0f, 0.01f, "A");
             expectWithinAbsoluteError (getParam (p, "tune_scale"), 2.0f, 0.01f, "Minor");
             expect (! home->useKeyShownForTest(), "nothing left to suggest");
-            expectEquals (getParam (p, "tune_on"), 0.0f, "using the key never switches AUTOTUNE on");
+            expectEquals (getParam (p, "tune_on"), 0.0f, "using the key never switches TUNE on");
             home->holdForTest (home->visualForTest().getCentre());
             expectEquals (getParam (p, "bypass"), 1.0f);
             home.reset();

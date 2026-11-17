@@ -48,13 +48,14 @@ function makeGrain (size = 128) {
 }
 
 export function createSignal (canvas, { y = 0.5, onPhase = () => {}, speed = 1 } = {}) {
+    const lineY = typeof y === "function" ? y : () => y; // a fraction of the height, or a function returning one (to follow a measured layout)
     const ctx = canvas.getContext ("2d");
     const grain = makeGrain();
     let lastPhase = -2, startedAt = 0;
     let w = 0, h = 0;
 
     function path (st, t, layer, dx, dy) {
-        const mid = h * y, A = st.amp * h, n = Math.max (120, Math.min (900, Math.round (w / 1.6)));
+        const mid = h * lineY(), A = st.amp * h, n = Math.max (120, Math.min (900, Math.round (w / 1.6)));
         const xEnd = w * st.enter, k = layer - 3, spread = st.fracture;
         const tearStep = Math.floor (t * 6); // tears jump 6 times a second: a glitch, not a strobe
         ctx.beginPath();
@@ -128,7 +129,7 @@ export function createSignal (canvas, { y = 0.5, onPhase = () => {}, speed = 1 }
             const x = w * st.enter;
             ctx.globalAlpha = 1;
             ctx.fillStyle = p.text;
-            ctx.fillRect (x - 1, h * y - 1, 2, 2);
+            ctx.fillRect (x - 1, h * lineY() - 1, 2, 2);
         }
         // analog texture, only while the signal is disturbed: scan lines and grain
         const disturbance = Math.max (st.interfere * 0.5, st.chroma);
@@ -161,6 +162,7 @@ export function createSignal (canvas, { y = 0.5, onPhase = () => {}, speed = 1 }
         final () { this.seek (DURATION); }, // reduced motion: the resolved frame, still
         stats: runner.stats,
         stop: runner.stop,
+        start: runner.start, // redraw a stopped (still) signal, e.g. after a resize
         stateAt,
     };
 }

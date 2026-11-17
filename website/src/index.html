@@ -3,29 +3,32 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GLITCHKID — Built to sound different. Vocal production plug-in (beta)</title>
-    <meta name="description" content="GlitchKid is a vocal-production plug-in for independent artists: choose a sound, build a starting mix from your own vocal, refine it. Professional vocals with minimal effort. Apply for the beta.">
+    <title>GLITCHKID — Built to sound different. Vocal production plug-in · Free beta</title>
+    <meta name="description" content="GlitchKid is a vocal-production plug-in for independent artists: choose a sound, build a starting mix from your own vocal, refine it. The beta is free. Join the waitlist.">
     <meta name="theme-color" content="#080d0d">
     %URL_TAGS%
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="GLITCHKID">
-    <meta property="og:title" content="GLITCHKID — Your voice. Reimagined.">
-    <meta property="og:description" content="Professional vocal production. Less work. More music. Apply for the GlitchKid beta.">
+    <meta property="og:title" content="GLITCHKID — Built to sound different">
+    <meta property="og:description" content="Professional vocal production. Less work. More music. Free beta: join the waitlist.">
     <meta property="og:image" content="%OG_IMAGE%">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="GLITCHKID — Your voice. Reimagined.">
-    <meta name="twitter:description" content="Professional vocal production. Less work. More music. Apply for the beta.">
+    <meta name="twitter:title" content="GLITCHKID — Built to sound different">
+    <meta name="twitter:description" content="Professional vocal production. Less work. More music. Free beta: join the waitlist.">
     <meta name="twitter:image" content="%OG_IMAGE%">
     <link rel="icon" href="assets/brand/glitchkid-icon.svg" type="image/svg+xml">
     <link rel="icon" href="assets/brand/icon-32.png" sizes="32x32" type="image/png">
     <link rel="apple-touch-icon" href="assets/brand/icon-256.png">
-    <link rel="preload" href="assets/brand/glitchkid-wordmark.svg" as="image">
+    <link rel="preload" href="fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/inter-var.woff2" as="font" type="font/woff2" crossorigin>
+    <script>/* before first paint: will the hero signal play (motion allowed, first visit this session)? Prevents the wordmark from flashing. */
+    try { var d = document.documentElement; d.classList.add ("js"); if (! matchMedia ("(prefers-reduced-motion: reduce)").matches && ! sessionStorage.getItem ("gk-signal")) d.classList.add ("hero-play"); } catch (e) {}</script>
     <link rel="stylesheet" href="styles.css">
     <script type="application/ld+json">
     { "@context": "https://schema.org", "@type": "SoftwareApplication", "name": "GlitchKid", "applicationCategory": "MultimediaApplication",
-      "operatingSystem": "macOS 12 or later (Apple Silicon)", "description": "A vocal-production plug-in (VST3) for independent artists." }
+      "operatingSystem": "macOS (Apple Silicon)", "description": "A vocal-production plug-in (VST3) for independent artists. Free beta." }
     </script>
     <script id="site-config" type="application/json">%CONFIG_JSON%</script>
 </head>
@@ -33,242 +36,236 @@
 <a class="skip" href="#main">Skip to content</a>
 
 <header class="nav" id="top">
-    <a class="nav__brand" href="#top" aria-label="GLITCHKID home">
+    <a class="nav__brand" href="#top" aria-label="GLITCHKID, back to the top">
         <img src="assets/brand/glitchkid-emblem.svg" alt="" width="34" height="28">
-        <img src="assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID" width="128" height="18" class="nav__wordmark">
+        <img src="assets/brand/glitchkid-wordmark.svg" alt="" width="112" height="16" class="nav__wordmark">
     </a>
     <button class="nav__toggle" aria-expanded="false" aria-controls="nav-links"><span class="sr-only">Menu</span><span aria-hidden="true"></span></button>
     <nav id="nav-links" class="nav__links" aria-label="Main">
-        <a href="#product">Product</a>
-        <a href="#experience">Experience</a>
-        <a href="#features">Features</a>
-        <a href="#beta">Beta</a>
+        <a href="#instrument">Instrument</a>
+        <a href="#hear">Hear it</a>
+        <a href="#features">Inside</a>
         <a href="#faq">FAQ</a>
-        <a class="btn btn--primary btn--small" href="#beta">Apply for beta</a>
+        <a class="btn btn--primary btn--small" href="#waitlist">Join the waitlist</a>
     </nav>
 </header>
 
 <main id="main">
-    <!-- HERO: a time-based animation of a signal passing through the instrument (not live audio) -->
+    <!-- HERO (IN · 00): the GlitchKid Signal (motion/signal.js) plays once; the wordmark tunes in on the resolved line. The headline is real text,
+         visible from the first frame; motion only adds the compression gesture to it. -->
     <section class="hero" aria-labelledby="hero-title">
-        <canvas class="hero__canvas" aria-hidden="true"></canvas>
-        <div class="hero__inner">
-            <div class="hero__mark reveal">
-                <img src="assets/brand/glitchkid-emblem.svg" alt="" width="132" height="108" class="hero__emblem">
-                <div>
-                    <img src="assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID" width="420" height="58" class="hero__wordmark">
-                    <p class="tagline">— Built to sound different</p>
-                </div>
+        <canvas class="hero__signal" aria-hidden="true"></canvas>
+        <div class="hero__frame grid">
+            <p class="stage stage--hero mono"><span>IN · 00</span><i aria-hidden="true"></i><span class="dim">Signal in motion</span></p>
+            <p class="hero__readout mono dim" aria-hidden="true"></p>
+            <h1 id="hero-title" class="hero__title">
+                <img class="hero__mark" src="assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID" width="695" height="104">
+                <span class="hero__ticks" aria-hidden="true"></span>
+                <span class="hero__lines" data-kinetic><span data-line><span>Built to sound</span></span> <span data-line><span class="accent">different.</span></span></span>
+            </h1>
+            <p class="hero__lede">Professional vocal production.<br>Less work. More music.</p>
+            <div class="hero__actions">
+                <a class="btn btn--primary" href="#waitlist">Join the beta waitlist</a>
+                <a class="btn btn--line" href="#instrument">Explore the instrument</a>
             </div>
-            <h1 id="hero-title" class="hero__title reveal">Your voice.<br><span class="grad-text">Reimagined.</span></h1>
-            <p class="hero__lede reveal">Professional vocal production. Less work. More music.</p>
-            <div class="hero__ctas reveal">
-                <a class="btn btn--primary" href="#beta">Apply for beta</a>
-                <a class="btn btn--ghost" href="#product">Experience GlitchKid</a>
-            </div>
+            <p class="hero__note mono dim">Free beta · VST3 · Mac with Apple Silicon</p>
         </div>
-        <p class="hero__note mono">Signal study · animation, not live audio · VST3 · macOS (Apple Silicon)</p>
     </section>
 
-    <!-- PRODUCT: the actual plug-in, rendered from the current build -->
-    <section id="product" class="section product" aria-labelledby="product-title">
-        <div class="section__head reveal">
-            <p class="eyebrow mono">01 · The instrument</p>
-            <h2 id="product-title">Effortless on the surface.<br><span class="grad-text">Powerful underneath.</span></h2>
-            <p class="section__lede">Two workspaces, one engine. Home gets you a starting mix fast. Advanced Mixing opens every detail. Change a control in one and the other follows.</p>
+    <!-- PRODUCT REVEAL (PROC · 01): the real interface, rendered from the current build, tuned in with the chromatic distortion (motion/chroma.js) -->
+    <section id="instrument" class="section reveal-product" aria-labelledby="instrument-title">
+        <div class="grid">
+            <p class="stage mono"><span>PROC · 01</span><i aria-hidden="true"></i><span class="dim">The instrument</span></p>
+            <h2 id="instrument-title" class="display reveal-product__title">Effortless on the surface. Powerful underneath.</h2>
+            <p class="reveal-product__lede">Two workspaces, one engine. Home gets you to a starting mix fast. Advanced Mixing opens every stage. Change a control in one and the other follows.</p>
         </div>
 
-        <div class="product__stage reveal">
-            <figure class="shot shot--hero">
-                <img src="assets/product/home.webp" alt="The GlitchKid Home screen: a live vocal view with the GK emblem at its centre, AutoTune, Clean Lab, Air Lab and Limiter modules, and the Tone, Punch, Space, Presence, Mix and Output controls." width="1120" height="680" loading="lazy">
-            </figure>
-            <div class="product__copy">
-                <p class="eyebrow mono">A · Home</p>
-                <h3>Your vocal, the centre of everything.</h3>
-                <ul class="ticks">
-                    <li>Choose a starting sound, then <strong>Build My Mix</strong> from your own vocal</li>
-                    <li><strong>AutoTune</strong>, <strong>Clean Lab</strong>, <strong>Air Lab</strong> and a <strong>Limiter</strong>, one switch each</li>
-                    <li>Four main controls: <strong>Tone, Punch, Space, Presence</strong>, then Mix and Output</li>
-                    <li><strong>Original / Processed</strong>: press and hold the vocal to hear it untouched</li>
-                </ul>
+        <figure class="screen screen--home grid" data-chroma>
+            <div class="screen__frame">
+                <img src="assets/product/home.webp" srcset="assets/product/home.webp 1120w, assets/product/home@2x.webp 2240w" sizes="(max-width: 760px) 100vw, 92vw"
+                     width="1120" height="680" decoding="async"
+                     alt="The GlitchKid Home screen after Build My Mix: the live vocal view with the GK emblem at its centre, the Tune, Clean Lab, Air Lab and Limiter modules, and the Tone, Punch, Space, Mid Air, Mix and Output dials.">
+                <canvas class="screen__fx" aria-hidden="true"></canvas>
             </div>
+            <figcaption class="screen__caption mono"><span>Home</span><span class="dim">Rendered from the current beta build, a test signal playing · Modern Melodic Rap, built</span></figcaption>
+        </figure>
+
+        <div class="home-index grid">
+            <p class="home-index__label mono dim">On Home</p>
+            <ol class="index">
+                <li><span class="index__n mono">01</span><strong>Choose a sound</strong><span>Eight starting sounds, from Clean &amp; Natural to Hard-Tuned Rap.</span></li>
+                <li><span class="index__n mono">02</span><strong>Build My Mix</strong><span>Listens to your vocal for a few seconds and fits the sound to it. One Undo takes you back.</span></li>
+                <li><span class="index__n mono">03</span><strong>Four modules</strong><span>Tune, Clean Lab, Air Lab and Limiter: one switch and one main control each.</span></li>
+                <li><span class="index__n mono">04</span><strong>Original / Processed</strong><span>Press and hold the vocal to hear it untouched.</span></li>
+            </ol>
         </div>
 
-        <div class="product__stage product__stage--flip reveal">
-            <div class="product__copy">
-                <p class="eyebrow mono">B · Advanced Mixing</p>
-                <h3>Every stage, in detail.</h3>
-                <p>Five stages in the order a vocal is worked, each with its own workspace. Presets and A/B snapshots sit on every page.</p>
-                <div class="tabs" role="tablist" aria-label="Advanced Mixing stages">
-                    <button role="tab" aria-selected="false" data-shot="advanced-tune" data-caption="Tune: key pad, scale, tuning style, strength and speed, with the real pitch read-out.">Tune</button>
-                    <button role="tab" aria-selected="false" data-shot="advanced-clean" data-caption="Clean: the EQ graph shows the cuts Clean Lab is really making, measured on your voice.">Clean</button>
-                    <button role="tab" aria-selected="true" data-shot="advanced-shape" data-caption="Shape: tone, a 16-band EQ with dynamic bands and a live spectrum, the compressor with gain reduction, warmth and Air Lab.">Shape</button>
-                    <button role="tab" aria-selected="false" data-shot="advanced-space" data-caption="Space: tempo-synced echo, width and the doubler.">Space</button>
-                    <button role="tab" aria-selected="false" data-shot="advanced-finish" data-caption="Finish: output gain, wet/dry mix, input and output meters and the output limiter.">Finish</button>
+        <div class="advanced grid">
+            <div class="advanced__copy">
+                <p class="mono dim">Advanced Mixing</p>
+                <h3 class="display display--s">Every stage, in detail.</h3>
+                <p>The stages in the order a vocal is worked. Presets and A/B snapshots on every page.</p>
+                <div class="stages" role="tablist" aria-label="Advanced Mixing stages">
+                    <button role="tab" aria-selected="false" aria-controls="advanced-screen" data-shot="advanced-tune" data-caption="Tune: key, scale, tuning style, strength and speed, with the real pitch read-out.">Tune</button>
+                    <button role="tab" aria-selected="false" aria-controls="advanced-screen" data-shot="advanced-clean" data-caption="Clean: Clean Lab measures the voice; the graph shows the cuts it is really making.">Clean</button>
+                    <button role="tab" aria-selected="true" aria-controls="advanced-screen" data-shot="advanced-shape" data-caption="Shape: EQ Lab (up to 16 bands, static or dynamic, with the live spectrum), the compressor, warmth and Air Lab.">Shape</button>
+                    <button role="tab" aria-selected="false" aria-controls="advanced-screen" data-shot="advanced-space" data-caption="Space: the Space reverb (eight algorithms, three characters, freeze), echo, width and doubling.">Space</button>
+                    <button role="tab" aria-selected="false" aria-controls="advanced-screen" data-shot="advanced-finish" data-caption="Finish: output gain, wet/dry mix, input and output meters and the output limiter.">Finish</button>
                 </div>
-                <p class="tabs__caption mono" aria-live="polite">Shape: tone, a 16-band EQ with dynamic bands and a live spectrum, the compressor with gain reduction, warmth and Air Lab.</p>
+                <p class="stages__caption mono" aria-live="polite">Shape: EQ Lab (up to 16 bands, static or dynamic, with the live spectrum), the compressor, warmth and Air Lab.</p>
             </div>
-            <figure class="shot">
-                <img class="tabs__image" src="assets/product/advanced-shape.webp" alt="GlitchKid Advanced Mixing, Shape stage." width="1120" height="680" loading="lazy">
+            <figure class="screen screen--advanced" id="advanced-screen" role="tabpanel" data-chroma>
+                <div class="screen__frame">
+                    <img src="assets/product/advanced-shape.webp" srcset="assets/product/advanced-shape.webp 1120w, assets/product/advanced-shape@2x.webp 2240w"
+                         sizes="(max-width: 980px) 100vw, 64vw" width="1120" height="680" decoding="async" loading="lazy" alt="GlitchKid Advanced Mixing, Shape stage.">
+                    <canvas class="screen__fx" aria-hidden="true"></canvas>
+                </div>
             </figure>
         </div>
-        <p class="fineprint mono reveal">Screens rendered from the current beta build of the plug-in.</p>
     </section>
 
-    <!-- EXPERIENCE: the audio comparison -->
-    <section id="experience" class="section experience" aria-labelledby="experience-title">
-        <div class="section__head reveal">
-            <p class="eyebrow mono">02 · Hear it</p>
-            <h2 id="experience-title">Original. <span class="grad-text">Processed.</span></h2>
+    <!-- HEAR IT (MON · 02): stays a clearly marked placeholder until genuine recordings exist -->
+    <section id="hear" class="section" aria-labelledby="hear-title">
+        <div class="grid">
+            <p class="stage mono"><span>MON · 02</span><i aria-hidden="true"></i><span class="dim">Hear it</span></p>
+            <h2 id="hear-title" class="display">Original. Processed.</h2>
             <p class="section__lede">The same take, before and after GlitchKid. Switch while it plays: the position stays where it is.</p>
         </div>
-        <div class="player reveal" data-state="loading">
-            <canvas class="player__scope" aria-hidden="true"></canvas>
-            <div class="player__placeholder" role="note">
-                <p class="mono">Demo recordings not published yet</p>
-                <p>We'll only publish a real vocal recorded with GlitchKid and its untouched original, never a mock-up. Until then, apply for the beta and hear it on your own voice.</p>
-            </div>
-            <div class="player__controls">
-                <button class="player__play btn btn--primary" type="button" aria-label="Play" disabled><span aria-hidden="true">▶</span></button>
-                <div class="ab" role="radiogroup" aria-label="Which version">
-                    <button type="button" role="radio" aria-checked="true" data-version="original" disabled>Original</button>
-                    <button type="button" role="radio" aria-checked="false" data-version="processed" disabled>Processed</button>
+        <div class="grid">
+            <div class="player" data-state="loading">
+                <canvas class="player__scope" aria-hidden="true"></canvas>
+                <div class="player__placeholder" role="note">
+                    <p class="mono">Awaiting genuine recordings</p>
+                    <p>We'll only publish a real vocal recorded through GlitchKid and its untouched original, never a mock-up. Until then, nothing plays here.</p>
                 </div>
-                <input class="player__seek" type="range" min="0" max="1000" value="0" aria-label="Position" disabled>
-                <span class="player__time mono" aria-live="off">0:00 / 0:00</span>
+                <div class="player__controls">
+                    <button class="player__play btn btn--line" type="button" aria-label="Play" disabled><span aria-hidden="true">▶</span></button>
+                    <div class="ab" role="radiogroup" aria-label="Which version">
+                        <button type="button" role="radio" aria-checked="true" data-version="original" disabled>Original</button>
+                        <button type="button" role="radio" aria-checked="false" data-version="processed" disabled>Processed</button>
+                    </div>
+                    <input class="player__seek" type="range" min="0" max="1000" value="0" aria-label="Position" disabled>
+                    <span class="player__time mono" aria-live="off">0:00 / 0:00</span>
+                </div>
+                <p class="player__credit mono"></p>
+                <audio class="player__audio" data-version="original" preload="none"></audio>
+                <audio class="player__audio" data-version="processed" preload="none"></audio>
             </div>
-            <p class="player__credit mono"></p>
-            <audio class="player__audio" data-version="original" preload="none"></audio>
-            <audio class="player__audio" data-version="processed" preload="none"></audio>
         </div>
     </section>
 
-    <!-- WORKFLOW -->
-    <section class="section workflow" aria-labelledby="workflow-title">
-        <div class="section__head reveal">
-            <p class="eyebrow mono">03 · Four steps</p>
-            <h2 id="workflow-title">From raw take to <span class="grad-text">starting mix.</span></h2>
+    <!-- WORKFLOW (ROUTE · 03) -->
+    <section class="section" aria-labelledby="workflow-title">
+        <div class="grid">
+            <p class="stage mono"><span>ROUTE · 03</span><i aria-hidden="true"></i><span class="dim">Four steps</span></p>
+            <h2 id="workflow-title" class="display">From raw take to starting mix.</h2>
         </div>
-        <ol class="steps">
-            <li class="step reveal"><span class="step__n mono">01</span><svg class="step__glyph" viewBox="0 0 64 32" aria-hidden="true"><path d="M2 16 L10 16 L13 6 L17 26 L21 9 L25 22 L29 13 L33 19 L37 16 L62 16"/></svg><h3>Load your vocal.</h3><p>Put GlitchKid on your vocal track and press play.</p></li>
-            <li class="step reveal"><span class="step__n mono">02</span><svg class="step__glyph" viewBox="0 0 64 32" aria-hidden="true"><path d="M4 26 L4 10 M16 26 L16 4 M28 26 L28 14 M40 26 L40 8 M52 26 L52 18"/></svg><h3>Choose your sound.</h3><p>Pick one of eight starting sounds, from Clean &amp; Natural to Hard-Tuned Rap.</p></li>
-            <li class="step reveal"><span class="step__n mono">03</span><svg class="step__glyph" viewBox="0 0 64 32" aria-hidden="true"><path d="M2 22 C14 22 14 8 26 8 C38 8 38 22 50 22 C56 22 58 16 62 16"/></svg><h3>Build your mix.</h3><p>Build My Mix listens to your vocal for a few seconds and fits the sound to it.</p></li>
-            <li class="step reveal"><span class="step__n mono">04</span><svg class="step__glyph" viewBox="0 0 64 32" aria-hidden="true"><path d="M2 16 C10 6 18 6 26 16 C34 26 42 26 50 16 C54 11 58 10 62 10"/><circle cx="26" cy="16" r="3"/></svg><h3>Refine your sound.</h3><p>Shape it on Home, or go deep in Advanced Mixing. Compare with your original any time.</p></li>
+        <ol class="steps grid">
+            <li><span class="mono">01</span><h3>Load your vocal.</h3><p>Put GlitchKid on your vocal track and press play.</p></li>
+            <li><span class="mono">02</span><h3>Choose your sound.</h3><p>Pick one of eight starting sounds.</p></li>
+            <li><span class="mono">03</span><h3>Build your mix.</h3><p>Build My Mix listens for a few seconds and fits the sound to your voice.</p></li>
+            <li><span class="mono">04</span><h3>Refine.</h3><p>Shape it on Home, or go deep in Advanced Mixing. Compare with your original any time.</p></li>
         </ol>
     </section>
 
-    <!-- FEATURES: only what the current beta build does -->
-    <section id="features" class="section features" aria-labelledby="features-title">
-        <div class="section__head reveal">
-            <p class="eyebrow mono">04 · Inside the instrument</p>
-            <h2 id="features-title">What's in the <span class="grad-text">beta.</span></h2>
-        </div>
+    <!-- INSIDE (what the current beta build does) -->
+    <section id="features" class="section" aria-labelledby="features-title">
         <div class="grid">
-            <article class="card reveal"><h3>Build My Mix</h3><p>Listens to 2–8 seconds of your vocal, then fits your chosen starting sound to what it heard. One Undo takes you back.</p></article>
-            <article class="card reveal"><h3>Eight starting sounds</h3><p class="mono small">Clean &amp; Natural · Modern Melodic Rap · Hard-Tuned Rap · Dark &amp; Atmospheric · Bright &amp; Present · Smooth R&amp;B · Gritty Rap · Spacious Lead</p></article>
-            <article class="card reveal"><h3>AutoTune</h3><p>Pitch correction toward the key and scale you choose. Natural, Light or Hard, plus strength and speed.</p></article>
-            <article class="card reveal"><h3>Clean Lab</h3><p>Measures your voice and treats rumble, low-mid build-up, harsh resonances and sharp S sounds, and shows you what it's cutting.</p></article>
-            <article class="card reveal"><h3>Air Lab</h3><p>Mid Air for clarity, High Air for air: two independent lifts that follow the voice, skip the gaps and ease off on S sounds.</p></article>
-            <article class="card reveal"><h3>Tone · Punch · Space · Presence</h3><p>Four main controls for the big moves. Each one drives the detailed settings underneath.</p></article>
-            <article class="card reveal"><h3>Beat Lock</h3><p>Send your beat to GlitchKid's instrumental input. Beat Lock compares it with your vocal and suggests small changes you review before applying.</p></article>
-            <article class="card reveal"><h3>Echo, width, doubler</h3><p>Tempo-synced echo, stereo width and a synthetic double for space and size.</p></article>
-            <article class="card reveal"><h3>Output limiter</h3><p>Catches peaks at the end of the chain and shows how much it's really reducing.</p></article>
-            <article class="card reveal"><h3>Original / Processed</h3><p>Hear your untouched vocal any time, and come back to GlitchKid in one click.</p></article>
-            <article class="card reveal"><h3>Presets &amp; A/B</h3><p>Save your own sounds. Keep two snapshots and switch between them.</p></article>
-            <article class="card reveal"><h3>Advanced Mixing</h3><p>Tune, Clean, Shape, Space, Finish: a draggable EQ, compressor with gain reduction, warmth and limiter controls.</p></article>
+            <p class="stage mono"><span>PROC · 04</span><i aria-hidden="true"></i><span class="dim">Inside the instrument</span></p>
+            <h2 id="features-title" class="display">What's in the beta.</h2>
         </div>
-        <figure class="profiles reveal">
-            <img src="assets/product/profile-picker.webp" alt="The five GlitchKid colour profiles: Viridian, Magenta, Sapphire, Amber and Void." width="1064" height="276" loading="lazy">
-            <figcaption class="mono">Five colour profiles. Visual only; your sound never changes. Try them on this page ↓</figcaption>
-        </figure>
+        <dl class="specs grid">
+            <div><dt>Build My Mix</dt><dd>Listens to your vocal, then fits your chosen starting sound to it: EQ, dynamics, Air Lab and the Space reverb. One Undo takes you back.</dd></div>
+            <div><dt>Tune</dt><dd>Pitch correction toward the key and scale you choose. Natural, Light or Hard, plus strength and speed. It doesn't detect your key.</dd></div>
+            <div><dt>Clean Lab</dt><dd>Measures your voice and treats rumble, low-mid build-up, harsh resonances and sharp S sounds, and shows what it's cutting.</dd></div>
+            <div><dt>EQ Lab</dt><dd>Up to 16 bands: bells, shelves, cuts from 6 to 96 dB/oct, notch, band pass and tilt; stereo, left, right, mid or side; any band can be dynamic.</dd></div>
+            <div><dt>Air Lab</dt><dd>Mid Air for clarity, High Air for air: two independent lifts that follow the voice, skip the gaps and ease off on S sounds.</dd></div>
+            <div><dt>Space</dt><dd>An algorithmic reverb with eight algorithms, three characters, freeze and nine vocal presets, alongside echo, width and doubling.</dd></div>
+            <div><dt>Beat Lock</dt><dd>Send your beat to GlitchKid's instrumental input; it compares the two and suggests small changes you review before applying.</dd></div>
+            <div><dt>Output limiter</dt><dd>Catches peaks at the end of the chain and shows how much it's really reducing.</dd></div>
+            <div><dt>Presets &amp; A/B</dt><dd>Save your own sounds. Keep two snapshots and switch between them.</dd></div>
+        </dl>
     </section>
 
-    <!-- THE FACTS -->
-    <section class="section facts" aria-labelledby="facts-title">
-        <div class="section__head reveal">
-            <p class="eyebrow mono">05 · The facts</p>
-            <h2 id="facts-title">What you need.</h2>
+    <!-- FACTS: only verified support is advertised -->
+    <section class="section" aria-labelledby="facts-title">
+        <div class="grid">
+            <p class="stage mono"><span>SYS · 05</span><i aria-hidden="true"></i><span class="dim">Compatibility</span></p>
+            <h2 id="facts-title" class="display">What you need.</h2>
         </div>
-        <dl class="spec reveal">
+        <dl class="facts grid">
             <div><dt class="mono">Format</dt><dd>VST3</dd></div>
-            <div><dt class="mono">System</dt><dd>macOS 12 or later on Apple Silicon (M1 and newer)</dd></div>
-            <div><dt class="mono">Windows · Intel Mac · AU</dt><dd>Not in this beta</dd></div>
+            <div><dt class="mono">Mac</dt><dd>Apple Silicon (M1 and newer). Minimum macOS version: <span class="pending">awaiting confirmation</span></dd></div>
+            <div><dt class="mono">Windows</dt><dd>Planned. Not available in this beta: there is no Windows build yet.</dd></div>
+            <div><dt class="mono">Intel Mac · AU · AAX</dt><dd>Not in this beta</dd></div>
             <div><dt class="mono">Tested host</dt><dd>FL Studio 2025 on macOS. Other VST3 hosts: <span class="pending">awaiting confirmation</span></dd></div>
-            <div><dt class="mono">Latency</dt><dd>6 samples as standard. About 31 ms more while AutoTune is on, and 1.5 ms while the Limiter is on. Always reported to your DAW for compensation.</dd></div>
-            <div><dt class="mono">Installation</dt><dd><span class="pending">Awaiting confirmation</span>. Beta testers receive instructions.</dd></div>
-            <div><dt class="mono">Price after beta</dt><dd><span class="pending">Awaiting confirmation</span></dd></div>
+            <div><dt class="mono">Latency</dt><dd>6 samples as standard. About 31 ms more while Tune is on, and 1.5 ms while the Limiter is on. Always reported to your DAW for compensation.</dd></div>
+            <div><dt class="mono">Installation</dt><dd>The beta build isn't signed or notarised by Apple yet, so macOS will warn you before it opens. Beta testers get step-by-step instructions.</dd></div>
+            <div><dt class="mono">Price</dt><dd>The beta is free.</dd></div>
             <div><dt class="mono">Support</dt><dd data-contact><span class="pending">Awaiting confirmation</span></dd></div>
         </dl>
     </section>
 
-    <!-- BETA -->
-    <section id="beta" class="section beta" aria-labelledby="beta-title">
-        <div class="beta__intro reveal">
-            <p class="eyebrow mono">06 · Beta</p>
-            <h2 id="beta-title">Get inside <span class="grad-text">the sound.</span></h2>
-            <p class="section__lede">We're inviting independent artists and vocal producers to experience GlitchKid and help shape its next chapter.</p>
-            <div class="next">
-                <h3 class="mono">What happens next</h3>
-                <ol>
-                    <li>We read every application.</li>
-                    <li>If there's a place for you in this beta round, we email you the next steps.</li>
-                    <li>You test GlitchKid on your own vocals and tell us what you hear.</li>
-                </ol>
+    <!-- WAITLIST (OUT · 06): email only is required; the rest is optional. Sent only to the configured endpoint; "on the list" only after a 2xx. -->
+    <section id="waitlist" class="section waitlist" aria-labelledby="waitlist-title">
+        <div class="grid">
+            <p class="stage mono"><span>OUT · 06</span><i aria-hidden="true"></i><span class="dim">Free beta</span></p>
+            <div class="waitlist__intro">
+                <h2 id="waitlist-title" class="display">Join the beta waitlist.</h2>
+                <p class="section__lede">The beta is free. Leave your email and we'll write when places open. Joining the waitlist doesn't guarantee a place.</p>
             </div>
+            <form class="form" novalidate>
+                <div class="field field--email"><label for="f-email">Email</label><input id="f-email" name="email" type="email" autocomplete="email" required maxlength="200"><p class="field__error" id="e-email"></p></div>
+                <details class="form__more">
+                    <summary class="mono">Tell us more <span class="dim">(optional)</span></summary>
+                    <div class="form__optional">
+                        <div class="field"><label for="f-name">Name</label><input id="f-name" name="name" autocomplete="name" maxlength="120"><p class="field__error" id="e-name"></p></div>
+                        <div class="field"><label for="f-os">Operating system</label>
+                            <select id="f-os" name="os"><option value="">Choose…</option><option>macOS on Apple Silicon</option><option>macOS on Intel</option><option>Windows</option><option>Other</option></select>
+                            <p class="field__hint" id="h-os" hidden>This beta runs on Apple Silicon Macs only. Windows is planned but not available yet. You can still join the waitlist.</p><p class="field__error" id="e-os"></p></div>
+                        <div class="field"><label for="f-daw">DAW</label>
+                            <select id="f-daw" name="daw"><option value="">Choose…</option><option>FL Studio</option><option>Ableton Live</option><option>Logic Pro</option><option>Pro Tools</option><option>Studio One</option><option>Reaper</option><option>Cubase</option><option>Bitwig Studio</option><option>Other</option></select><p class="field__error" id="e-daw"></p></div>
+                        <div class="field"><label for="f-genre">Genre</label><input id="f-genre" name="genre" list="genres" maxlength="80"><datalist id="genres"><option value="Melodic rap"><option value="Rap"><option value="Trap"><option value="R&amp;B"><option value="Pop"><option value="Alternative"><option value="Electronic"></datalist><p class="field__error" id="e-genre"></p></div>
+                        <div class="field field--wide"><label for="f-link">Artist link</label><input id="f-link" name="link" type="url" inputmode="url" placeholder="https://" maxlength="300"><p class="field__error" id="e-link"></p></div>
+                    </div>
+                </details>
+                <div class="field field--hp" aria-hidden="true"><label for="f-company">Company</label><input id="f-company" name="company" tabindex="-1" autocomplete="off"></div>
+                <div class="field field--check"><input id="f-consent" name="consent" type="checkbox" required><label for="f-consent">Email me about the GlitchKid beta. I can ask to be removed at any time. <a class="privacy-link" href="#privacy">Privacy</a></label><p class="field__error" id="e-consent"></p></div>
+                <div class="form__actions">
+                    <button class="btn btn--primary" type="submit">Join the waitlist</button>
+                    <p class="form__status" role="status" aria-live="polite"></p>
+                </div>
+            </form>
         </div>
-        <form class="form reveal" novalidate>
-            <div class="field"><label for="f-name">Name <span aria-hidden="true">*</span></label><input id="f-name" name="name" autocomplete="name" required maxlength="120"><p class="field__error" id="e-name"></p></div>
-            <div class="field"><label for="f-email">Email <span aria-hidden="true">*</span></label><input id="f-email" name="email" type="email" autocomplete="email" required maxlength="200"><p class="field__error" id="e-email"></p></div>
-            <div class="field"><label for="f-daw">DAW <span aria-hidden="true">*</span></label>
-                <select id="f-daw" name="daw" required><option value="">Choose…</option><option>FL Studio</option><option>Ableton Live</option><option>Logic Pro</option><option>Pro Tools</option><option>Studio One</option><option>Reaper</option><option>Cubase</option><option>Bitwig Studio</option><option>Other</option></select><p class="field__error" id="e-daw"></p></div>
-            <div class="field"><label for="f-os">Operating system <span aria-hidden="true">*</span></label>
-                <select id="f-os" name="os" required><option value="">Choose…</option><option>macOS on Apple Silicon (M1 or newer)</option><option>macOS on Intel</option><option>Windows</option><option>Other</option></select>
-                <p class="field__hint" id="h-os" hidden>This beta runs on Apple Silicon Macs only. You can still apply; we'll keep you in mind for later builds.</p><p class="field__error" id="e-os"></p></div>
-            <div class="field"><label for="f-genre">Music genre <span aria-hidden="true">*</span></label><input id="f-genre" name="genre" list="genres" required maxlength="80"><datalist id="genres"><option value="Melodic rap"><option value="Rap"><option value="Trap"><option value="R&amp;B"><option value="Pop"><option value="Alternative"><option value="Electronic"></datalist><p class="field__error" id="e-genre"></p></div>
-            <div class="field"><label for="f-exp">Vocal mixing experience <span aria-hidden="true">*</span></label>
-                <select id="f-exp" name="experience" required><option value="">Choose…</option><option>New to mixing vocals</option><option>I mix my own vocals</option><option>I mix for other artists</option><option>Professional engineer</option></select><p class="field__error" id="e-exp"></p></div>
-            <div class="field field--wide"><label for="f-link">Instagram or music link <span class="optional">(optional)</span></label><input id="f-link" name="link" type="url" inputmode="url" placeholder="https://" maxlength="300"><p class="field__error" id="e-link"></p></div>
-            <div class="field field--hp" aria-hidden="true"><label for="f-company">Company</label><input id="f-company" name="company" tabindex="-1" autocomplete="off"></div>
-            <div class="field field--wide field--check"><input id="f-consent" name="consent" type="checkbox" required><label for="f-consent">I agree that GlitchKid uses these details to review my application and contact me about the beta. <a class="privacy-link" href="#privacy">Privacy</a></label><p class="field__error" id="e-consent"></p></div>
-            <div class="form__actions field--wide">
-                <button class="btn btn--primary" type="submit">Apply for beta</button>
-                <p class="form__status" role="status" aria-live="polite"></p>
-            </div>
-        </form>
     </section>
 
     <!-- FAQ -->
-    <section id="faq" class="section faq" aria-labelledby="faq-title">
-        <div class="section__head reveal"><p class="eyebrow mono">07 · Questions</p><h2 id="faq-title">FAQ</h2></div>
-        <div class="faq__list reveal">
-            <details><summary>What is GlitchKid?</summary><p>A vocal-production plug-in for independent artists. Pick a starting sound, let it build a mix from your own vocal, then refine it, either with a few big controls or in full detail.</p></details>
-            <details><summary>Which DAWs does it work in?</summary><p>It's a VST3 plug-in. It's been tested in FL Studio 2025 on macOS. Other VST3 hosts are part of what the beta is for, so their status is awaiting confirmation.</p></details>
-            <details><summary>Does it run on Windows or Intel Macs?</summary><p>Not in this beta: it runs on Apple Silicon Macs (macOS 12 or later). Tell us your setup in the application anyway.</p></details>
-            <details><summary>Does it have reverb?</summary><p>Yes: SPACE, an algorithmic reverb with eight algorithms (room, chamber, plate, hall, cathedral, ambience and two modulated spaces), warm, classic and modern characters, and nine vocal presets. Build My Mix chooses one for your starting sound.</p></details>
-            <details><summary>Does it detect my key?</summary><p>No. You choose the key and scale; AutoTune pulls your voice toward them.</p></details>
-            <details><summary>Is the beta free? How long does it run?</summary><p><span class="pending">Awaiting confirmation.</span> We'll tell you before you commit to anything.</p></details>
-            <details id="privacy"><summary>What do you do with my details?</summary><p data-privacy>We use your application only to run the GlitchKid beta and contact you about it. <span class="pending">Full privacy policy awaiting confirmation.</span></p></details>
+    <section id="faq" class="section" aria-labelledby="faq-title">
+        <div class="grid">
+            <p class="stage mono"><span>FAQ · 07</span><i aria-hidden="true"></i><span class="dim">Questions</span></p>
+            <h2 id="faq-title" class="display">FAQ</h2>
+            <div class="faq">
+                <details><summary>What is GlitchKid?</summary><p>A vocal-production plug-in for independent artists. Pick a starting sound, let it build a mix from your own vocal, then refine it, either with a few big controls or in full detail.</p></details>
+                <details><summary>Is the beta free?</summary><p>Yes. The beta is free. Joining the waitlist doesn't guarantee a place; if one opens for you, we'll email you the next steps.</p></details>
+                <details><summary>Which DAWs does it work in?</summary><p>It's a VST3 plug-in. It's been tested in FL Studio 2025 on macOS. Other VST3 hosts are part of what the beta is for, so their status is awaiting confirmation.</p></details>
+                <details><summary>Does it run on Windows?</summary><p>Not yet. A Windows version is planned, but there is no Windows build in this beta. It also doesn't run on Intel Macs.</p></details>
+                <details><summary>How do I install it?</summary><p>Beta testers get step-by-step instructions. The beta build isn't signed or notarised by Apple yet, so macOS will warn you before it opens; the instructions explain how to allow it.</p></details>
+                <details><summary>Does it have reverb?</summary><p>Yes: Space, an algorithmic reverb with eight algorithms (room, chamber, plate, hall, cathedral, ambience and two modulated spaces), warm, classic and modern characters, and nine vocal presets. Build My Mix chooses one for your starting sound.</p></details>
+                <details><summary>Does it detect my key?</summary><p>No. You choose the key and scale; Tune pulls your voice toward them.</p></details>
+                <details id="privacy"><summary>What do you do with my details?</summary><p data-privacy>We use them only to run the GlitchKid beta waitlist and contact you about the beta. <span class="pending">Full privacy policy awaiting confirmation.</span></p></details>
+            </div>
         </div>
     </section>
 </main>
 
-<footer class="footer">
+<footer class="footer grid">
     <div class="footer__brand">
         <img src="assets/brand/glitchkid-emblem.svg" alt="" width="40" height="33">
-        <div><img src="assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID" width="150" height="21"><p class="tagline">— Built to sound different</p></div>
+        <div><img src="assets/brand/glitchkid-wordmark.svg" alt="GLITCHKID" width="150" height="22"><p class="footer__tagline mono">Built to sound different</p></div>
     </div>
-    <div class="footer__profiles">
-        <p class="mono small">Colour profile</p>
-        <div class="swatches" role="radiogroup" aria-label="Colour profile">
-            <button role="radio" aria-checked="true" data-profile="viridian" title="Viridian"><span class="sr-only">Viridian</span></button>
-            <button role="radio" aria-checked="false" data-profile="magenta" title="Magenta"><span class="sr-only">Magenta</span></button>
-            <button role="radio" aria-checked="false" data-profile="sapphire" title="Sapphire"><span class="sr-only">Sapphire</span></button>
-            <button role="radio" aria-checked="false" data-profile="amber" title="Amber"><span class="sr-only">Amber</span></button>
-            <button role="radio" aria-checked="false" data-profile="void" title="Void"><span class="sr-only">Void</span></button>
-        </div>
-    </div>
-    <p class="footer__legal mono small">© <span data-year></span> GlitchKid · Beta · VST is a trademark of Steinberg Media Technologies GmbH.</p>
+    <a class="btn btn--line btn--small footer__cta" href="#waitlist">Join the waitlist</a>
+    <p class="footer__legal mono dim">© <span data-year></span> GlitchKid · Free beta · VST is a trademark of Steinberg Media Technologies GmbH. Other product names are trademarks of their respective owners.</p>
 </footer>
-<script src="main.js" defer></script>
+<script type="module" src="main.js"></script>
 </body>
 </html>

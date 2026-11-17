@@ -1,7 +1,7 @@
 // GLITCHKID website build: copies src/ (and the logo files from ../Assets/Brand) to dist/, and fills in the deployment settings.
 // No dependencies. Settings come from site.config.json; environment variables override them, so a host can set them per deployment:
 //   SITE_URL, BETA_FORM_ENDPOINT, CONTACT_EMAIL, PRIVACY_URL
-// Usage: node build.mjs            (writes dist/)
+// Usage: node build.mjs            (writes dist/; INCLUDE_LAB=1 also copies the motion lab for local review)
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,7 +19,9 @@ config.demo.available = ["original", "processed"].every ((k) => config.demo[k] &
 
 rmSync (dist, { recursive: true, force: true });
 mkdirSync (dist, { recursive: true });
-cpSync (src, dist, { recursive: true });
+// the motion lab (src/lab/) is a design tool, not part of the site: left out of the public build unless INCLUDE_LAB=1 (for local review)
+const includeLab = env.INCLUDE_LAB === "1";
+cpSync (src, dist, { recursive: true, filter: (p) => includeLab || ! p.startsWith (join (src, "lab")) });
 for (const f of ["glitchkid-emblem.svg", "glitchkid-wordmark.svg", "glitchkid-emblem-white.svg", "glitchkid-wordmark-white.svg", "glitchkid-icon.svg"])
     cpSync (join (brand, f), join (dist, "assets", "brand", f));
 for (const px of [32, 256, 512]) // favicon, touch icon, manifest-size icon
@@ -45,6 +47,6 @@ if (config.siteUrl)
 
 const warn = [];
 if (! config.siteUrl) warn.push ("SITE_URL is not set: no canonical URL, relative social image");
-if (! config.betaFormEndpoint) warn.push ("BETA_FORM_ENDPOINT is not set: the form validates but says applications are not connected yet");
+if (! config.betaFormEndpoint) warn.push ("BETA_FORM_ENDPOINT is not set: the waitlist form validates but says the waitlist isn't open yet");
 if (! config.demo.available) warn.push ("demo recordings missing: the audio section shows its placeholder");
 console.log ("built dist/" + (warn.length ? "\n  note: " + warn.join ("\n  note: ") : ""));

@@ -197,6 +197,7 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/MasteringTests.cpp
         Tests/MasteringPluginTests.cpp
         Tests/PageShotsTests.cpp
+        Tests/WebsiteShotsTests.cpp
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp

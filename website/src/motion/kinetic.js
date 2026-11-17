@@ -2,12 +2,14 @@
 // A line enters wide (width 125, tracking +0.12em) from behind its mask and settles condensed (width 72, tracking -0.02em): the compressor's gesture.
 import { reducedMotion, tokens } from "./core.js";
 
-export function revealLines (root, { delay = 0, from = 125, to = 72, weight = 800 } = {}) {
+// mask: false keeps the text visible the whole time (no translate): only the compression gesture plays, for text that must be readable at once.
+export function revealLines (root, { delay = 0, from = 125, to = 72, weight = 800, mask = true } = {}) {
     const lines = [...root.querySelectorAll ("[data-line] > span")];
     if (reducedMotion()) { lines.forEach ((l) => (l.style.transform = "none")); return Promise.resolve(); }
+    const y = (v) => (mask ? { transform: `translateY(${v})` } : {});
     return Promise.all (lines.map ((el, i) => el.animate ([
-        { transform: "translateY(108%)", fontVariationSettings: `"wdth" ${from}, "wght" ${weight}`, letterSpacing: "0.12em" },
-        { transform: "translateY(0)", fontVariationSettings: `"wdth" ${to}, "wght" ${weight}`, letterSpacing: "-0.02em" },
+        { ...y ("108%"), fontVariationSettings: `"wdth" ${from}, "wght" ${weight}`, letterSpacing: "0.12em" },
+        { ...y ("0"), fontVariationSettings: `"wdth" ${to}, "wght" ${weight}`, letterSpacing: "-0.02em" },
     ], { duration: tokens.type.ms, delay: delay + i * tokens.type.stagger, easing: tokens.type.easing, fill: "both" }).finished));
 }
 

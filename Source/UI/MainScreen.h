@@ -13,7 +13,7 @@ namespace glitchkid::ui
 //   journey - the work in order: SOUND (a starting profile), BUILD MY MIX (the editor's real build), BEAT (the real instrumental input) and the NEXT step;
 //   visual  - the live vocal: input and output levels from the plug-in's own display taps, the limiter ceiling, the pitch read-out; press and hold it to
 //             hear the ORIGINAL (the Bypass parameter, the same as the header's button). Nothing is drawn that is not measured or set;
-//   modules - AUTOTUNE, CLEAN LAB, AIR LAB, LIMITER: an on/off switch and one main amount each, bound to their existing parameters, with their real status;
+//   modules - TUNE (enum autotune), CLEAN LAB, AIR LAB, LIMITER: an on/off switch and one main amount each, bound to their existing parameters, with their real status;
 //   basics  - TONE, PUNCH, SPACE (the existing macros), PRESENCE (AIR LAB's presence), MIX, OUTPUT, and ORIGINAL / PROCESSED.
 // UI only: no audio, DSP or parameter is added; every control writes the same parameters as the detailed pages, so both always agree.
 // Message thread, 30 Hz, only while showing.
