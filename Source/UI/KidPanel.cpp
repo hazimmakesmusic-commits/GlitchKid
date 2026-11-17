@@ -170,7 +170,8 @@ KidPanel::KidPanel (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move
     {
         phase = Phase::downloading;
         say ("Setting up speech: downloading the model (about 142 MB) and checking it. You can keep typing.");
-        downloader.start ([safe = juce::Component::SafePointer<KidPanel> (this)] (bool ok, juce::String msg)
+        juce::Component::SafePointer<KidPanel> safe (this); // made here, not in the inner capture: MSVC reads `this` there as the outer lambda
+        downloader.start ([safe] (bool ok, juce::String msg)
         {
             if (safe == nullptr) return;
             safe->phase = Phase::ready;

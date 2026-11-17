@@ -88,8 +88,9 @@ MasteringScreen::MasteringScreen (GlitchKidProcessor& p, Hooks h) : proc (p), ho
     loadButton.onClick = [this]
     {
         chooser = std::make_unique<juce::FileChooser> ("Load a finished mix", juce::File(), analysis::referenceFileWildcard());
+        juce::Component::SafePointer<MasteringScreen> safe (this); // made here, not in the inner capture: MSVC reads `this` there as the outer lambda
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                              [safe = juce::Component::SafePointer<MasteringScreen> (this)] (const juce::FileChooser& fc) { if (safe != nullptr && fc.getResult() != juce::File()) safe->load (fc.getResult()); });
+                              [safe] (const juce::FileChooser& fc) { if (safe != nullptr && fc.getResult() != juce::File()) safe->load (fc.getResult()); });
     };
     liveButton.setTooltip ("Forget the loaded file and show the mix playing through this track.");
     liveButton.onClick = [this] { mixFile = juce::File(); fileReport = master::MixReport(); status = juce::String(); sync(); };
@@ -98,8 +99,9 @@ MasteringScreen::MasteringScreen (GlitchKidProcessor& p, Hooks h) : proc (p), ho
     {
         if (! mixFile.existsAsFile()) return;
         chooser = std::make_unique<juce::FileChooser> ("Export the master", mixFile.getSiblingFile (mixFile.getFileNameWithoutExtension() + " (GlitchKid master).wav"), "*.wav");
+        juce::Component::SafePointer<MasteringScreen> safe (this);
         chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
-                              [safe = juce::Component::SafePointer<MasteringScreen> (this)] (const juce::FileChooser& fc) { if (safe != nullptr && fc.getResult() != juce::File()) safe->exportTo (fc.getResult().withFileExtension ("wav")); });
+                              [safe] (const juce::FileChooser& fc) { if (safe != nullptr && fc.getResult() != juce::File()) safe->exportTo (fc.getResult().withFileExtension ("wav")); });
     };
     resetButton.setTooltip ("Start the loudness measurement again (for example at the top of the song).");
     resetButton.onClick = [this] { proc.requestMasterMeterReset(); };

@@ -830,7 +830,7 @@ void MainScreen::paintMandala (juce::Graphics& g)
     const auto r = ribbon.toFloat();
     const auto c = r.getCentre();
     const float R = r.getHeight() * 0.5f + 2.0f, r0 = 9.0f;
-    constexpr int folds = 8, perWedge = 20, N = 2 * folds * perWedge, span = 60; // each wedge: the last 2 s (60 frames), newest on the petal axis
+    static constexpr int folds = 8, perWedge = 20, N = 2 * folds * perWedge, span = 60; // static: usable as array sizes inside the [&] lambdas on every compiler (MSVC) // each wedge: the last 2 s (60 frames), newest on the petal axis
     auto shape = [&] (const std::array<float, 240>& e)
     {
         std::array<float, perWedge + 1> lv {};
