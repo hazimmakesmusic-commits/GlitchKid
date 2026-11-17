@@ -140,8 +140,58 @@ target_link_libraries(GlitchKid
 # paths, so the same source must give the same bits on every platform; the cost (separate multiply and add) is negligible for this plug-in.
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(GlitchKid PUBLIC -ffp-contract=off)
+elseif(MSVC)
+    # MSVC's default /fp:precise does not contract a*b+c into FMA (VS 2022), which matches -ffp-contract=off. /bigobj: the editor's large
+    # translation units exceed MSVC's default object-file section limit.
+    target_compile_options(GlitchKid PUBLIC /bigobj)
 endif()
 
+
+# ---- GLITCHKID BEAT LOCK: a separate VST3 for the INSTRUMENTAL, keyed by the vocal on its sidechain input (Source/BeatLock, docs/BEAT_LOCK.md).
+# Its own processor, editor, parameters (bl_*) and state; it shares only generic code (display analysis, the look and the fonts) with GlitchKid.
+juce_add_plugin(GlitchKidBeatLock
+    COMPANY_NAME "GlitchKid"
+    PRODUCT_NAME "GlitchKid Beat Lock"
+    FORMATS VST3
+    PLUGIN_MANUFACTURER_CODE GlKd   # the same manufacturer as GlitchKid
+    PLUGIN_CODE GkBl                # unique within GlKd; must never change after release
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    VST3_CATEGORIES Fx EQ)
+set(GLITCHKID_BEATLOCK_SOURCES
+    Source/BeatLock/BeatLockParams.cpp
+    Source/BeatLock/BeatLockEngine.cpp
+    Source/BeatLock/BeatLockAnalysis.cpp
+    Source/BeatLock/BeatLockProcessor.cpp
+    Source/BeatLock/BeatLockEditor.cpp)
+target_sources(GlitchKidBeatLock PRIVATE
+    ${GLITCHKID_BEATLOCK_SOURCES}
+    Source/Analysis/EqAnalyzer.cpp
+    Source/Analysis/DisplaySpectrum.cpp
+    Source/UI/PlaygroundWidgets.cpp
+    Source/UI/Theme.cpp
+    Source/UI/Brand.cpp
+    Source/DSP/ParametricEq.cpp
+    Source/DSP/CleanLab.cpp
+    Source/Presets/FactoryPresets.cpp
+    Source/Presets/SoundState.cpp)
+target_compile_definitions(GlitchKidBeatLock PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    GLITCHKID_VERSION="${PROJECT_VERSION}")
+target_link_libraries(GlitchKidBeatLock
+    PRIVATE juce::juce_audio_utils
+            juce::juce_dsp
+            GlitchKidAssets
+    PUBLIC  juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(GlitchKidBeatLock PUBLIC -ffp-contract=off)
+elseif(MSVC)
+    target_compile_options(GlitchKidBeatLock PUBLIC /bigobj)
+endif()
 
 # Unit tests for the processor: cmake -S . -B build -DGLITCHKID_BUILD_TESTS=ON && ctest --test-dir build
 option(GLITCHKID_BUILD_TESTS "Build the GlitchKid unit tests" OFF)
@@ -198,6 +248,8 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/MasteringPluginTests.cpp
         Tests/PageShotsTests.cpp
         Tests/WebsiteShotsTests.cpp
+        Tests/BeatLockPluginTests.cpp
+        ${GLITCHKID_BEATLOCK_SOURCES}
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp
@@ -255,6 +307,7 @@ if(GLITCHKID_BUILD_TESTS)
         Source/PluginEditor.cpp)
     target_compile_definitions(GlitchKidTests PUBLIC
         GLITCHKID_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/Tests/fixtures"
+        GLITCHKID_NO_PLUGIN_ENTRY=1 # Beat Lock is compiled into the tests; its plug-in entry point belongs to its own target
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
         JUCE_USE_FLAC=1 JUCE_USE_OGGVORBIS=1 JUCE_USE_MP3AUDIOFORMAT=1 JUCE_USE_OPUS=0
@@ -272,6 +325,8 @@ if(GLITCHKID_BUILD_TESTS)
                 juce::juce_recommended_warning_flags)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
         target_compile_options(GlitchKidTests PRIVATE -ffp-contract=off) # the same numeric rules as the plug-in (see above)
+    elseif(MSVC)
+        target_compile_options(GlitchKidTests PRIVATE /bigobj)
     endif()
     add_dependencies(GlitchKidTests GlitchKidBuildStamp)
     target_include_directories(GlitchKidTests PRIVATE ${CMAKE_BINARY_DIR}/generated)

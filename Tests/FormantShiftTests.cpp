@@ -18,6 +18,8 @@
 // Counts every heap allocation in this test program, so a test can prove that process() allocates nothing.
 // (Replacing the global operator new is allowed; these forward to malloc/free so every other allocation still works.)
 std::atomic<long> g_allocations { 0 }; // (shared: FormantTuneTests.cpp checks the whole plug-in with it)
+thread_local long t_allocations = 0;   // the same count, per thread: a test can check its own (audio) thread while other threads (timers) allocate
+long threadAllocations() { return t_allocations; }
 
 // GCC sees (after inlining) a standard-library new paired with our free() and warns, although the pairing is consistent.
 #if defined(__GNUC__) || defined(__clang__)
@@ -28,6 +30,7 @@ std::atomic<long> g_allocations { 0 }; // (shared: FormantTuneTests.cpp checks t
 void* operator new (std::size_t n)
 {
     g_allocations.fetch_add (1, std::memory_order_relaxed);
+    ++t_allocations;
     if (void* p = std::malloc (n != 0 ? n : 1))
         return p;
     throw std::bad_alloc();
@@ -40,6 +43,7 @@ void operator delete[] (void* p, std::size_t) noexcept { std::free (p); }
 void* operator new (std::size_t n, std::align_val_t a)
 {
     g_allocations.fetch_add (1, std::memory_order_relaxed);
+    ++t_allocations;
     void* p = nullptr;
     if (posix_memalign (&p, std::max ((std::size_t) a, sizeof (void*)), n != 0 ? n : 1) != 0)
         throw std::bad_alloc();

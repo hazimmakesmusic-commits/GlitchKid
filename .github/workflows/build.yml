@@ -1,0 +1,66 @@
+# Builds the plug-in and runs the full test suite on Windows and macOS (GitHub-hosted runners: free for a public repository).
+# Each run uploads the VST3 and the test log as artifacts (download them from the run's page while signed in to GitHub).
+name: Build and test
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency: # a newer push to the same branch replaces a run still in progress
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-2022   # Visual Studio 2022, x64
+          - name: macOS
+            os: macos-14       # Apple Silicon
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DGLITCHKID_BUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel 4
+
+      - name: Test
+        shell: bash
+        run: |
+          exe=build/GlitchKidTests_artefacts/Release/GlitchKidTests
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          "$exe" > tests.log 2>&1 || true
+          grep -E "!!!|PASS:|FAIL:" tests.log | tail -40
+          grep -q "PASS: 0 failure" tests.log
+
+      - name: Upload the test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tests-${{ matrix.name }}
+          path: tests.log
+          if-no-files-found: ignore
+
+      - name: Upload the plug-in
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlitchKid-VST3-${{ matrix.name }}
+          path: build/GlitchKid_artefacts/Release/VST3/GlitchKid.vst3
+
+      - name: Upload Beat Lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlitchKid-Beat-Lock-VST3-${{ matrix.name }}
+          path: build/GlitchKidBeatLock_artefacts/Release/VST3/GlitchKid Beat Lock.vst3

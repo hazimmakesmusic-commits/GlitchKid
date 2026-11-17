@@ -3,6 +3,14 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- **GLITCHKID BEAT LOCK: a new, separate VST3 for the instrumental.** See `docs/BEAT_LOCK.md`.
+  - **What it does:** the vocal on its sidechain input is only listened to; eight dynamic bells cut the instrumental where and when the vocal needs room.
+  - **DSP:** vocal activity (adaptive noise floor, hysteresis, hold, voiced/unvoiced), 4th-order band detectors, stereo-linked, zero latency.
+  - **Controls:** 41 automatable parameters (`bl_*`), versioned state, host bypass.
+  - **Interface:** real spectra and the real cut curve; LEARN (proposes, applies only on APPLY) and ANALYZE (report only); routing help.
+  - **Tests:** 14 test groups; the vocal never reaches the output (tested); no allocation on the audio thread (tested).
+  - **Not yet tested in any DAW** (FL Studio sidechain routing unverified).
+  - The GlitchKid vocal plug-in is unchanged (291 parameters).
 - **Processing systems: EQ LAB, SPACE, AIR LAB v2.** See `docs/PROCESSING_SYSTEMS.md`.
   - **EQ LAB:**
     - 16 bands: 8 types, cut slopes from 6 to 96 dB/oct, stereo / left / right / mid / side placement, solo;
