@@ -10,7 +10,7 @@ struct PageShotsTests : public juce::UnitTest
 
     void runTest() override
     {
-        beginTest ("each rail destination and the Mastering Lab open, paint, and never change the sound");
+        beginTest ("HOME and the five stages on the rail, BEAT (opened from HOME) and the pages kept for older sessions open, paint, and never change the sound");
         GlitchKidProcessor p;
         p.prepareToPlay (48000.0, 480);
         std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
@@ -27,10 +27,19 @@ struct PageShotsTests : public juce::UnitTest
             juce::FileOutputStream os (f);
             if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
         };
+        // rail rows 0 and 2-6 are on the rail; 8 (BEAT) opens from HOME; 1, 7, 9 and 10 are pages kept for older sessions (opened directly here)
+        auto open = [&] (int row)
+        {
+            static const int page[11] = { 6, 3, 1, 4, 4, 4, 4, 7, 2, 5, 8 }, category[11] = { 0, 0, 0, 0, 1, 2, 3, 0, 0, 0, 0 };
+            if (row == 0 || (row >= 2 && row <= 6))
+                ed->uiSelectRailForTest (row);
+            else
+                ed->uiShowWorkspaceForTest (page[row], category[row]);
+            expectEquals (ed->uiRailIndexForTest(), row);
+        };
         for (int row = 0; row < 11; ++row)
         {
-            ed->uiSelectRailForTest (row);
-            expectEquals (ed->uiRailIndexForTest(), row);
+            open (row);
             for (int t = 0; t < 8; ++t) ed->uiTickForTest(); // the read-outs as they look after a moment
             shot (juce::String (row).paddedLeft ('0', 2));
         }
@@ -51,7 +60,7 @@ struct PageShotsTests : public juce::UnitTest
             };
             for (int row = 0; row < 11; ++row)
             {
-                ed->uiSelectRailForTest (row);
+                open (row);
                 for (int t = 0; t < 4; ++t) ed->uiTickForTest();
                 juce::StringArray all;
                 texts (*ed, all);
@@ -66,7 +75,7 @@ struct PageShotsTests : public juce::UnitTest
                 if (row == 9) // REFERENCE, nothing analysed
                     expect (! all.joinIntoString (" ").containsIgnoreCase ("confidence: high"), "no confidence before measurements exist");
             }
-            ed->uiSelectRailForTest (7);
+            open (7);
             auto& lab = ed->uiLabPageForTest();
             expect (! lab.cardOnForTest (2));
             th::setParam (p, "mut_on", 1.0f);

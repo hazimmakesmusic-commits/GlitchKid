@@ -117,8 +117,10 @@ namespace
 // The signal rail, in the order a vocal is worked. page / category are the saved workspace numbers (Page and the FINAL TOUCH category), so a session saved before the
 // rail existed opens on the same workspace.
 struct RailItem { const char* name; int page; int category; const char* title; const char* job; const char* tip; };
-// ADVANCED MIXING: the five stages of a vocal mix first (TUNE, CLEAN, SHAPE, SPACE, FINISH), then the tools under MORE. The indices keep their old meaning
-// (sessions, tests); only the order on screen changed. SHAPE is the old TONE plus the compressor; FINISH the old DYNAMICS without it, plus MIX.
+// ADVANCED MIXING: the five stages of a vocal mix (TUNE, CLEAN, SHAPE, SPACE, FINISH). The indices keep their old meaning (sessions, tests); SHAPE is the
+// old TONE plus the compressor; FINISH the old DYNAMICS without it, plus MIX. SOUNDS, CREATIVE, BEAT, REFERENCE and MASTER (the old MORE group) are no
+// longer on the rail: their rows stay in this table only so saved indices keep their meaning (a saved one opens HOME). Their parameters and state are
+// untouched. BEAT is still opened from HOME's BEAT step; mastering is the separate GLITCHKID MASTER plug-in.
 const RailItem railItems[11] = {
     { "HOME", 6, 0, "Home", "The vocal instrument: TUNE, CLEAN LAB, AIR LAB, LIMITER and the main dials around your live vocal.",
       "Back to Home: the vocal instrument. Everything you set here is the same setting there." },
@@ -134,11 +136,10 @@ const RailItem railItems[11] = {
       "Compare your vocal's tone with a song you have the right to use and get small, reviewable EQ suggestions (Reference-Inspired EQ)." },
     { "MASTER", 8, 0, "Master", "For a finished mix on your master bus (a separate GlitchKid), or a mix file.",
       "The Mastering Lab: a separate chain for a finished stereo mix. Never applied to your vocal." } };
-// on screen: HOME (back), then MIX: TUNE 3, CLEAN 2, SHAPE 4, SPACE 6, FINISH 5; then MORE: SOUNDS 1, BEAT 8, CREATIVE 7, REFERENCE 9, MASTER 10
-constexpr int railRowY[11] = { 62, 334, 154, 120, 188, 256, 222, 390, 362, 418, 446 };
-constexpr bool railMore[11] = { false, true, false, false, false, false, false, true, true, true, true };
-constexpr int railGroupY[2] = { 102, 312 };
-const char* const railGroupName[2] = { "MIX", "MORE" };
+// on screen: HOME (back), then MIX: TUNE 3, CLEAN 2, SHAPE 4, SPACE 6, FINISH 5
+constexpr int railRowY[11] = { 62, 0, 160, 124, 196, 268, 232, 0, 0, 0, 0 };
+constexpr bool railShown[11] = { true, false, true, true, true, true, true, false, false, false, false };
+constexpr int railGroupY = 104;
 }
 
 GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
@@ -163,8 +164,8 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     {
         const int saved = p.getUiInt ("uiLevel", (int) Page::kid); // first launch: MAIN. 0-4 keep their old meaning, 5 is REFERENCE, 6 MAIN, 7 LAB, 8 MASTERING; anything else behaves as before (clamped to FINAL TOUCH)
         page = (Page) (saved >= 0 && saved <= 8 ? saved : juce::jlimit (0, 4, saved));
-        if (page == Page::home)
-            page = Page::kid; // the old START dashboard is folded into START
+        if (page == Page::home || page == Page::build || page == Page::lab || page == Page::reference || page == Page::master)
+            page = Page::kid; // the old START dashboard is folded into START; pages no longer on the rail (SOUNDS, CREATIVE, REFERENCE, MASTER) open HOME
     }
     category = juce::jlimit (0, numCategories - 1, p.getUiInt ("uiCategory", 0));
     browsedProfile = p.getUiInt ("uiProfile", -1);
@@ -202,10 +203,11 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
     // ---- the signal rail: the workspaces in the order a vocal is worked, each a real control; the dot shows a stage that is processing audio right now ----
     for (int i = 0; i < numRail; ++i)
     {
+        if (! railShown[i])
+            continue; // not on the rail: never added, never laid out
         navButtons[i].setButtonText (railItems[i].name);
         style (navButtons[i], juce::String (railItems[i].tip) + " Any workspace can be opened at any time; switching never changes your sound.");
         navButtons[i].getProperties().set ("rail", true); // the look-and-feel draws a rail row: a status dot, the name and a lit bar when selected
-        navButtons[i].getProperties().set ("railSmall", railMore[i]); // MORE: the tools, quieter than the five stages
         navButtons[i].getProperties().set ("railBack", i == 0);       // HOME: a way back, not a stage
         navButtons[i].onClick = [this, i] { selectRail (i); };
     }
@@ -233,7 +235,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         glitchProcessor.setUiFlag ("uiMotion", motionOn);
         shownCompareText = {};
     };
-    style (dryButton, "ORIGINAL: hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob. On MASTER it is the untouched mix at the master's loudness.");
+    style (dryButton, "ORIGINAL: hear the untouched input. This is the real bypass (delay-matched and crossfaded over 20 ms), not the Mix knob.");
     style (processedButton, "Hear the processed sound.");
     dryButton.setColour (juce::TextButton::buttonOnColourId, ui::pink.darker (0.5f));
     processedButton.setColour (juce::TextButton::buttonOnColourId, ui::violet);
@@ -755,7 +757,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         style (analyzeBeatButton, "Listens to the vocal and the beat for a few seconds (press play in your host and let both play), then compares them. Press again to stop early.");
         style (applyBeatButton, "Apply the ticked suggestions to the vocal's own controls. UNDO puts everything back.");
         style (undoBeatButton, "Put back the sound you had before BEAT LOCK changed it.");
-        style (vocalOnlyButton, "No beat to compare with: BUILD MY MIX (on SOUNDS) works from the vocal alone.");
+        style (vocalOnlyButton, "No beat to compare with: BUILD MY MIX (on HOME) works from the vocal alone.");
         analyzeBeatButton.onClick = [this]
         {
             if (beatListening)
@@ -765,7 +767,7 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         };
         applyBeatButton.onClick = [this] { applyBeatSelection(); };
         undoBeatButton.onClick = [this] { backToMine(); };
-        vocalOnlyButton.onClick = [this] { showPage (Page::build, true); };
+        vocalOnlyButton.onClick = [this] { showMainView (false); }; // HOME: BUILD MY MIX is there
         for (int i = 0; i < beatRows; ++i)
         {
             beatTicks[i].setColour (juce::ToggleButton::tickColourId, ui::violet);
@@ -809,10 +811,14 @@ GlitchKidEditor::GlitchKidEditor (GlitchKidProcessor& p)
         hooks.back = [this] { showMainView (false); };
         kidPanel = std::make_unique<ui::KidPanel> (p, std::move (hooks)); // like REFERENCE: a child of `content` only while its page is open
         ui::MainScreen::Hooks mh;
-        mh.openBeat = [this] { selectRail (8); };
+        mh.openBeat = [this] { showPage (Page::beat, true); }; // HOME's BEAT step (the vocal-side suggestions); not on the rail
         mh.buildMix = [this] { if (autoAnalyzeButton.onClick) autoAnalyzeButton.onClick(); }; // one build action, shared with SOUNDS
         mh.chooseProfile = [this] (int profile) { selectProfile (profile); };
-        mh.openAdvanced = [this] { selectRail (juce::jlimit (1, numRail - 1, glitchProcessor.getUiInt ("uiAdvancedRow", 3))); }; // the last detailed page, TUNE (the first stage) at first
+        mh.openAdvanced = [this]
+        {
+            const int row = glitchProcessor.getUiInt ("uiAdvancedRow", 3); // the last detailed page, TUNE (the first stage) at first
+            selectRail (row > 0 && row < numRail && railShown[row] ? row : 3);
+        };
         mh.holdOriginal = [this] (bool original) { setBypassFromUi (original); };
         mh.fileKey = [this] (int& tonic, bool& minor)
         {
@@ -954,7 +960,7 @@ void GlitchKidEditor::showPage (Page p, bool remember)
     page = p;
     if (remember)
         glitchProcessor.setUiInt ("uiLevel", (int) page);
-    if (remember && railIndex() > 0)
+    if (remember && railIndex() > 0 && railShown[railIndex()])
         glitchProcessor.setUiInt ("uiAdvancedRow", railIndex()); // HOME's ADVANCED MIXING reopens the last detailed page
     syncRail();
     layoutContent();
@@ -990,7 +996,8 @@ void GlitchKidEditor::syncRail()
 
 void GlitchKidEditor::selectRail (int i)
 {
-    const auto& item = railItems[juce::jlimit (0, numRail - 1, i)];
+    i = juce::jlimit (0, numRail - 1, i);
+    const auto& item = railItems[railShown[i] ? i : 0]; // a row that is no longer on the rail (an old saved index) opens HOME
     if (item.page == (int) Page::finalTouch)
         showCategory (item.category, true);
     showPage ((Page) item.page, true);
@@ -1016,7 +1023,7 @@ void GlitchKidEditor::refreshInfoLine()
 {
     const bool legacy = hoverHelp.isEmpty() && legacyEffects.isNotEmpty();
     const auto text = hoverHelp.isNotEmpty() ? hoverHelp
-                      : legacy               ? "Lab effects on: " + legacyEffects + ". Adjust them on LAB; BUILD switches them off."
+                      : legacy               ? "Creative effects from an older session are on: " + legacyEffects + ". BUILD MY MIX switches them off."
                                              : juce::String ("Point at any control to read what it does.");
     if (text != infoLabel.getText())
         infoLabel.setText (text, juce::dontSendNotification);
@@ -1197,7 +1204,7 @@ void GlitchKidEditor::refreshState (float peak)
         refreshInfoLine();
         // the rail's dots: CLEAN is lit when it is really correcting something; TUNE, SHAPE, FINISH and SPACE as in the stages above (nothing is processed while DRY)
         const std::array<bool, numRail> dots = { false, false, ! dry && (cleanTone || cleanEss), act[0], act[1], act[2], act[3], ! dry && ! legacy.isEmpty(), false, false, false };
-        for (int i : { 2, 3, 4, 5, 6, 7 })
+        for (int i : { 2, 3, 4, 5, 6 })
             if ((int) navButtons[i].getProperties().getWithDefault ("led", 0) != (dots[(size_t) i] ? 2 : 1))
             {
                 navButtons[i].getProperties().set ("led", dots[(size_t) i] ? 2 : 1);
@@ -2126,10 +2133,7 @@ void GlitchKidEditor::paint (juce::Graphics& g)
     }
     g.setFont (ui::fontOf (10.5f, true));
     g.setColour (ui::textDim);
-    for (int i = 0; i < 2; ++i)
-        g.drawText (railGroupName[i], juce::Rectangle<float> (18.0f, (float) railGroupY[i], R - 30.0f, 14.0f), juce::Justification::centredLeft, false);
-    g.setColour (ui::border.withAlpha (0.6f));
-    g.fillRect (14.0f, (float) railGroupY[1] - 10.0f, R - 28.0f, 1.0f);
+    g.drawText ("MIX", juce::Rectangle<float> (18.0f, (float) railGroupY, R - 30.0f, 14.0f), juce::Justification::centredLeft, false);
 
     // the page's atmosphere: ultraviolet, magenta and a touch of cyan light pools on the near-black. Static: no motion, no data, no decoration over the controls
     {
@@ -2224,8 +2228,9 @@ void GlitchKidEditor::layoutContent()
 
     // ---- the rail, the header controls, the info line ----
     for (int i = 0; i < numRail; ++i)
-        place (navButtons[i], { 8, railRowY[i], railW - 16, railMore[i] ? 26 : 30 });
-    place (railNote, { 14, 486, railW - 24, 48 });
+        if (railShown[i])
+            place (navButtons[i], { 8, railRowY[i], railW - 16, 30 });
+    place (railNote, { 14, 316, railW - 24, 48 }); // under the five stages
     place (ioLabel, { 18, 508 + barDy, railW - 28, 44 });
     place (dryButton, { designW - 16 - 70 - 4 - 46 - 4 - 86 - 4 - 78, 12, 78, 28 });
     place (processedButton, { designW - 16 - 70 - 4 - 46 - 4 - 86, 12, 86, 28 });

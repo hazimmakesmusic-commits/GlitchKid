@@ -525,14 +525,15 @@ struct ReferenceUiTests : public juce::UnitTest
         refBright.fullMix = true;
         auto voc = profileOf (plain, sr);
 
-        beginTest ("saved tab numbers keep their meaning: 0-4 as before, 5 is REFERENCE, 6 MAIN, 7 LAB, 8 MASTERING, junk behaves as before; choosing the tab remembers it");
+        beginTest ("saved tab numbers keep their meaning: 1, 2 and 4 as before; 0 (the old dashboard) and the pages no longer on the rail (3 SOUNDS, 5 REFERENCE, 7 CREATIVE, 8 MASTER) open HOME (6); junk behaves as before");
         {
             for (int saved : { 0, 1, 2, 3, 4, 5, 6, 7, 8 })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", saved);
                 std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
-                expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), saved == 0 ? 6 : saved, "0, the old dashboard, opens START (6)");
+                const bool home = saved == 0 || saved == 3 || saved >= 5;
+                expectEquals (dynamic_cast<GlitchKidEditor*> (e.get())->uiPageForTest(), home ? 6 : saved, "saved " + juce::String (saved));
             }
             for (auto [saved, expected] : { std::pair<int, int> { 9, 4 }, { -3, 6 }, { 12, 4 } })
             {
@@ -552,17 +553,17 @@ struct ReferenceUiTests : public juce::UnitTest
             expectEquals (p.getParameters().size(), 291); // 69 + 7 mastering + 102 EQ LAB bands + 96 EQ LAB dynamics + 17 SPACE, appended in that order
         }
 
-        beginTest ("the eleven rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
+        beginTest ("the six rail rows are stacked without touching each other, wide enough to read, and clear of the header controls, at every window size");
         {
             GlitchKidProcessor p;
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
-            ed->uiSelectRailForTest (1); // the rail and the header controls are laid out on the detailed pages (HOME has its own bar)
+            ed->uiSelectRailForTest (3); // the rail and the header controls are laid out on the detailed pages (HOME has its own bar)
             for (int size : { 70, 100, 150 })
             {
                 ed->setSize (1120 * size / 100, 680 * size / 100);
-                std::vector<juce::Rectangle<int>> rows; // the rows in screen order (HOME, the five stages, then MORE): indices keep their old meaning
-                for (int i = 0; i < 11; ++i)
+                std::vector<juce::Rectangle<int>> rows; // the rows in screen order (HOME, then the five stages): indices keep their old meaning
+                for (int i : { 0, 2, 3, 4, 5, 6 })
                     rows.push_back (ed->uiBarButtonBoundsForTest (i));
                 std::sort (rows.begin(), rows.end(), [] (auto& x, auto& y) { return x.getY() < y.getY(); });
                 for (size_t i = 0; i + 1 < rows.size(); ++i)
@@ -570,7 +571,7 @@ struct ReferenceUiTests : public juce::UnitTest
                     expect (rows[i].getBottom() <= rows[i + 1].getY(), "rail row " + juce::String ((int) i) + " ends before the next row");
                     expect (rows[i].getWidth() >= 110 && rows[i].getHeight() >= 26, "rail row wide and tall enough");
                 }
-                expect (rows.back().getBottom() <= 486, "the rail ends above its note (486) and the level read-out");
+                expect (rows.back().getBottom() <= 316, "the rail ends above its note (316), which sits right under the five stages");
                 expect (ed->uiBarButtonBoundsForTest (11).getRight() < ed->uiBarButtonBoundsForTest (12).getX(), "DRY ends before MOTION");
             }
         }

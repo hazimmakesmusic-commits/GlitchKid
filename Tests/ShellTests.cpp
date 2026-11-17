@@ -46,8 +46,9 @@ struct ShellTests : public juce::UnitTest
         {
             // old session -> row: (uiLevel, uiCategory) -> rail index
             struct Case { int level, category, row; };
-            // the old START dashboard (0) is folded into START (the instrument, 6)
-            for (const auto& c : { Case { 6, 0, 0 }, { 0, 0, 0 }, { 3, 0, 1 }, { 1, 0, 2 }, { 4, 0, 3 }, { 4, 1, 4 }, { 4, 2, 5 }, { 4, 3, 6 }, { 7, 0, 7 }, { 2, 0, 8 }, { 5, 0, 9 }, { 8, 0, 10 } })
+            // the old START dashboard (0) is folded into START (the instrument, 6); pages no longer on the rail (3 SOUNDS, 7 CREATIVE, 5 REFERENCE, 8 MASTER)
+            // open HOME; BEAT (2) still opens, as HOME's BEAT step does
+            for (const auto& c : { Case { 6, 0, 0 }, { 0, 0, 0 }, { 3, 0, 0 }, { 1, 0, 2 }, { 4, 0, 3 }, { 4, 1, 4 }, { 4, 2, 5 }, { 4, 3, 6 }, { 7, 0, 0 }, { 2, 0, 8 }, { 5, 0, 0 }, { 8, 0, 0 } })
             {
                 GlitchKidProcessor p;
                 p.setUiInt ("uiLevel", c.level);
@@ -63,7 +64,8 @@ struct ShellTests : public juce::UnitTest
             for (int row = 0; row < 11; ++row)
             {
                 ed->uiSelectRailForTest (row);
-                expectEquals (ed->uiRailIndexForTest(), row);
+                const bool onRail = row == 0 || (row >= 2 && row <= 6);
+                expectEquals (ed->uiRailIndexForTest(), onRail ? row : 0, "row " + juce::String (row) + (onRail ? "" : ": no longer on the rail, opens HOME"));
             }
             ed->uiSelectRailForTest (5);
             expectEquals (p.getUiInt ("uiLevel", -1), 4);
@@ -78,19 +80,19 @@ struct ShellTests : public juce::UnitTest
             std::unique_ptr<juce::AudioProcessorEditor> e (p.createEditor());
             auto* ed = dynamic_cast<GlitchKidEditor*> (e.get());
             ed->uiTickForTest();
-            for (int row : { 2, 3, 4, 5, 6, 7 })
+            for (int row : { 2, 3, 4, 5, 6 })
                 expect (! ed->uiRailDotForTest (row), "row " + juce::String (row) + " is idle by default");
             th::setParam (p, "tune_on", 1.0f);
             th::setParam (p, "echo_on", 1.0f);
             ed->uiTickForTest();
             expect (ed->uiRailDotForTest (3) && ed->uiRailDotForTest (6), "TUNE and SPACE are lit");
-            expect (! ed->uiRailDotForTest (4) && ! ed->uiRailDotForTest (5) && ! ed->uiRailDotForTest (7), "TONE, DYNAMICS and CREATIVE stay unlit");
-            th::setParam (p, "mut_on", 1.0f);
+            expect (! ed->uiRailDotForTest (4) && ! ed->uiRailDotForTest (5), "TONE and DYNAMICS stay unlit");
+            th::setParam (p, "mut_on", 1.0f); // CREATIVE is no longer on the rail: an older session's creative effect is named on the info line instead
             ed->uiTickForTest();
-            expect (ed->uiRailDotForTest (7), "CREATIVE is lit while a creative effect is on");
+            expect (ed->uiHelpTextForTest().contains ("MUTATION") && ed->uiHelpTextForTest().contains ("BUILD MY MIX"), ed->uiHelpTextForTest());
             th::setParam (p, "bypass", 1.0f);
             ed->uiTickForTest();
-            for (int row : { 2, 3, 4, 5, 6, 7 })
+            for (int row : { 2, 3, 4, 5, 6 })
                 expect (! ed->uiRailDotForTest (row), "nothing is processed while ORIGINAL: row " + juce::String (row));
         }
 

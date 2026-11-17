@@ -193,6 +193,54 @@ elseif(MSVC)
     target_compile_options(GlitchKidBeatLock PUBLIC /bigobj)
 endif()
 
+# ---- GLITCHKID MASTER: a separate VST3 for a finished stereo mix on the master bus (Source/Master, docs/MASTER.md). Its own processor, editor,
+# parameters (gkm_*) and state; the DSP is the shared mastering engine (Source/Mastering), the look is shared with GlitchKid.
+juce_add_plugin(GlitchKidMaster
+    COMPANY_NAME "GlitchKid"
+    PRODUCT_NAME "GlitchKid Master"
+    FORMATS VST3
+    PLUGIN_MANUFACTURER_CODE GlKd   # the same manufacturer as GlitchKid
+    PLUGIN_CODE GkMs                # unique within GlKd (GlitchKid Gkid, Beat Lock GkBl); must never change after release
+    IS_SYNTH FALSE
+    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_OUTPUT FALSE
+    VST3_CATEGORIES Fx Mastering)
+set(GLITCHKID_MASTER_SOURCES
+    Source/Master/MasterParams.cpp
+    Source/Master/MasterProcessor.cpp
+    Source/Master/MasterEditor.cpp)
+target_sources(GlitchKidMaster PRIVATE
+    ${GLITCHKID_MASTER_SOURCES}
+    Source/Mastering/MasterDsp.cpp
+    Source/Mastering/MasteringEngine.cpp
+    Source/DSP/ParametricEq.cpp
+    Source/DSP/Compressor.cpp
+    Source/DSP/Saturation.cpp
+    Source/Analysis/EqAnalyzer.cpp
+    Source/Analysis/DisplaySpectrum.cpp
+    Source/UI/PlaygroundWidgets.cpp
+    Source/UI/Theme.cpp
+    Source/UI/Brand.cpp
+    Source/DSP/CleanLab.cpp
+    Source/Presets/FactoryPresets.cpp
+    Source/Presets/SoundState.cpp)
+target_compile_definitions(GlitchKidMaster PUBLIC
+    JUCE_WEB_BROWSER=0
+    JUCE_USE_CURL=0
+    JUCE_VST3_CAN_REPLACE_VST2=0
+    GLITCHKID_VERSION="${PROJECT_VERSION}")
+target_link_libraries(GlitchKidMaster
+    PRIVATE juce::juce_audio_utils
+            juce::juce_dsp
+            GlitchKidAssets
+    PUBLIC  juce::juce_recommended_config_flags
+            juce::juce_recommended_warning_flags)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    target_compile_options(GlitchKidMaster PUBLIC -ffp-contract=off)
+elseif(MSVC)
+    target_compile_options(GlitchKidMaster PUBLIC /bigobj)
+endif()
+
 # Unit tests for the processor: cmake -S . -B build -DGLITCHKID_BUILD_TESTS=ON && ctest --test-dir build
 option(GLITCHKID_BUILD_TESTS "Build the GlitchKid unit tests" OFF)
 if(GLITCHKID_BUILD_TESTS)
@@ -244,12 +292,15 @@ if(GLITCHKID_BUILD_TESTS)
         Tests/KidTests.cpp
         Tests/VocalFileTests.cpp
         Tests/MainScreenTests.cpp
+        Tests/HomeWaveformTests.cpp
         Tests/MasteringTests.cpp
         Tests/MasteringPluginTests.cpp
         Tests/PageShotsTests.cpp
         Tests/WebsiteShotsTests.cpp
         Tests/BeatLockPluginTests.cpp
+        Tests/MasterPluginTests.cpp
         ${GLITCHKID_BEATLOCK_SOURCES}
+        ${GLITCHKID_MASTER_SOURCES}
         Source/DSP/FormantShifting/FormantShifter.cpp
         Source/DSP/PitchCorrection/YinPitchDetector.cpp
         Source/DSP/PitchCorrection/ScaleQuantizer.cpp

@@ -219,8 +219,10 @@ struct LevelUiTests : public juce::UnitTest
             const auto before = p.captureSoundState();
             const auto presetName = p.getPresetName();
             if (auto* ged = dynamic_cast<GlitchKidEditor*> (ed.get()))
-                ged->uiSelectRailForTest (1); // KID, the first screen, fills the window without the rail: start from a detailed page, where the rail is
-            for (const char* name : { "CLEAN", "BEAT", "SOUNDS", "TUNE", "SHAPE", "HOME" }) // HOME fills the window (no rail), so it comes last
+                ged->uiSelectRailForTest (3); // HOME, the first screen, fills the window without the rail: start from a detailed page, where the rail is
+            for (const char* name : { "SOUNDS", "BEAT", "CREATIVE", "REFERENCE", "MASTER" })
+                expect (findButton (*content, name) == nullptr || ! findButton (*content, name)->isVisible(), juce::String (name) + " is no longer on the rail");
+            for (const char* name : { "CLEAN", "TUNE", "SHAPE", "SPACE", "FINISH", "HOME" }) // HOME fills the window (no rail), so it comes last
             {
                 auto* b = findButton (*content, name);
                 expect (b != nullptr && b->isVisible(), juce::String (name) + " is on the rail");
@@ -233,7 +235,8 @@ struct LevelUiTests : public juce::UnitTest
             for (const auto& e : before.values)
                 expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, juce::jmax (1.0e-4f, std::abs (e.value) * 1.0e-6f)); // a float step above 1 kHz is > 1e-4
             expectEquals (p.getPresetName(), presetName);
-            findButton (*content, "BEAT")->triggerClick();
+            if (auto* ged = dynamic_cast<GlitchKidEditor*> (ed.get()))
+                ged->uiMainScreenForTest().pressForTest ("Fit to beat"); // BEAT opens from HOME's BEAT step
             pump (60);
             juce::MemoryBlock mb;
             p.getStateInformation (mb);
@@ -369,7 +372,7 @@ struct LevelUiTests : public juce::UnitTest
                 expectWithinAbsoluteError (p.apvts.getRawParameterValue (e.id)->load(), e.value, juce::jmax (1.0e-4f, std::abs (e.value) * 1.0e-6f)); // a float step above 1 kHz is > 1e-4
             findButton (*content, "NO BEAT? BUILD MY MIX  >")->triggerClick();
             pump (60);
-            expectEquals (p.getUiInt ("uiLevel", -1), 3);
+            expectEquals (p.getUiInt ("uiLevel", -1), 6, "HOME, where BUILD MY MIX is (SOUNDS is no longer on the rail)");
         }
 
         beginTest ("BEAT LOCK with a real second input: analyses both, lists reasons, apply changes only the ticked, undo restores");

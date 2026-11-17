@@ -3,6 +3,23 @@
 Format: newest first. Version 0.1.0 is the CMake project version; nothing has been released to the public.
 
 ## Unreleased
+- **GLITCHKID MASTER: a new, separate VST3 for mastering a finished mix on the master bus.** See `docs/MASTER.md`.
+  - **Engine:** the existing, tested mastering engine, reused, with a true-peak ceiling control (−6 to −0.3 dBTP) and a finer true-peak detector
+    (8x, 16 taps per phase).
+  - **Controls:** 9 parameters (`gkm_*`), A/B, host bypass (exact, latency-aligned), latency reported. No Export button: export from the DAW.
+  - **Interface:** real BS.1770 meters (momentary, short-term, integrated, true and sample peak, correlation, clipping) on input and output, and a
+    gain-reduction history.
+  - **Tests:** 14 test groups. Not yet loaded in a DAW.
+- **GlitchKid navigation: the MORE group is gone.** The rail is HOME plus the five stages (TUNE, CLEAN, SHAPE, SPACE, FINISH).
+  - **Kept for compatibility:**
+    - parameters, state and page code are unchanged (291 parameters);
+    - a session saved on a removed page opens HOME;
+    - BEAT still opens from HOME's BEAT step;
+    - a session with the old Mastering mode on keeps mastering and shows a "Back to vocal mode" button on HOME.
+- **HOME's live vocal now moves as soon as the plug-in window opens.**
+  - **Before:** it waited for a visibility change that a host never sends, so it only started after a visit to ADVANCED MIXING.
+  - **Now:** the level is the peak of every sample processed since the last frame, so no transient is missed at any sample rate or block size.
+- **Shared mastering DSP:** the finer true-peak detector also applies to the vocal plug-in's old Mastering mode (2 samples more latency, reported).
 - **GLITCHKID BEAT LOCK: a new, separate VST3 for the instrumental.** See `docs/BEAT_LOCK.md`.
   - **What it does:** the vocal on its sidechain input is only listened to; eight dynamic bells cut the instrumental where and when the vocal needs room.
   - **DSP:** vocal activity (adaptive noise floor, hysteresis, hold, voiced/unvoiced), 4th-order band detectors, stereo-linked, zero latency.

@@ -26,6 +26,7 @@ struct Controls
     float tone = 0.0f;        // -1 (darker) .. +1 (brighter)
     float width = 1.0f;       // 0..2, multiplies the style's width
     float outputDb = 0.0f;    // -12..0, after the limiter
+    float ceilingDbTp = -1.0f; // -6..-0.3 dBTP: the limiter's true-peak ceiling (the vocal plug-in's Mastering mode keeps the default)
 };
 
 // The real processing a set of controls resolves to (pure and deterministic; the tests check that the styles really differ).

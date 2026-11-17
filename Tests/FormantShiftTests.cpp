@@ -40,20 +40,28 @@ void operator delete (void* p) noexcept { std::free (p); }
 void operator delete[] (void* p) noexcept { std::free (p); }
 void operator delete (void* p, std::size_t) noexcept { std::free (p); }
 void operator delete[] (void* p, std::size_t) noexcept { std::free (p); }
+// aligned: MSVC has no posix_memalign, and its aligned blocks must be released with _aligned_free (never free)
+#if defined(_MSC_VER)
+ #include <malloc.h>
+static void* alignedAlloc (std::size_t n, std::size_t a) { return _aligned_malloc (n, a); }
+static void alignedFree (void* p) noexcept { _aligned_free (p); }
+#else
+static void* alignedAlloc (std::size_t n, std::size_t a) { void* p = nullptr; return posix_memalign (&p, a, n) == 0 ? p : nullptr; }
+static void alignedFree (void* p) noexcept { std::free (p); }
+#endif
 void* operator new (std::size_t n, std::align_val_t a)
 {
     g_allocations.fetch_add (1, std::memory_order_relaxed);
     ++t_allocations;
-    void* p = nullptr;
-    if (posix_memalign (&p, std::max ((std::size_t) a, sizeof (void*)), n != 0 ? n : 1) != 0)
-        throw std::bad_alloc();
-    return p;
+    if (void* p = alignedAlloc (n != 0 ? n : 1, std::max ((std::size_t) a, sizeof (void*))))
+        return p;
+    throw std::bad_alloc();
 }
 void* operator new[] (std::size_t n, std::align_val_t a) { return ::operator new (n, a); }
-void operator delete (void* p, std::align_val_t) noexcept { std::free (p); }
-void operator delete[] (void* p, std::align_val_t) noexcept { std::free (p); }
-void operator delete (void* p, std::size_t, std::align_val_t) noexcept { std::free (p); }
-void operator delete[] (void* p, std::size_t, std::align_val_t) noexcept { std::free (p); }
+void operator delete (void* p, std::align_val_t) noexcept { alignedFree (p); }
+void operator delete[] (void* p, std::align_val_t) noexcept { alignedFree (p); }
+void operator delete (void* p, std::size_t, std::align_val_t) noexcept { alignedFree (p); }
+void operator delete[] (void* p, std::size_t, std::align_val_t) noexcept { alignedFree (p); }
 
 #if defined(__GNUC__) || defined(__clang__)
  #pragma GCC diagnostic pop

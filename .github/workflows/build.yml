@@ -64,3 +64,9 @@ jobs:
         with:
           name: GlitchKid-Beat-Lock-VST3-${{ matrix.name }}
           path: build/GlitchKidBeatLock_artefacts/Release/VST3/GlitchKid Beat Lock.vst3
+
+      - name: Upload Master
+        uses: actions/upload-artifact@v4
+        with:
+          name: GlitchKid-Master-VST3-${{ matrix.name }}
+          path: build/GlitchKidMaster_artefacts/Release/VST3/GlitchKid Master.vst3

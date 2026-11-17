@@ -57,7 +57,7 @@ Chain resolve (const Controls& c)
     ch.satDriveDb = r.satDb * i;
     ch.width = juce::jlimit (0.0f, 2.0f, (1.0f + (r.width - 1.0f) * i) * juce::jlimit (0.0f, 2.0f, c.width));
     ch.driveDb = juce::jlimit (0.0f, 12.0f, juce::jlimit (0.0f, 10.0f, c.loudnessDb) + r.extraDriveDb * i);
-    ch.ceilingDbTp = -1.0f; // fixed: leaves room for lossy encoding; never a setting that can be pushed to 0
+    ch.ceilingDbTp = juce::jlimit (-6.0f, -0.3f, c.ceilingDbTp); // never 0: the 4x detector may under-read by a few tenths near Nyquist (default -1, room for lossy encoding)
     ch.releaseMs = r.limRelMs;
     ch.outputDb = juce::jlimit (-12.0f, 0.0f, c.outputDb);
     return ch;

@@ -100,7 +100,7 @@ private:
     static constexpr int railW = 136, pageW = 984, designW = railW + pageW, designH = 680; // 1120 x 680 (a slim stage rail, a wide workspace)
     static constexpr int barDy = 80; // the info line and the preset bar sit 80 px lower than in the 600-high layout the workspaces were written for
     static constexpr int pageDy = -44, pageTop = 102 + pageDy; // workspaces are written in the old coordinates (top at 102); layoutContent shifts them
-    static constexpr int numRail = 11; // the rail: START, SOUNDS, CLEAN, TUNE, TONE, DYNAMICS, SPACE, CREATIVE, BEAT, REFERENCE, MASTER
+    static constexpr int numRail = 11; // rail indices (saved in sessions): HOME, SOUNDS, CLEAN, TUNE, SHAPE, FINISH, SPACE, CREATIVE, BEAT, REFERENCE, MASTER; only HOME and the five stages are shown
     enum class Page { home = 0, clean = 1, beat = 2, build = 3, finalTouch = 4, reference = 5, kid = 6, lab = 7, master = 8 }; // new pages are only ever appended: the numbers are saved in sessions
     static constexpr int numCategories = 4; // FINAL TOUCH: PITCH & KEY, TONE, DYNAMICS, SPACE
     Page page = Page::home;

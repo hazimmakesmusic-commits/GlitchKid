@@ -223,11 +223,22 @@ struct MainScreenTests : public juce::UnitTest
             th::setParam (p, "mix", 100.0f);
 
             ed->uiSelectRailForTest (3);
-            const int order[] = { 0, 3, 2, 4, 6, 5, 1, 8, 7, 9, 10 }; // HOME, TUNE, CLEAN, SHAPE, SPACE, FINISH, then MORE: SOUNDS, BEAT, CREATIVE, REFERENCE, MASTER
-            for (int i = 0; i + 1 < 11; ++i)
+            const int order[] = { 0, 3, 2, 4, 6, 5 }; // HOME, then MIX: TUNE, CLEAN, SHAPE, SPACE, FINISH (the MORE group is gone)
+            for (int i = 0; i + 1 < 6; ++i)
                 expect (ed->uiBarButtonBoundsForTest (order[i]).getY() < ed->uiBarButtonBoundsForTest (order[i + 1]).getY(), "rail order at " + juce::String (i));
-            for (auto* b : { "HOME", "TUNE", "CLEAN", "SHAPE", "SPACE", "FINISH", "SOUNDS", "BEAT", "CREATIVE", "REFERENCE", "MASTER" })
+            for (auto* b : { "HOME", "TUNE", "CLEAN", "SHAPE", "SPACE", "FINISH" })
                 expect (visibleButton (*ed, b), b);
+            for (auto* b : { "SOUNDS", "BEAT", "CREATIVE", "REFERENCE", "MASTER", "MORE" })
+                expect (! visibleButton (*ed, b), juce::String ("no longer on the rail: ") + b);
+            for (int row : { 1, 7, 8, 9, 10 })
+            {
+                expect (ed->uiBarButtonBoundsForTest (row).isEmpty(), "a removed row has no place on the rail");
+                ed->uiSelectRailForTest (row); // an index an older session may still hold
+                expectEquals (ed->uiPageForTest(), 6, "a removed row opens HOME, never a hidden page");
+            }
+            p.setUiInt ("uiAdvancedRow", 10); // saved on MASTER before the rail changed
+            main.pressForTest ("ADVANCED MIXING");
+            expectEquals (ed->uiRailIndexForTest(), 3, "ADVANCED MIXING then opens TUNE, not a removed page");
             ed->uiSelectRailForTest (0);
 
             GlitchKidProcessor old;
@@ -247,7 +258,7 @@ struct MainScreenTests : public juce::UnitTest
             genre.setSelectedId (4, juce::sendNotificationSync); // the third profile
             expectEquals (p.getUiInt ("uiProfile", -9), 2, "the same choice as SOUNDS, kept in the session");
             expect (same (before, p.captureSoundState()), "choosing a sound changes nothing");
-            ed->uiSelectRailForTest (1);
+            ed->uiShowWorkspaceForTest (3); // the SOUNDS page (kept for older sessions, no longer on the rail)
             ed->uiSelectRailForTest (0);
             expectEquals (genre.getSelectedId(), 4, "HOME and SOUNDS agree");
             expect (main.nextForTest().isNotEmpty(), "a next step is always named");
@@ -331,10 +342,15 @@ struct MainScreenTests : public juce::UnitTest
             main.releaseForTest();
             expectEquals (getParam (p, "bypass"), 1.0f, "ORIGINAL chosen with the button stays ORIGINAL");
             th::setParam (p, "bypass", 0.0f);
-            th::setParam (p, "master_on", 1.0f);
+            expect (! main.vocalModeShownForTest(), "no Mastering-mode notice in a vocal session");
+            th::setParam (p, "master_on", 1.0f); // an older session saved with the built-in Mastering mode on
             for (int i = 0; i < 3; ++i) main.tickForTest();
-            expect (main.headlineForTest().startsWith ("Mastering mode is on"), main.headlineForTest());
-            th::setParam (p, "master_on", 0.0f);
+            expect (main.headlineForTest().startsWith ("Old Mastering mode is on"), main.headlineForTest());
+            expect (main.vocalModeShownForTest(), "HOME offers the way back (the MASTER page is no longer on the rail)");
+            main.pressForTest ("Back to vocal mode");
+            expect (! p.isMasteringMode(), "back to vocal processing");
+            for (int i = 0; i < 3; ++i) main.tickForTest();
+            expect (! main.vocalModeShownForTest() && ! main.headlineForTest().startsWith ("Old Mastering"), main.headlineForTest());
             th::setParam (p, "clean_on", 0.0f);
             th::setParam (p, "lim_on", 0.0f);
         }
@@ -495,12 +511,11 @@ struct MasteringScreenTests : public juce::UnitTest
             if (os.openedOk()) juce::PNGImageFormat().writeImageToStream (img, os);
         };
 
-        beginTest ("MASTER in the rail; in the frame; every control is a mastering parameter");
+        beginTest ("the old MASTER page (kept for sessions with Mastering mode, no longer on the rail): in the frame; every control is a mastering parameter");
         {
-            ed->uiSelectRailForTest (10);
+            ed->uiShowWorkspaceForTest (8);
             expectEquals (ed->uiPageForTest(), 8);
             expect (lab.getParentComponent() != nullptr && lab.getX() > 100 && lab.isVisible());
-            expectEquals (p.getUiInt ("uiLevel", -1), 8, "remembered with the session");
             lab.pressForTest ("Warm & Smooth");
             expectWithinAbsoluteError (getParam (p, "master_style"), 1.0f, 0.01f, "a style tile sets the style");
             lab.dialForTest (0).setValue (80.0, juce::sendNotificationSync);

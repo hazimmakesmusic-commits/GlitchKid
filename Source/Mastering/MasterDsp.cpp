@@ -19,8 +19,9 @@ TruePeakDetector::TruePeakDetector()
         std::array<double, taps> c {};
         for (int j = 0; j < taps; ++j)
         {
-            const double u = (double) j - 5.5 + (double) k / phases; // position relative to the interpolation point
-            const double w = std::abs (u) < 6.0 ? 0.5 * (1.0 + std::cos (pi * u / 6.0)) : 0.0;
+            constexpr double half = taps / 2;
+            const double u = (double) j - (half - 0.5) + (double) k / phases; // position relative to the interpolation point
+            const double w = std::abs (u) < half ? 0.5 * (1.0 + std::cos (pi * u / half)) : 0.0;
             c[(size_t) j] = sincD (u) * w;
             sum += c[(size_t) j];
         }

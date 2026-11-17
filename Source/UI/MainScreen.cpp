@@ -26,7 +26,7 @@ const char* const moduleSwitchId[MainScreen::numModules] = { GlitchKidProcessor:
 MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::move (h))
 {
     setOpaque (true);
-    scratch.resize (1600);
+    scratch.resize (analysis::DisplayTap::size);
     setupDials();
 
     auto choices = [this] (juce::ComboBox& box, const char* id, std::unique_ptr<juce::ComboBoxParameterAttachment>& att, const juce::String& tip)
@@ -96,9 +96,9 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
     buildButton.setTooltip ("BUILD MY MIX: listens to your vocal for a few seconds (press play in your DAW), then fits the chosen sound to what it heard. UNDO goes back.");
     buildButton.getProperties().set ("secondary", true);
     buildButton.onClick = [this] { if (hooks.buildMix) hooks.buildMix(); };
-    beatButton.setTooltip ("Beat Lock in Advanced Mixing: compares your vocal with the beat on the Instrumental input and suggests small, reviewable changes.");
+    beatButton.setTooltip ("BEAT: compares your vocal with the beat on the Instrumental input and suggests small, reviewable changes to the vocal's own controls.");
     beatButton.onClick = [this] { if (hooks.openBeat) hooks.openBeat(); };
-    advancedButton.setTooltip ("Every detailed control: CLEAN, TUNE, TONE, DYNAMICS, SPACE, CREATIVE, BEAT, REFERENCE, MASTER, presets and A/B. HOME in its rail comes back here.");
+    advancedButton.setTooltip ("Every detailed control of the five stages: TUNE, CLEAN, SHAPE, SPACE and FINISH, with presets and A/B. HOME in its rail comes back here.");
     advancedButton.getProperties().set ("secondary", true);
     advancedButton.setToggleState (true, juce::dontSendNotification); // drawn lit: the way into the detailed pages
     advancedButton.onClick = [this] { if (hooks.openAdvanced) hooks.openAdvanced(); };
@@ -121,10 +121,23 @@ MainScreen::MainScreen (GlitchKidProcessor& p, Hooks h) : proc (p), hooks (std::
         proc.setUiFlag ("uiMandala", mandala);
         repaint (visual);
     };
+    vocalModeButton.setTooltip ("This session has the old built-in Mastering mode switched on, so this GlitchKid is mastering its whole input instead of processing a vocal. "
+                                "Press to switch it back to vocal processing. For mastering, use the separate GLITCHKID MASTER plug-in on your master bus.");
+    vocalModeButton.onClick = [this]
+    {
+        setParam (GlitchKidProcessor::masterOnId, 0.0f);
+        proc.requestMasterMeterReset();
+        refreshText();
+        repaint();
+    };
     for (auto* b : { &buildButton, &beatButton, &advancedButton, &mandalaButton, &useKeyButton })
         addAndMakeVisible (b);
+    addChildComponent (vocalModeButton);
     sync();
     refreshText();
+    // The clock runs from construction, not from visibilityChanged(): a host shows the editor's window after the editor (and this screen) were made
+    // visible, and JUCE tells only the window about that, so a clock started on "isShowing()" stayed off until HOME was left and re-entered.
+    startTimerHz (30);
 }
 
 MainScreen::~MainScreen()
@@ -259,7 +272,7 @@ void MainScreen::refreshText()
 
     // the headline: what reaches GlitchKid and what you hear
     if (proc.isMasteringMode())
-        headline = "Mastering mode is on in this GlitchKid: the vocal controls are not in use. Switch it off on MASTER in Advanced Mixing.";
+        headline = "Old Mastering mode is on: this GlitchKid masters its input, not a vocal";
     else if (stillTicks > 30)
         headline = "No audio is reaching GlitchKid: press play in your DAW";
     else if (! signalOut)
@@ -320,6 +333,8 @@ void MainScreen::refreshText()
                          : parts.isEmpty()        ? "Listening: nothing to fix right now"
                                                   : "Fixing " + parts.joinIntoString (", ");
     }
+    if (vocalModeButton.isVisible() != proc.isMasteringMode())
+        vocalModeButton.setVisible (proc.isMasteringMode());
     status[airLab] = ! on (P::airOnId) ? "Off" : "Mid air " + juce::String (juce::roundToInt (value (P::airPresenceId))) + " %,  high air " + juce::String (juce::roundToInt (value (P::airAirId))) + " %";
     status[limiter] = ! on (P::limOnId) ? "Off: peaks are not caught"
                     : limGrDb > 0.1f    ? "Catching peaks: -" + juce::String (limGrDb, 1) + " dB"
@@ -361,10 +376,20 @@ int MainScreen::nextStep() const
     return proc.isPresetModified() ? 5 : 4;
 }
 
-void MainScreen::visibilityChanged()
+// HOME leaves the window (ADVANCED MIXING, KID): forget the level history, so coming back never shows frames from before.
+void MainScreen::parentHierarchyChanged()
 {
-    if (isShowing()) startTimerHz (30);
-    else stopTimer();
+    if (getParentComponent() == nullptr)
+        clearHistory();
+}
+
+void MainScreen::clearHistory()
+{
+    envIn.fill (0.0f);
+    envOut.fill (0.0f);
+    inDb = outDb = -100.0f;
+    bloom = 0.0f;
+    signalOut = false;
 }
 
 void MainScreen::mouseDown (const juce::MouseEvent& e) { press (e.getPosition()); }
@@ -396,19 +421,33 @@ void MainScreen::release()
 
 void MainScreen::timerCallback()
 {
+    if (isShowing()) // hidden (another page, a minimised window): no work at all
+        frame();
+}
+
+void MainScreen::frame()
+{
     ++tick;
     bool moved = false;
+    // The peak of exactly the samples written since the last frame (up to the tap's 170 ms at 48 kHz), so a short transient between two frames is never
+    // missed, at any sample rate or block size. No new samples: the plug-in is not processing, shown as no signal.
     auto level = [this, &moved] (const analysis::DisplayTap& tap, juce::uint32& last, float& db)
     {
         const auto wc = tap.writeCount();
-        const bool moving = wc != last;
-        moved = moved || moving;
+        const auto fresh = wc - last; // wraps correctly
         last = wc;
-        tap.copyLatest (scratch.data(), (int) scratch.size());
+        if (fresh == 0)
+        {
+            db = -100.0f;
+            return 0.0f;
+        }
+        moved = true;
+        const int n = (int) juce::jmin (fresh, analysis::DisplayTap::size);
+        tap.copyLatest (scratch.data(), n);
         float peak = 0.0f;
-        for (auto v : scratch) peak = juce::jmax (peak, std::abs (v));
-        db = moving ? juce::Decibels::gainToDecibels (peak, -100.0f) : -100.0f;
-        return moving && db > -70.0f ? juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f) : 0.0f;
+        for (int i = 0; i < n; ++i) peak = juce::jmax (peak, std::abs (scratch[(size_t) i]));
+        db = juce::Decibels::gainToDecibels (peak, -100.0f);
+        return db > -70.0f ? juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f) : 0.0f;
     };
     std::rotate (envIn.rbegin(), envIn.rbegin() + 1, envIn.rend());
     std::rotate (envOut.rbegin(), envOut.rbegin() + 1, envOut.rend());
@@ -448,6 +487,7 @@ void MainScreen::resized()
     visual = { journey.getRight() + 8, 76, W - 16 - journey.getRight() - 8, 236 };
     ribbon = visual.reduced (56, 40);
     mandalaButton.setBounds (visual.getRight() - 56 - 100, visual.getY() + 8, 100, 22); // top right of the vocal (the beat status is in the journey)
+    vocalModeButton.setBounds (mandalaButton.getX() - 8 - 120, visual.getY() + 8, 120, 22);
 
     modulesArea = { 24, 320, W - 48, 182 };
     const int mw = modulesArea.getWidth() / numModules;
@@ -673,7 +713,7 @@ void MainScreen::paintOverlays (juce::Graphics& g)
     const bool dry = on (GlitchKidProcessor::bypassId);
     g.setFont (fontOf (13.0f, true));
     g.setColour (dry ? warn : signalOut ? white : dim);
-    g.drawFittedText (headline, visual.getX() + 56, visual.getY() + 8, visual.getWidth() - 56 - 56 - 112, 22, juce::Justification::centredLeft, 1, 0.8f);
+    g.drawFittedText (headline, visual.getX() + 56, visual.getY() + 8, visual.getWidth() - 56 - 56 - 112 - (vocalModeButton.isVisible() ? 128 : 0), 22, juce::Justification::centredLeft, 1, 0.8f);
 
     // the meters: input (cyan, as everywhere) at the left, output at the right; -60..0 dBFS
     auto meter = [&g, this] (int x, float db, juce::Colour c, const char* label)

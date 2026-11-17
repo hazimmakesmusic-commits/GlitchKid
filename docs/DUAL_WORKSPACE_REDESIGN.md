@@ -65,7 +65,9 @@ The brief's five sections match the DSP, with two moves:
 | SPACE | page 4 / cat 3 | Echo, width (Dimension), Doubler. **No reverb exists**; none is shown. |
 | FINISH | page 4 / cat 2 | Output gain, **MIX** (a new knob on the existing `mix` parameter), input and output meters, the output limiter with its real gain reduction. |
 
-- **Navigation.** The rail shows the five sections first, then a smaller *MORE* group: Sounds, Beat, Creative, Reference, Master. HOME moves to the top bar as a back button. Rail indices, page numbers and `uiCategory` keep their meaning: an old session saved on DYNAMICS (cat 2) opens FINISH, where the limiter and output still are.
+- **Navigation.** The rail shows HOME and the five sections (TUNE, CLEAN, SHAPE, SPACE, FINISH). The *MORE* group (Sounds, Beat, Creative, Reference,
+  Master) was removed later: BEAT still opens from HOME's BEAT step, mastering is the separate GLITCHKID MASTER plug-in (`docs/MASTER.md`), and the other
+  pages' code, parameters and state are kept for older sessions (a session saved on one of them opens HOME). Originally: HOME moves to the top bar as a back button. Rail indices, page numbers and `uiCategory` keep their meaning: an old session saved on DYNAMICS (cat 2) opens FINISH, where the limiter and output still are.
 - **The "Advanced" switch** for TONE and TUNE is gone: Advanced Mixing *is* the detailed view.
 - **Not invented:** redo, reverb, a stereo-width meter, input gain, live key detection. Each is listed as a future item, not drawn.
 

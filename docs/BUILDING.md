@@ -41,9 +41,18 @@ cp -R "build/GlitchKidBeatLock_artefacts/Release/VST3/GlitchKid Beat Lock.vst3" 
 ```
 It goes on the instrumental, with the vocal sent to its sidechain input. See `docs/BEAT_LOCK.md`.
 
+## GLITCHKID MASTER (the third plug-in)
+The same build produces it: `build/GlitchKidMaster_artefacts/Release/VST3/GlitchKid Master.vst3` (on macOS, check it with
+`lipo -info "build/GlitchKidMaster_artefacts/Release/VST3/GlitchKid Master.vst3/Contents/MacOS/GlitchKid Master"`). Install it the same way:
+```sh
+cp -R "build/GlitchKidMaster_artefacts/Release/VST3/GlitchKid Master.vst3" ~/Library/Audio/Plug-Ins/VST3/
+```
+It goes last on the master bus, on a finished stereo mix. See `docs/MASTER.md`.
+
 ## Windows (x64) — in progress: not yet tested in a DAW
 Built and tested on every push by GitHub Actions (`.github/workflows/build.yml`, Windows and macOS runners, free for a public repository).
-Each run's page offers `GlitchKid-VST3-Windows` (the plug-in) and `tests-Windows` (the test log) as downloads.
+Each run's page offers `GlitchKid-VST3-Windows`, `GlitchKid-Beat-Lock-VST3-Windows`, `GlitchKid-Master-VST3-Windows` (the plug-ins) and `tests-Windows`
+(the test log) as downloads.
 
 To build it yourself: Visual Studio 2022 (the free Community edition, with "Desktop development with C++"), CMake and Git.
 ```bat

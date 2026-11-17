@@ -16,7 +16,7 @@ namespace glitchkid::ui
 //   modules - TUNE (enum autotune), CLEAN LAB, AIR LAB, LIMITER: an on/off switch and one main amount each, bound to their existing parameters, with their real status;
 //   basics  - TONE, PUNCH, SPACE (the existing macros), PRESENCE (AIR LAB's presence), MIX, OUTPUT, and ORIGINAL / PROCESSED.
 // UI only: no audio, DSP or parameter is added; every control writes the same parameters as the detailed pages, so both always agree.
-// Message thread, 30 Hz, only while showing.
+// Message thread, 30 Hz from construction; a frame does work only while HOME is on screen.
 class MainScreen : public juce::Component, private juce::Timer
 {
 public:
@@ -35,7 +35,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void visibilityChanged() override;
+    void parentHierarchyChanged() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
@@ -54,7 +54,11 @@ public:
     juce::String headlineForTest() const { return headline; }
     juce::String beatForTest() const { return beatText; }
     juce::Rectangle<int> visualForTest() const { return ribbon; }
-    void tickForTest() { timerCallback(); }
+    void tickForTest() { frame(); }         // one frame, as the clock would run it while HOME is on screen
+    bool clockRunningForTest() const { return isTimerRunning(); }
+    float inputDbForTest() const { return inDb; }
+    float inputEnvelopeForTest (int age) const { return envIn[(size_t) age]; } // 0 = the newest frame
+    bool vocalModeShownForTest() const { return vocalModeButton.isVisible(); }
     bool signalForTest() const { return signalOut; }
     bool mandalaForTest() const { return mandala; }
     void pressForTest (const juce::String& buttonText);
@@ -97,7 +101,8 @@ private:
     juce::ComboBox keyBox, scaleBox;
     std::unique_ptr<juce::ComboBoxParameterAttachment> keyAtt, scaleAtt;
     juce::ComboBox genreBox;
-    Pill buildButton { "BUILD MY MIX" }, beatButton { "Fit to beat" }, advancedButton { "ADVANCED MIXING" }, mandalaButton { "Mandala" }, useKeyButton { "Use" };
+    Pill buildButton { "BUILD MY MIX" }, beatButton { "Fit to beat" }, advancedButton { "ADVANCED MIXING" }, mandalaButton { "Mandala" }, useKeyButton { "Use" },
+         vocalModeButton { "Back to vocal mode" }; // only while an old session has Mastering mode on
     juce::String buildStatus, buildFullText, nextText;
     bool buildListening = false, buildApplied = false;
     int profile = -1;
@@ -127,6 +132,8 @@ private:
     void sync();
     void refreshText();
     void timerCallback() override;
+    void frame();
+    void clearHistory();
     void paintRibbon (juce::Graphics&);
     void paintMandala (juce::Graphics&);
     void paintOverlays (juce::Graphics&);

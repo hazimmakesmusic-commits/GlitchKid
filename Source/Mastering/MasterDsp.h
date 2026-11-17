@@ -7,13 +7,15 @@
 // Building blocks for the MASTERING chain (a finished stereo mix, never the vocal chain). Real-time safe: everything is allocated in prepare().
 namespace glitchkid::master
 {
-// Inter-sample ("true") peak estimate, ITU-R BS.1770-4 Annex 2 style: 4x oversampling by a 12-tap-per-phase Hann-windowed sinc interpolator.
-// peakAt() returns, per input sample, the largest magnitude among the sample itself and three interpolated points around 5-6 samples earlier
-// (the interpolator's delay). Under-reads by at most a few tenths of a dB near Nyquist, as the standard allows for 4x.
+// Inter-sample ("true") peak estimate, ITU-R BS.1770-4 Annex 2 style but finer: 8x oversampling by a 16-tap-per-phase Hann-windowed sinc interpolator.
+// (The standard's example, 4x with 12 taps per phase, let the limiter's output reach 0.16 dB over its ceiling on 18 kHz band-limited noise when
+// checked by an exact FFT reconstruction; this design: 0.04 dB. Sines up to 98 % of Nyquist: under-read below 0.08 dB.)
+// push() returns, per input sample, the largest magnitude among the sample itself and the interpolated points about `delaySamples` earlier.
+// Material with strong energy in the last few kHz below Nyquist is still under-read (shortcut: a 16-tap window; a longer one costs CPU per meter).
 class TruePeakDetector
 {
 public:
-    static constexpr int taps = 12, phases = 4, delaySamples = 6;
+    static constexpr int taps = 16, phases = 8, delaySamples = taps / 2;
     TruePeakDetector();
     void reset() { hist.fill (0.0f); pos = 0; }
     float push (float x) noexcept; // returns the true-peak estimate (linear) for this step

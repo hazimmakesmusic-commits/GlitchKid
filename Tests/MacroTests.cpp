@@ -405,9 +405,12 @@ struct MacroTests : public juce::UnitTest
                     return out;
                 };
                 static const char* navNames[5] = { "HOME", "CLEAN", "BEAT", "SOUNDS", "TUNE" }; // the rail rows; TUNE opens the first of the refine workspaces
-                auto openLevel = [&] (int level) // 1..4: the real rail row, from anywhere
+                auto openLevel = [&] (int level) // 1..4: the real rail row, from anywhere; BEAT (2) and SOUNDS (3) are no longer on the rail: opened directly
                 {
-                    click (navNames[level]);
+                    if (level == 2 || level == 3)
+                        dynamic_cast<GlitchKidEditor*> (ed.get())->uiShowWorkspaceForTest (level);
+                    else
+                        click (navNames[level]);
                 };
 
                 // HOME: four workspace tiles in order, always open (nothing is locked), statuses read from the real state
@@ -429,7 +432,8 @@ struct MacroTests : public juce::UnitTest
                     }
                 }
                 expect (! visible ("HARD") && ! visible ("BUILD MY MIX") && ! visible ("RESET"));
-                expect (visible ("HOME") && visible ("SOUNDS") && visible ("CREATIVE") && visible ("CLEAN") && visible ("TUNE") && visible ("SHAPE") && visible ("FINISH") && visible ("SPACE") && visible ("BEAT") && visible ("REFERENCE") && visible ("MASTER") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (visible ("HOME") && visible ("CLEAN") && visible ("TUNE") && visible ("SHAPE") && visible ("FINISH") && visible ("SPACE") && visible ("UNDO") && visible ("ORIGINAL") && visible ("PROCESSED") && visible ("MOTION"), "the rail and the header controls are always shown");
+                expect (! visible ("SOUNDS") && ! visible ("CREATIVE") && ! visible ("BEAT") && ! visible ("REFERENCE") && ! visible ("MASTER"), "the MORE group is gone");
                 expect (visible ("SAVE") && visible ("SET A"), "the preset bar is always shown");
                 expect (findButton (*content, "CHARACTER") == nullptr && findButton (*content, "SURPRISE ME") == nullptr, "no Character tab");
                 expect (findButton (*content, "UNDO") != nullptr && ! findButton (*content, "UNDO")->isEnabled(), "nothing to undo yet");
@@ -475,7 +479,7 @@ struct MacroTests : public juce::UnitTest
                 }
 
                 openLevel (3);
-                expectEquals (p.getUiInt ("uiLevel", -1), 3);
+                expectEquals (dynamic_cast<GlitchKidEditor*> (ed.get())->uiPageForTest(), 3, "the SOUNDS page (opened directly: it is no longer a rail row)");
                 expect (visible ("BUILD MY MIX") && visible ("WHAT CHANGED") && visible ("FINAL TOUCH  >") && visible ("ORIGINAL") && ! visible ("HARD"));
                 {
                     dynamic_cast<GlitchKidEditor*> (ed.get())->uiShowWorkspaceForTest (0); // the old dashboard, tested directly
@@ -806,7 +810,7 @@ struct MacroTests : public juce::UnitTest
                     expectEquals (p.getUiInt ("uiCategory", -1), 2);
                 }
 
-                click ("SOUNDS");
+                openLevel (3); // the SOUNDS page, kept for older sessions
                 expect (visible ("TRY AGAIN"), "SOUNDS shows the build button (TRY AGAIN after the silent attempt)");
                 click ("HOME");
                 expectEquals ((int) levelCards().size(), 0, "HOME is the instrument; the old dashboard's tiles are gone");
